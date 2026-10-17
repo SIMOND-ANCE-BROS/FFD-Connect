@@ -10,8 +10,8 @@ import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../../common/utils/pagination.util";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
-import { sameClubName } from "../../utils/club-name-filter";
 import {
+  clubMembersScopeOf,
   organizedByClubWhere,
   organizerActorOf,
   organizerMatcher,
@@ -305,13 +305,15 @@ export class CompetitionQueryService {
   ): Promise<
     (T & { isOrganizedByMyClub: boolean; clubMembersRegisteredCount: number })[]
   > {
-    const sameClubCondition = club.clubId
-      ? { clubId: club.clubId }
-      : club.clubName?.trim()
-        ? { clubName: sameClubName(club.clubName.trim()) }
-        : null;
+    const account = {
+      clubId: club.clubId ?? null,
+      clubName: club.clubName ?? null,
+    };
+    // Members of the account's club, by id (#749): a legacy account
+    // resolving to no single active club counts nobody, organises nothing.
+    const scope = await clubMembersScopeOf(this.prisma, account);
 
-    if (!sameClubCondition) {
+    if (!scope) {
       return competitions.map((comp) => ({
         ...comp,
         isOrganizedByMyClub: false,
@@ -325,7 +327,7 @@ export class CompetitionQueryService {
         status: {
           in: [RegistrationStatus.PENDING, RegistrationStatus.CONFIRMED],
         },
-        user: sameClubCondition,
+        user: scope.members,
         event: { competitionId: { in: ids } },
       },
       select: { event: { select: { competitionId: true } } },
@@ -344,10 +346,7 @@ export class CompetitionQueryService {
     const isMine = await organizerMatcher(
       this.prisma,
       competitions,
-      await organizerActorOf(this.prisma, {
-        clubId: club.clubId ?? null,
-        clubName: club.clubName ?? null,
-      }),
+      await organizerActorOf(this.prisma, account),
     );
     return competitions.map((comp) => ({
       ...comp,
@@ -363,15 +362,13 @@ export class CompetitionQueryService {
     });
     if (!organizer || !hasRole(organizer, UserRole.CLUB)) return [];
 
-    const sameClubCondition = organizer.clubId
-      ? { clubId: organizer.clubId }
-      : organizer.clubName?.trim()
-        ? { clubName: sameClubName(organizer.clubName.trim()) }
-        : null;
-    if (!sameClubCondition) return [];
+    // Members of the account's club, by id (#749): a legacy account
+    // resolving to no single active club (homonyms…) sees nothing.
+    const scope = await clubMembersScopeOf(this.prisma, organizer);
+    if (!scope) return [];
 
     const pending = await this.prisma.registration.findMany({
-      where: { status: RegistrationStatus.PENDING, user: sameClubCondition },
+      where: { status: RegistrationStatus.PENDING, user: scope.members },
       include: {
         user: {
           select: {

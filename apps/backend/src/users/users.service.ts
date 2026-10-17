@@ -12,6 +12,7 @@ import {
 } from "@prisma/client";
 import { hasRole, rolesOf, withActiveRole } from "../auth/roles";
 import { userRolesClubSelect } from "../utils/prisma-selects";
+import { clubMembersScopeOf } from "../competitions/competition-organizer";
 import * as bcrypt from "bcrypt";
 import { computeSoloAgeGroup, getReferenceYear } from "../common/age-group";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
@@ -178,28 +179,22 @@ export class UsersService {
       throw new NotFoundException("Organizer not found or invalid role");
     }
 
-    const sameClubCondition = organizer.clubId
-      ? { clubId: organizer.clubId }
-      : organizer.clubName
-        ? { clubName: organizer.clubName }
-        : null;
-    if (!sameClubCondition) {
+    if (!organizer.clubId && !organizer.clubName?.trim()) {
       throw new NotFoundException("Organizer has no club assigned");
     }
+    // The account's club, by id (#749): a legacy account resolving to no
+    // single active club (homonyms…) lists nobody.
+    const scope = await clubMembersScopeOf(this.prisma, organizer);
+    if (!scope) return createPaginatedResponse([], 0, skip ?? 0, take ?? 10);
 
-    // 2. Fetch all users of the same club (by clubId or clubName) with pagination
+    // 2. Fetch the club's members (dancers only) with pagination
+    const membersWhere: Prisma.UserWhereInput = {
+      AND: [scope.members, withActiveRole(UserRole.LICENSEE)],
+    };
     const [total, members] = await Promise.all([
-      this.prisma.user.count({
-        where: {
-          ...sameClubCondition,
-          ...withActiveRole(UserRole.LICENSEE),
-        },
-      }),
+      this.prisma.user.count({ where: membersWhere }),
       this.prisma.user.findMany({
-        where: {
-          ...sameClubCondition,
-          ...withActiveRole(UserRole.LICENSEE), // Only fetch dancers/members
-        },
+        where: membersWhere,
         skip,
         take,
         select: {

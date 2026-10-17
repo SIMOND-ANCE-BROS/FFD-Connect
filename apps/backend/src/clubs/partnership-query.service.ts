@@ -6,7 +6,7 @@ import {
   userRolesClubSelect,
 } from "../utils/prisma-selects";
 import { PrismaService } from "../prisma/prisma.service";
-import { sameClubName } from "../utils/club-name-filter";
+import { clubMembersScopeOf } from "../competitions/competition-organizer";
 import { ClubsService } from "./clubs.service";
 
 @Injectable()
@@ -66,17 +66,13 @@ export class PartnershipQueryService {
       throw new BadRequestException("Only club role can manage club data");
     }
 
-    const primaryClubId =
-      await this.clubsService.getClubIdForOrganizer(organizerUserId);
+    // The account's club, by id (#749): a legacy account resolving to no
+    // single active club (homonyms…) lists nobody — never a bare name match.
+    const scope = await clubMembersScopeOf(this.prisma, organizer);
+    if (!scope) return [];
 
-    const primaryCondition: Prisma.UserWhereInput = organizer.clubId
-      ? { clubId: primaryClubId }
-      : organizer.clubName?.trim()
-        ? { clubName: sameClubName(organizer.clubName.trim()) }
-        : { clubId: primaryClubId };
-
-    const orConditions: Prisma.UserWhereInput[] = [primaryCondition];
-    if (secondaryClubId && secondaryClubId !== primaryClubId) {
+    const orConditions: Prisma.UserWhereInput[] = [scope.members];
+    if (secondaryClubId && secondaryClubId !== scope.clubId) {
       orConditions.push({ clubId: secondaryClubId });
     }
 

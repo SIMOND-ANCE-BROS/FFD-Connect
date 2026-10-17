@@ -265,6 +265,75 @@ describe("CompetitionQueryService", () => {
       ).toEqual([true, false]);
     });
 
+    it("counts no member for a legacy account whose name designates homonym clubs (#749)", async () => {
+      mockRedisService.get.mockResolvedValue(null);
+      mockPrismaService.competition.count.mockResolvedValue(1);
+      mockPrismaService.competition.findMany.mockResolvedValue([
+        { ...mockCompetition, organizerClubId: "club-1", events: [] },
+      ]);
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "CLUB",
+        clubId: null,
+        clubName: "Club Test",
+      });
+      mockPrismaService.club.findMany.mockResolvedValue([
+        { id: "club-1" },
+        { id: "club-2" },
+      ]);
+
+      const result = await service.findAll("user-club");
+
+      expect(mockPrismaService.registration.findMany).not.toHaveBeenCalled();
+      expect(result.data[0]).toEqual(
+        expect.objectContaining({
+          isOrganizedByMyClub: false,
+          clubMembersRegisteredCount: 0,
+        }),
+      );
+    });
+
+    it("counts the resolved club's members for a legacy account (#749)", async () => {
+      mockRedisService.get.mockResolvedValue(null);
+      mockPrismaService.competition.count.mockResolvedValue(1);
+      mockPrismaService.competition.findMany.mockResolvedValue([
+        { ...mockCompetition, organizerClubId: "club-1", events: [] },
+      ]);
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "CLUB",
+        clubId: null,
+        clubName: "Club Test",
+      });
+      mockPrismaService.club.findMany.mockResolvedValue([{ id: "club-1" }]);
+      mockPrismaService.club.findFirst.mockResolvedValue({ id: "club-1" });
+      mockPrismaService.registration.findMany.mockResolvedValue([
+        { event: { competitionId: mockCompetition.id } },
+      ]);
+
+      const result = await service.findAll("user-club");
+
+      expect(mockPrismaService.registration.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            user: {
+              OR: [
+                { clubId: "club-1" },
+                {
+                  clubId: null,
+                  clubName: { equals: "Club Test", mode: "insensitive" },
+                },
+              ],
+            },
+          }),
+        }),
+      );
+      expect(result.data[0]).toEqual(
+        expect.objectContaining({
+          isOrganizedByMyClub: true,
+          clubMembersRegisteredCount: 1,
+        }),
+      );
+    });
+
     it("uses pagination parameters for cache key and query", async () => {
       mockRedisService.get.mockResolvedValue(null);
       mockPrismaService.competition.count.mockResolvedValue(0);
@@ -666,6 +735,56 @@ describe("CompetitionQueryService", () => {
       expect(result[0].competition).toEqual(
         expect.objectContaining({ id: "comp-1", title: "Championnat 2026" }),
       );
+    });
+
+    it("scopes a legacy account (no clubId) to the one active club its name designates (#749)", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "CLUB",
+        clubId: null,
+        clubName: " Club_Test ",
+      });
+      mockPrismaService.club.findMany.mockResolvedValue([{ id: "club-1" }]);
+      mockPrismaService.club.findFirst.mockResolvedValue({ id: "club-1" });
+      mockPrismaService.registration.findMany.mockResolvedValue([]);
+
+      await service.getPendingRegistrationsForClub("organizer-1");
+
+      expect(mockPrismaService.registration.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            status: "PENDING",
+            user: {
+              OR: [
+                { clubId: "club-1" },
+                {
+                  clubId: null,
+                  // LIKE metacharacters escaped: « _ » is not a wildcard.
+                  clubName: { equals: "Club\\_Test", mode: "insensitive" },
+                },
+              ],
+            },
+          },
+        }),
+      );
+    });
+
+    it("returns nothing for a legacy account whose name designates homonym clubs (#749)", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "CLUB",
+        clubId: null,
+        clubName: "Club Test",
+      });
+      // « Club Test » and « club test »: never guessed.
+      mockPrismaService.club.findMany.mockResolvedValue([
+        { id: "club-1" },
+        { id: "club-2" },
+      ]);
+
+      const result =
+        await service.getPendingRegistrationsForClub("organizer-1");
+
+      expect(result).toEqual([]);
+      expect(mockPrismaService.registration.findMany).not.toHaveBeenCalled();
     });
   });
 
