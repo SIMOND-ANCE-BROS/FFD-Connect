@@ -45,8 +45,23 @@ describe("UsersController", () => {
 
       const result = await controller.getProfile(req("user-id"));
 
-      expect(service.findOne).toHaveBeenCalledWith("user-id");
+      expect(service.findOne).toHaveBeenCalledWith("user-id", {
+        supportAccess: false,
+      });
       expect(result).toBe(profile);
+    });
+
+    it("flags a support access so the static QR is withheld (#759)", async () => {
+      service.findOne.mockResolvedValue({} as never);
+      const impersonated = {
+        user: { userId: "user-id", email: "u@test.com", impersonatedBy: "a-1" },
+      } as unknown as RequestWithUser;
+
+      await controller.getProfile(impersonated);
+
+      expect(service.findOne).toHaveBeenCalledWith("user-id", {
+        supportAccess: true,
+      });
     });
 
     it("propagates NotFoundException when user does not exist", async () => {

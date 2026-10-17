@@ -134,6 +134,7 @@ describe("JwtStrategy", () => {
     const openSession = {
       actorId: "admin-1",
       targetUserId: "user-1",
+      startedAt: new Date(Date.now() - 60_000),
       endedAt: null,
     };
     const mockLookups = (
@@ -250,11 +251,25 @@ describe("JwtStrategy", () => {
       ["purged", null],
       ["of another actor", { ...openSession, actorId: "admin-2" }],
       ["on another target", { ...openSession, targetUserId: "user-2" }],
+      [
+        "older than 15 minutes (#762)",
+        { ...openSession, startedAt: new Date(Date.now() - 15 * 60_000 - 1) },
+      ],
     ])("rejects the token once its session is %s", async (_label, session) => {
       mockLookups(activeAdmin, undefined, session);
       await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
+    });
+
+    it("still accepts a session just under its 15 minutes (#762)", async () => {
+      mockLookups(activeAdmin, undefined, {
+        ...openSession,
+        startedAt: new Date(Date.now() - 14 * 60_000),
+      });
+      await expect(strategy.validate(imp)).resolves.toMatchObject({
+        impersonatedBy: "admin-1",
+      });
     });
   });
 });

@@ -773,6 +773,7 @@ export const impersonationLogExportSelect = {
 export const impersonationLogSessionSelect = {
   actorId: true,
   targetUserId: true,
+  startedAt: true,
   endedAt: true,
 } as const;
 

@@ -22,6 +22,7 @@ import { Throttle } from "@nestjs/throttler";
 import { ThrottleByIp } from "../../common/decorators/throttle-by-ip.decorator";
 import { Request as ExpressRequest } from "express";
 import { JwtAuthGuard } from "../../auth/jwt-auth.guard";
+import { NoImpersonationGuard } from "../../auth/no-impersonation.guard";
 import { API_GLOBAL_PREFIX } from "../../common/api-prefix";
 import { ThrottlerUserGuard } from "../../common/guards/throttler-user.guard";
 import { PKPASS_MIME_TYPE } from "./apple-wallet-pass.generator";
@@ -73,7 +74,9 @@ export class AppleWalletController {
 
   @StoreReviewPassthrough()
   @Post("my/wallet/apple")
-  @UseGuards(JwtAuthGuard, ThrottlerUserGuard)
+  // The pass carries the static signed QR, valid until the licence expires:
+  // never handed out during a support access (#759).
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, ThrottlerUserGuard)
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
@@ -87,6 +90,11 @@ export class AppleWalletController {
     type: AppleWalletPassLinkDto,
   })
   @ApiResponse({ status: 401, description: "Non authentifié" })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Refusé pendant un accès support (« se connecter en tant que »)",
+  })
   @ApiResponse({ status: 404, description: "Aucune licence pour ce compte" })
   @ApiResponse({ status: 422, description: "Licence expirée" })
   @ApiResponse({ status: 429, description: "Trop de demandes" })

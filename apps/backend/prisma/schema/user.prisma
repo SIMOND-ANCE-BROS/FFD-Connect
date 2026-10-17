@@ -85,24 +85,29 @@ enum UserRole {
   ADMIN   // Administration plateforme
 }
 
-/// Journal d'audit des impersonations (« se connecter en tant que », #545).
-/// Une ligne par session d'impersonation : qui, cible, quand, pourquoi.
-/// Obligatoire pour la traçabilité RGPD (accès à des données de tiers).
+/// Journal d'audit des accès support (« se connecter en tant que », #545,
+/// réservés aux administrateurs depuis #733). Une ligne par session :
+/// qui, cible, quand, pourquoi. Obligatoire pour la traçabilité RGPD (accès à
+/// des données de tiers) ; chaque requête de la session relit sa ligne
+/// (JwtStrategy) et la session meurt à l'arrêt, au plus tard 15 min après
+/// `startedAt`.
 model ImpersonationLog {
   id             String    @id @default(uuid())
-  /// Auteur de l'impersonation (admin ou staff).
+  /// Auteur de l'accès support (administrateur uniquement).
   actorId        String
-  /// Rôle qui a autorisé l'impersonation (ADMIN ou STAFF), pas le rôle principal.
+  /// Rôle qui a autorisé l'accès : toujours ADMIN depuis #733 (les lignes
+  /// plus anciennes peuvent porter STAFF), pas le rôle principal.
   actorRole      UserRole
-  /// Compte cible dont on prend l'identité.
+  /// Compte cible dont on prend l'identité (jamais un administrateur).
   targetUserId   String
   /// Rôle principal de la cible.
   targetRole     UserRole
-  /// Raison (obligatoire pour le staff ; facultative pour l'admin).
+  /// Motif, facultatif ; sans donnée personnelle de tiers.
   reason         String?
+  /// IP de l'administrateur, réduite à son réseau au bout de 90 jours (#731).
   ip             String?
   startedAt      DateTime  @default(now())
-  /// Renseigné à l'arrêt de l'impersonation.
+  /// Renseigné à l'arrêt de la session par l'administrateur.
   endedAt        DateTime?
 
   @@index([actorId])

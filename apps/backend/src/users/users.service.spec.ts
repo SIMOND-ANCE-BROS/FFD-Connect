@@ -192,6 +192,23 @@ describe("UsersService", () => {
       });
     });
 
+    it("withholds the static QR and the Wallet pass during a support access (#759)", async () => {
+      const license = {
+        id: "l1",
+        number: "FFD-1",
+        validUntil: new Date("2026-08-31T00:00:00.000Z"),
+      };
+      prisma.user.findUnique.mockResolvedValue(makeUser({ license }));
+
+      const result = await service.findOne("u1", { supportAccess: true });
+
+      expect(result.license).toEqual({
+        ...license,
+        qrCode: null,
+        appleWalletAvailable: false,
+      });
+    });
+
     it("keeps license null when the user has none", async () => {
       prisma.user.findUnique.mockResolvedValue(makeUser());
 

@@ -204,7 +204,7 @@ export class UsersController {
               type: "string",
               nullable: true,
               description:
-                "Contenu du QR de licence signé par le serveur, à afficher tel quel. Null si la signature est désactivée.",
+                "Contenu du QR de licence signé par le serveur, à afficher tel quel. Null si la signature est désactivée, ou pendant un accès support (« se connecter en tant que »).",
             },
             appleWalletAvailable: {
               type: "boolean",
@@ -271,7 +271,9 @@ export class UsersController {
     },
   })
   getProfile(@Request() req: RequestWithUser) {
-    return this.usersService.findOne(req.user.userId);
+    return this.usersService.findOne(req.user.userId, {
+      supportAccess: Boolean(req.user.impersonatedBy),
+    });
   }
 
   @Patch("me")
