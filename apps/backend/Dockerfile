@@ -96,21 +96,26 @@ RUN apk add --no-cache ffmpeg && \
 ENV FFMPEG_PATH=/usr/bin/ffmpeg \
     NODE_ENV=production
 
+# Non-root runtime user, created BEFORE the copies so they can set ownership
+# themselves (#717). A trailing `chown -R /app` rewrote every file of the
+# bundle into a new layer, storing it twice (~190 MB compressed, ~40 % of the
+# image, pulled on every scale-from-zero wake). The chown here only touches
+# empty directories: the working directories and the local uploads directory
+# (track media fallback + TTS cache; documents live in blob storage, #293),
+# the only place the app writes besides os.tmpdir().
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
+    mkdir -p /app/apps/backend/uploads && \
+    chown appuser:appgroup /app /app/apps /app/apps/backend /app/apps/backend/uploads
+
 # Self-contained bundle: package.json, dist, prisma schema+migrations, the
 # generated client, and a pruned node_modules (backend + shared only).
-COPY --from=deploy /app/out ./
+COPY --from=deploy --chown=appuser:appgroup /app/out ./
 
 # Entrypoint
-COPY apps/backend/docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
+COPY --chown=appuser:appgroup --chmod=755 apps/backend/docker-entrypoint.sh /app/docker-entrypoint.sh
 
 EXPOSE 3000
 
-# Create the local uploads directory (track media fallback + TTS cache; documents
-# live in blob storage, #293) and run as non-root user for security
-RUN mkdir -p /app/apps/backend/uploads && \
-    addgroup -S appgroup && adduser -S appuser -G appgroup && \
-    chown -R appuser:appgroup /app
 USER appuser
 
 CMD ["/app/docker-entrypoint.sh"]
