@@ -13420,7 +13420,7 @@
     },
     "/clubs/me/registration-mode": {
       "get": {
-        "description": "Retourne le mode d'inscription du club de l'utilisateur connecté (licencié ou organisateur). Permet au client de masquer le bouton « S'inscrire » lorsque le mode est CLUB_ONLY.",
+        "description": "Retourne le mode d'inscription du club de l'utilisateur connecté (licencié ou compte club). Source du réglage pour les paramètres du club (#665, remplace le champ déprécié de `GET /clubs/me/helloasso`) et pour masquer le bouton « S'inscrire » lorsque le mode est CLUB_ONLY.",
         "operationId": "ClubsController_getMyClubRegistrationMode",
         "parameters": [],
         "responses": {
@@ -13429,18 +13429,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "registrationMode": {
-                      "type": "string",
-                      "enum": [
-                        "CLUB_AND_MEMBERS_PENDING",
-                        "CLUB_ONLY",
-                        "MEMBERS_AUTO_CONFIRM"
-                      ],
-                      "nullable": true
-                    }
-                  }
+                  "$ref": "#/components/schemas/ClubRegistrationModeDto"
                 }
               }
             }
@@ -13625,7 +13614,7 @@
             "JWT-auth": []
           }
         ],
-        "summary": "Mode d'inscription du club du licencié",
+        "summary": "Mode d'inscription du club de l'utilisateur connecté",
         "tags": ["clubs"]
       },
       "patch": {
@@ -13644,7 +13633,14 @@
         },
         "responses": {
           "200": {
-            "description": "Mode mis à jour"
+            "description": "Mode mis à jour",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubRegistrationModeUpdatedDto"
+                }
+              }
+            }
           },
           "400": {
             "description": "Utilisateur non organisateur ou club non assigné"
@@ -13805,12 +13801,19 @@
     },
     "/clubs/me/helloasso": {
       "get": {
-        "description": "Retourne si le club a déjà connecté un compte HelloAsso (sans exposer les identifiants).",
+        "description": "Retourne si le club a déjà connecté un compte HelloAsso (sans exposer les identifiants). Le champ `registrationMode` est déprécié : lire `GET /clubs/me/registration-mode` (#665).",
         "operationId": "ClubsController_getHelloAssoStatus",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "Statut récupéré"
+            "description": "Statut récupéré",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelloAssoStatusDto"
+                }
+              }
+            }
           },
           "400": {
             "description": "Utilisateur non organisateur ou club non assigné"
@@ -30565,6 +30568,53 @@
         },
         "required": ["text"]
       },
+      "ClubRegistrationModeDto": {
+        "type": "object",
+        "properties": {
+          "registrationMode": {
+            "nullable": true,
+            "description": "CLUB_AND_MEMBERS_PENDING = licenciés peuvent s'inscrire, validation par le club ; CLUB_ONLY = seul le club inscrit les licenciés ; MEMBERS_AUTO_CONFIRM = inscriptions licenciés validées automatiquement. null quand l'utilisateur n'a pas de club (ou qu'un ancien compte sans club rattaché désigne plusieurs clubs ou aucun).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClubRegistrationMode"
+              }
+            ]
+          }
+        },
+        "required": ["registrationMode"]
+      },
+      "HelloAssoStatusDto": {
+        "type": "object",
+        "properties": {
+          "clubName": {
+            "type": "string"
+          },
+          "helloAssoConnected": {
+            "type": "boolean",
+            "description": "Identifiants HelloAsso renseignés (jamais exposés)"
+          },
+          "organizationSlug": {
+            "type": "string",
+            "nullable": true,
+            "description": "Slug de l'organisation HelloAsso, quand le club est connecté"
+          },
+          "registrationMode": {
+            "deprecated": true,
+            "description": "Déprécié (#665) : le mode d'inscription n'a rien de propre à HelloAsso. Lire `GET /clubs/me/registration-mode`. Conservé pour les applications déjà installées.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClubRegistrationMode"
+              }
+            ]
+          }
+        },
+        "required": [
+          "clubName",
+          "helloAssoConnected",
+          "organizationSlug",
+          "registrationMode"
+        ]
+      },
       "ConnectHelloAssoDto": {
         "type": "object",
         "properties": {
@@ -30640,16 +30690,31 @@
         "type": "object",
         "properties": {
           "registrationMode": {
-            "type": "string",
-            "enum": [
-              "CLUB_AND_MEMBERS_PENDING",
-              "CLUB_ONLY",
-              "MEMBERS_AUTO_CONFIRM"
-            ],
-            "description": "CLUB_AND_MEMBERS_PENDING = licenciés peuvent s'inscrire, validation par le club ; CLUB_ONLY = seul le club inscrit les licenciés ; MEMBERS_AUTO_CONFIRM = inscriptions licenciés validées automatiquement."
+            "description": "CLUB_AND_MEMBERS_PENDING = licenciés peuvent s'inscrire, validation par le club ; CLUB_ONLY = seul le club inscrit les licenciés ; MEMBERS_AUTO_CONFIRM = inscriptions licenciés validées automatiquement.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClubRegistrationMode"
+              }
+            ]
           }
         },
         "required": ["registrationMode"]
+      },
+      "ClubRegistrationModeUpdatedDto": {
+        "type": "object",
+        "properties": {
+          "clubName": {
+            "type": "string"
+          },
+          "registrationMode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClubRegistrationMode"
+              }
+            ]
+          }
+        },
+        "required": ["clubName", "registrationMode"]
       },
       "CreatePartnershipDto": {
         "type": "object",

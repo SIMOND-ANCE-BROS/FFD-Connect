@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { PaymentProvider } from "@prisma/client";
 import { ClubPaymentProviderQueryService } from "./club-payment-provider.query-service";
 import { ClubPaymentProviderService } from "./club-payment-provider.service";
+import { ClubRegistrationModeQueryService } from "./club-registration-mode.query-service";
 import { ClubsController } from "./clubs.controller";
 import { ClubsHelloAssoService } from "./clubs-helloasso.service";
 import { PartnershipQueryService } from "./partnership-query.service";
@@ -13,7 +14,6 @@ describe("ClubsController", () => {
   let controller: ClubsController;
 
   const mockClubsHelloAssoService = {
-    getRegistrationModeForUser: jest.fn(),
     getMyClubHelloAssoStatus: jest.fn(),
     connectHelloAsso: jest.fn(),
     setRegistrationMode: jest.fn(),
@@ -39,6 +39,7 @@ describe("ClubsController", () => {
     removeSoloTeamMember: jest.fn(),
   };
 
+  const mockRegistrationModeQuery = { getMyClubRegistrationMode: jest.fn() };
   const mockPaymentProviderQuery = { getMyClubPaymentProvider: jest.fn() };
   const mockPaymentProviderService = { setMyClubPaymentProvider: jest.fn() };
 
@@ -51,6 +52,10 @@ describe("ClubsController", () => {
       controllers: [ClubsController],
       providers: [
         { provide: ClubsHelloAssoService, useValue: mockClubsHelloAssoService },
+        {
+          provide: ClubRegistrationModeQueryService,
+          useValue: mockRegistrationModeQuery,
+        },
         {
           provide: ClubPaymentProviderQueryService,
           useValue: mockPaymentProviderQuery,
@@ -111,7 +116,7 @@ describe("ClubsController", () => {
 
   describe("getMyClubRegistrationMode", () => {
     it("returns the wrapped mode", async () => {
-      mockClubsHelloAssoService.getRegistrationModeForUser.mockResolvedValue(
+      mockRegistrationModeQuery.getMyClubRegistrationMode.mockResolvedValue(
         "CLUB_ONLY",
       );
 
@@ -119,12 +124,12 @@ describe("ClubsController", () => {
 
       expect(result).toEqual({ registrationMode: "CLUB_ONLY" });
       expect(
-        mockClubsHelloAssoService.getRegistrationModeForUser,
+        mockRegistrationModeQuery.getMyClubRegistrationMode,
       ).toHaveBeenCalledWith("user-1");
     });
 
     it("wraps null when user has no club", async () => {
-      mockClubsHelloAssoService.getRegistrationModeForUser.mockResolvedValue(
+      mockRegistrationModeQuery.getMyClubRegistrationMode.mockResolvedValue(
         null,
       );
 

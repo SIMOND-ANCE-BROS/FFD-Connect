@@ -18,9 +18,13 @@ Base controller: `apps/backend/src/clubs/clubs.controller.ts`
 
 Routes:
 
-- `GET /clubs/me/registration-mode`
+- `GET /clubs/me/registration-mode` : seule source du mode d'inscription
+  (paramètres du club, bouton « S'inscrire » ; `null` sans club, #665)
 - `PATCH /clubs/me/registration-mode`
-- `GET /clubs/me/helloasso`
+- `GET /clubs/me/helloasso` : statut HelloAsso ; son champ `registrationMode`
+  est **déprécié** (#665), conservé pour les applications déjà installées.
+  À retirer quand la version minimale de l'app lit
+  `GET /clubs/me/registration-mode`.
 - `GET /clubs/me/partnerships`
 - `POST /clubs/me/partnerships`
 - `PATCH /clubs/me/partnerships/:id/end`
