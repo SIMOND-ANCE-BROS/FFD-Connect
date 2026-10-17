@@ -475,6 +475,8 @@ export class UsersService {
         lastLoginAt: true,
         // Date de désactivation du compte par un administrateur (#251).
         disabledAt: true,
+        // Dernière version de la politique de confidentialité lue (#734).
+        privacyPolicySeenVersion: true,
         license: {
           select: {
             number: true,

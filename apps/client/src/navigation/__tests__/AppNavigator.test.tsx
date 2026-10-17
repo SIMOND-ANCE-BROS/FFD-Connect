@@ -62,6 +62,15 @@ jest.mock("../../stores/auth.store", () => ({
 // Navigation actions sent through the container ref.
 const mockDispatch = jest.fn();
 
+// Privacy policy notice (#734): only who may see it matters here.
+const mockNoticeProps = jest.fn();
+jest.mock("../../features/legal/PrivacyPolicyNotice", () => ({
+  PrivacyPolicyNotice: (props: { eligible: boolean }) => {
+    mockNoticeProps(props);
+    return null;
+  },
+}));
+
 // Mock Screens individually with inline factories
 jest.mock("../../features/auth/screens/LoginScreen", () => ({
   LoginScreen: () => {
@@ -529,6 +538,42 @@ describe("AppNavigator", () => {
     expect(getByTestId("tab-screen-Settings")).toBeTruthy();
     expect(queryByTestId("tab-screen-License")).toBeNull();
     expect(queryByTestId("tab-screen-Library")).toBeNull();
+  });
+
+  describe("privacy policy notice (#734)", () => {
+    const lastEligible = () =>
+      (
+        mockNoticeProps.mock.calls.at(-1)?.[0] as
+          | { eligible: boolean }
+          | undefined
+      )?.eligible;
+
+    afterEach(() => {
+      mockAuthState.impersonating = false;
+    });
+
+    it("is offered to a signed-in account", async () => {
+      await render(<AppNavigator />);
+      expect(lastEligible()).toBe(true);
+    });
+
+    it("is never offered to a guest", async () => {
+      mockAuthState.isGuest = true;
+      await render(<AppNavigator />);
+      expect(lastEligible()).toBe(false);
+    });
+
+    it("is never offered during a support session", async () => {
+      mockAuthState.impersonating = true;
+      await render(<AppNavigator />);
+      expect(lastEligible()).toBe(false);
+    });
+
+    it("is never offered when signed out", async () => {
+      mockAuthState.isLoggedIn = false;
+      await render(<AppNavigator />);
+      expect(lastEligible()).toBe(false);
+    });
   });
 
   describe("return after a guest signs in (#20)", () => {

@@ -35,6 +35,7 @@ import {
 import { LICENSE_NUMBER_MAX_LENGTH } from "./dto/register.dto";
 import { PasswordValidator } from "./password-validator";
 import { hasRole, rolesOf } from "./roles";
+import { PRIVACY_POLICY_VERSION } from "../privacy-policy/privacy-policy-version";
 
 const BCRYPT_ROUNDS = 12;
 
@@ -295,6 +296,9 @@ export class AuthService {
             // empty (= unknown) rather than declaring "Ten Dance" (#555).
             category: normalizeDiscipline(license.category),
             birthDate,
+            // Signs up under the current policy (linked from the sign-up
+            // form): no "policy updated" notice right after (#734).
+            privacyPolicySeenVersion: PRIVACY_POLICY_VERSION,
           },
           select: {
             id: true,

@@ -146,6 +146,10 @@ export const LEGAL_DOCUMENTS: Record<LegalDoc, LegalDocument> = {
         heading: "Sous-traitants",
         body: "• Microsoft Azure — hébergement (Union européenne)\n• Microsoft Azure AI — OCR du certificat et synthèse vocale (Union européenne)\n• Google Wallet — uniquement si vous ajoutez le pass à Google Wallet\n• Expo (EAS) — distribution des mises à jour de l'application\n• Google Firebase — acheminement des notifications push\n• Sentry — télémétrie d'erreurs (données techniques uniquement)\n• HelloAsso — paiements des inscriptions\n• Resend — envoi des e-mails transactionnels",
       },
+      {
+        heading: "Modifications de cette politique",
+        body: "La date de dernière mise à jour figure en tête du texte. En cas de changement substantiel (nouvelles données ou finalités, nouveau sous-traitant, conservation allongée, transfert hors de l'Union européenne, exercice de vos droits ou contenu de l'export), un message vous le signale à l'ouverture de l'application, une seule fois par version, avec un lien vers ce texte. C'est une information, pas une nouvelle acceptation : « J'ai compris » ferme le message. La version dont vous avez pris connaissance est enregistrée avec votre compte et figure dans votre export.",
+      },
     ],
   },
 };

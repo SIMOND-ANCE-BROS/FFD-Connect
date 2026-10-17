@@ -230,7 +230,7 @@ Pour exercer ces droits : privacy@gabin-simond.fr. Une réponse vous sera apport
 
 L'application permet d'exercer directement l'accès et la portabilité (export de vos données, dans Réglages → Confidentialité et données → Exporter mes données) ainsi que l'effacement (suppression du compte). L'export, au format JSON, contient :
 
-- **votre profil** : identité (nom, prénom, adresse e-mail), date de naissance, club, rôles, catégorie, classe d'âge, niveaux, classement national, licence WDSF le cas échéant, date de dernière connexion et, le cas échéant, la date de désactivation de votre compte par un administrateur ;
+- **votre profil** : identité (nom, prénom, adresse e-mail), date de naissance, club, rôles, catégorie, classe d'âge, niveaux, classement national, licence WDSF le cas échéant, date de dernière connexion, version de la présente politique dont vous avez pris connaissance (§11) et, le cas échéant, la date de désactivation de votre compte par un administrateur ;
 - **votre licence** : numéro, catégorie, club, date de validité ;
 - **vos demandes de renouvellement de licence** : statut, dates (création, soumission, décision), motif d'un refus et commentaire de l'administrateur — jamais son identité — et, pour chaque document déposé, son type, sa date de dépôt et les seules informations lues sur le document (aptitude, date et médecin pour le certificat médical ; numéro et échéance pour l'attestation de licence). Le fichier lui-même n'y est pas joint ;
 - **vos inscriptions aux compétitions** (statut, dossard, présence, paiement des frais, nom du partenaire tel que saisi à l'inscription, contexte de l'épreuve), y compris lorsque vous êtes le partenaire d'un couple inscrit par un autre licencié : pour ce second cas, seuls le statut, le dossard et le contexte de l'épreuve figurent (spécialité, classe d'âge, niveau, compétition), sans les données du licencié qui a inscrit le couple ;
@@ -265,4 +265,6 @@ Le site vitrine ne dépose aucun cookie et n'utilise aucune mesure d'audience.
 
 ## 11. Modifications
 
-Cette politique peut être mise à jour. La date de dernière mise à jour figure en tête de document ; les changements substantiels seront notifiés dans l'application.
+Cette politique peut être mise à jour. La date de dernière mise à jour figure en tête de document.
+
+**Changements substantiels** (nouvelle catégorie de données ou nouvelle finalité, nouveau sous-traitant ou destinataire, durée de conservation allongée, nouveau transfert hors de l'Union européenne, changement dans l'exercice de vos droits ou dans le contenu de l'export) : à l'ouverture de l'application, un message vous signale la nouvelle version, avec un lien vers le texte, une seule fois par version. Il s'agit d'une information, pas d'une nouvelle acceptation : le message n'empêche pas d'utiliser l'application et se ferme avec « J'ai compris ». La version dont vous avez pris connaissance est enregistrée avec votre compte et figure dans votre export (§9). Un compte créé sous la version en vigueur n'est pas notifié.
