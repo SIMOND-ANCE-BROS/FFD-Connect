@@ -7,6 +7,7 @@ import {
   normalizeDiscipline,
   practisesDiscipline,
   toCompetitionLevel,
+  type CompetitionLevelProfile,
 } from "../competitionLevel";
 
 describe("normalizeDiscipline", () => {
@@ -43,12 +44,21 @@ describe("toCompetitionLevel / competitionLevelRank", () => {
   });
 });
 
+/** A /users/me payload still carrying the deprecated single level (#239). */
+const withLegacy = (
+  levels: CompetitionLevelProfile,
+  competitionLevel: string,
+): CompetitionLevelProfile =>
+  ({ ...levels, competitionLevel }) as CompetitionLevelProfile;
+
 describe("getCompetitionLevelForCategory", () => {
-  const dancer = {
-    competitionLevelLatin: "International",
-    competitionLevelStandard: "Débutant",
-    competitionLevel: "Avancé",
-  };
+  const dancer = withLegacy(
+    {
+      competitionLevelLatin: "International",
+      competitionLevelStandard: "Débutant",
+    },
+    "Avancé",
+  );
 
   it("reads the level of the event discipline", () => {
     expect(getCompetitionLevelForCategory(dancer, "Latin")).toBe(
@@ -57,11 +67,16 @@ describe("getCompetitionLevelForCategory", () => {
     expect(getCompetitionLevelForCategory(dancer, "Standard")).toBe("Débutant");
   });
 
-  it("falls back to the legacy single level", () => {
+  it("never reads the deprecated single level (#239)", () => {
     expect(
-      getCompetitionLevelForCategory({ competitionLevel: "Avancé" }, "Latin"),
-    ).toBe("Avancé");
-    expect(getCompetitionLevelForCategory(dancer, "Rock")).toBe("Avancé");
+      getCompetitionLevelForCategory(withLegacy({}, "Avancé"), "Latin"),
+    ).toBeNull();
+  });
+
+  it("uses the highest level for an unknown discipline", () => {
+    expect(getCompetitionLevelForCategory(dancer, "Rock")).toBe(
+      "International",
+    );
   });
 
   it("has no level for Ten Dance", () => {
@@ -83,10 +98,10 @@ describe("getHighestCompetitionLevel", () => {
     ).toBe("Avancé");
   });
 
-  it("uses the legacy level when nothing else is set", () => {
+  it("never reads the deprecated single level (#239)", () => {
     expect(
-      getHighestCompetitionLevel({ competitionLevel: "Intermédiaire" }),
-    ).toBe("Intermédiaire");
+      getHighestCompetitionLevel(withLegacy({}, "Intermédiaire")),
+    ).toBeNull();
   });
 
   it("returns null when no level is known", () => {
@@ -139,19 +154,18 @@ describe("formatCompetitionLevels", () => {
 
   it("shows only the disciplines that have a level", () => {
     expect(
-      formatCompetitionLevels({
-        competitionLevelLatin: null,
-        competitionLevelStandard: "Débutant",
-        competitionLevel: "Avancé",
-      }),
+      formatCompetitionLevels(
+        withLegacy(
+          { competitionLevelLatin: null, competitionLevelStandard: "Débutant" },
+          "Avancé",
+        ),
+      ),
     ).toBe("Standards : Débutant");
   });
 
-  it("falls back to the legacy level, then null", () => {
-    expect(formatCompetitionLevels({ competitionLevel: "Avancé" })).toBe(
-      "Avancé",
-    );
-    expect(formatCompetitionLevels({ competitionLevel: " " })).toBeNull();
+  it("is null without a discipline level, whatever the deprecated single level (#239)", () => {
+    expect(formatCompetitionLevels(withLegacy({}, "Avancé"))).toBeNull();
+    expect(formatCompetitionLevels({ competitionLevelLatin: " " })).toBeNull();
     expect(formatCompetitionLevels(undefined)).toBeNull();
   });
 });

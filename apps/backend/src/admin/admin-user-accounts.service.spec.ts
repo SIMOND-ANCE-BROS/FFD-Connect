@@ -176,7 +176,20 @@ describe("AdminUserAccountsService", () => {
     expect(prisma.user.create.mock.calls[0][0].data).toMatchObject({
       competitionLevelLatin: "International",
       competitionLevelStandard: "Débutant",
+      // Rollback mirror of the deprecated single level (#239).
+      competitionLevel: "International",
     });
+  });
+
+  it("writes no legacy level when no level is given, and never audits it", async () => {
+    await service.create("admin-1", dto({}));
+
+    expect(prisma.user.create.mock.calls[0][0].data.competitionLevel).toBe(
+      undefined,
+    );
+    expect(audit.record.mock.calls[0][1].after).not.toHaveProperty(
+      "competitionLevel",
+    );
   });
 
   it("mirrors a legacy single level to both disciplines on creation", async () => {

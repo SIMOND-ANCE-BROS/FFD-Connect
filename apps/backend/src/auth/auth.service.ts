@@ -110,7 +110,6 @@ export class AuthService {
       nationalRanking: true,
       passportLevelLatin: true,
       passportLevelStandard: true,
-      competitionLevel: true,
       license: {
         select: {
           id: true,

@@ -197,7 +197,7 @@ export class AdminUserDetailDto extends AdminUserListItemDto {
     type: String,
     deprecated: true,
     description:
-      "Ancien niveau unique (repli) — préférer les niveaux par discipline",
+      "Ancien niveau unique, dérivé des niveaux par discipline (le plus élevé) — préférer les niveaux par discipline",
   })
   competitionLevel!: string | null;
   @ApiProperty({ nullable: true, type: String })

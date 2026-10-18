@@ -83,7 +83,7 @@ export class UpdateAdminUserDto {
     enum: [...COMPETITION_LEVELS, null],
     deprecated: true,
     description:
-      "Ancien niveau unique. Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard.",
+      "Ancien niveau unique (anciens back-offices). Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard ; sinon il est ignoré.",
   })
   @ValidateIf(notNull)
   @IsOptional()

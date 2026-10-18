@@ -169,6 +169,23 @@ node dist/scripts/backfill-competition-organizer-club.js --apply   # écriture
 pnpm exec tsx scripts/backfill-competition-organizer-club.ts       # en local, simulation
 ```
 
+### `backfill-user-competition-level.ts`
+
+**Reprise des niveaux de compétition par spécialité depuis l'ancien niveau unique (#239)**
+
+Recopie `User.competitionLevel` (déprécié) dans `competitionLevelLatin` / `competitionLevelStandard`
+pour les comptes qui n'ont **aucun** niveau par spécialité, selon la spécialité déclarée
+(Latines → Latines seul, Standards → Standards seul, sinon les deux). Une valeur hors des
+4 niveaux est laissée telle quelle. Idempotent, par lots, n'affiche que des compteurs. Sans
+option, il simule ; `--apply` écrit. Préalable à la suppression de la colonne (phase 2) :
+runbook `docs/exploitation/retrait-niveau-competition-unique.md`.
+
+```bash
+node dist/scripts/backfill-user-competition-level.js           # dans le conteneur, simulation
+node dist/scripts/backfill-user-competition-level.js --apply   # écriture
+pnpm exec tsx scripts/backfill-user-competition-level.ts       # en local, simulation
+```
+
 ---
 
 ## Scripts à la racine du projet

@@ -5,15 +5,29 @@
 
 import { TrackCorrectionStatus } from "@prisma/client";
 
-/**
- * Niveaux de compétition d'un utilisateur : un par discipline + l'ancien
- * niveau unique (déprécié, lu en repli). À lire via
- * getCompetitionLevelForCategory (src/common/competition-level).
- */
-export const competitionLevelsSelect = {
-  competitionLevel: true,
+/** Niveaux de compétition par discipline (source de vérité, #239). */
+export const competitionLevelsPerDisciplineSelect = {
   competitionLevelLatin: true,
   competitionLevelStandard: true,
+} as const;
+
+/**
+ * Niveaux de compétition d'un utilisateur : un par discipline + l'ancien
+ * niveau unique (déprécié, lu en repli seulement si aucun niveau par
+ * discipline ; colonne supprimée en phase 2 de #239). À lire via
+ * getCompetitionLevelForCategory (src/common/competition-level) et à servir
+ * via withDerivedCompetitionLevel.
+ */
+export const competitionLevelsSelect = {
+  ...competitionLevelsPerDisciplineSelect,
+  competitionLevel: true,
+} as const;
+
+/** Reprise des niveaux par discipline depuis l'ancien niveau unique (#239). */
+export const userCompetitionLevelBackfillSelect = {
+  id: true,
+  category: true,
+  competitionLevel: true,
 } as const;
 
 /** Champs du profil dont dépend l'éligibilité à une épreuve. */
@@ -1252,7 +1266,7 @@ export const adminUserEditableSelect = {
   ageGroup: true,
   passportLevelLatin: true,
   passportLevelStandard: true,
-  ...competitionLevelsSelect,
+  ...competitionLevelsPerDisciplineSelect,
   nationalRanking: true,
   role: true,
   extraRoles: true,

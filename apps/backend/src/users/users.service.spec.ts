@@ -166,6 +166,21 @@ describe("UsersService", () => {
       );
     });
 
+    it("serves the deprecated single level derived from the per-discipline ones (#239)", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({
+          competitionLevelLatin: "Intermédiaire",
+          competitionLevelStandard: null,
+          competitionLevel: "International",
+        }),
+      );
+
+      const result = await service.findOne("u1");
+
+      expect(result.competitionLevel).toBe("Intermédiaire");
+      expect(result.competitionLevelLatin).toBe("Intermédiaire");
+    });
+
     it("returns user data including the id and email", async () => {
       prisma.user.findUnique.mockResolvedValue(makeUser());
 

@@ -16,7 +16,10 @@ import {
 } from "../auth/email-identity";
 import { EmailService, InvitationRole } from "../auth/email.service";
 import { hasRole, normalizeExtraRoles } from "../auth/roles";
-import { mirrorLegacyCompetitionLevel } from "../common/competition-level";
+import {
+  legacyCompetitionLevelMirror,
+  mirrorLegacyCompetitionLevel,
+} from "../common/competition-level";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   adminClubAttachSelect,
@@ -105,6 +108,8 @@ export class AdminUserAccountsService {
             clubId: club?.id ?? null,
             clubName: club?.name ?? null,
             ...profile,
+            // Rollback mirror of the deprecated single level (#239), not audited.
+            competitionLevel: legacyCompetitionLevelMirror(profile),
           },
           select: { id: true },
         });

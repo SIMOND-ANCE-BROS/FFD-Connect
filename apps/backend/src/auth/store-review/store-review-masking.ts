@@ -45,6 +45,8 @@ const PERSON_SAFE_KEYS: ReadonlySet<string> = new Set([
   "category",
   "ageGroup",
   "competitionLevel",
+  "competitionLevelLatin",
+  "competitionLevelStandard",
   "passportLevelLatin",
   "passportLevelStandard",
   "licenseStatus",

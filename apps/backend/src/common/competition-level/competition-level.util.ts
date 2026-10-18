@@ -11,6 +11,11 @@
  * suggestions, solo teams…) must read the level through
  * {@link getCompetitionLevelForCategory} with the event's discipline.
  *
+ * The single `User.competitionLevel` column is deprecated (#239): read only
+ * as a fallback for profiles without any per-discipline level, served to
+ * older app versions as a value derived from the per-discipline levels, and
+ * dropped in phase 2 (docs/exploitation/retrait-niveau-competition-unique.md).
+ *
  * Ten Dance (10 danses): events are only "majeures", open to dancers who
  * practise BOTH Latin and Standard, with no level requirement (product owner
  * decision). So there is no "Ten Dance level": the helper returns null for it,
@@ -97,56 +102,28 @@ export function competitionLevelRank(value: string | null | undefined): number {
 }
 
 /**
- * Competition level of a dancer for an event discipline.
- * - Latin → `competitionLevelLatin`, Standard → `competitionLevelStandard`,
- *   each falling back to the deprecated single `competitionLevel`.
- * - Ten Dance → null: 10-dance events have no level requirement.
- * - Unknown discipline → the legacy level (best effort).
+ * True when the profile holds at least one valid per-discipline level. The
+ * deprecated single `competitionLevel` is only a fallback for profiles where
+ * this is false (rows never backfilled, or written by a pre-#210 revision):
+ * once a discipline level exists, the legacy value is ignored, otherwise a
+ * cleared discipline level would resurface a stale legacy one (#239).
  */
-export function getCompetitionLevelForCategory(
+export function hasDisciplineLevel(
   user: CompetitionLevelProfile | null | undefined,
-  category: string | null | undefined,
-): CompetitionLevel | null {
-  if (!user) return null;
-  const legacy = toCompetitionLevel(user.competitionLevel);
-  switch (normalizeDiscipline(category)) {
-    case "Latin":
-      return toCompetitionLevel(user.competitionLevelLatin) ?? legacy;
-    case "Standard":
-      return toCompetitionLevel(user.competitionLevelStandard) ?? legacy;
-    case "Ten Dance":
-      return null;
-    default:
-      return legacy;
-  }
+): boolean {
+  return (
+    toCompetitionLevel(user?.competitionLevelLatin) !== null ||
+    toCompetitionLevel(user?.competitionLevelStandard) !== null
+  );
 }
 
-/**
- * Backward compatibility for writers that only know the deprecated single
- * `competitionLevel` (older back-office): when it is written WITHOUT any
- * per-discipline level in the same payload, it is copied to both disciplines
- * (otherwise the per-discipline values, read first, would hide the edit).
- * `undefined` = field absent (unchanged), `null` = cleared.
- */
-export function mirrorLegacyCompetitionLevel<
-  T extends {
-    competitionLevel?: string | null;
-    competitionLevelLatin?: string | null;
-    competitionLevelStandard?: string | null;
-  },
->(fields: T): T {
-  if (
-    fields.competitionLevel === undefined ||
-    fields.competitionLevelLatin !== undefined ||
-    fields.competitionLevelStandard !== undefined
-  ) {
-    return fields;
-  }
-  return {
-    ...fields,
-    competitionLevelLatin: fields.competitionLevel,
-    competitionLevelStandard: fields.competitionLevel,
-  };
+/** Legacy single level, only when no per-discipline level is set. */
+function legacyFallback(
+  user: CompetitionLevelProfile,
+): CompetitionLevel | null {
+  return hasDisciplineLevel(user)
+    ? null
+    : toCompetitionLevel(user.competitionLevel);
 }
 
 /** Highest level the dancer holds in any discipline (legacy as fallback). */
@@ -154,19 +131,128 @@ export function getHighestCompetitionLevel(
   user: CompetitionLevelProfile | null | undefined,
 ): CompetitionLevel | null {
   if (!user) return null;
-  const candidates = [
+  let best: CompetitionLevel | null = null;
+  for (const candidate of [
     user.competitionLevelLatin,
     user.competitionLevelStandard,
-    user.competitionLevel,
-  ];
-  let best: CompetitionLevel | null = null;
-  for (const candidate of candidates) {
+  ]) {
     const level = toCompetitionLevel(candidate);
     if (level && competitionLevelRank(level) > competitionLevelRank(best)) {
       best = level;
     }
   }
-  return best;
+  return best ?? legacyFallback(user);
+}
+
+/**
+ * Competition level of a dancer for an event discipline.
+ * - Latin → `competitionLevelLatin`, Standard → `competitionLevelStandard`.
+ *   The deprecated single `competitionLevel` is used only when the profile
+ *   has no per-discipline level at all.
+ * - Ten Dance → null: 10-dance events have no level requirement.
+ * - Unknown discipline → the highest level (best effort).
+ */
+export function getCompetitionLevelForCategory(
+  user: CompetitionLevelProfile | null | undefined,
+  category: string | null | undefined,
+): CompetitionLevel | null {
+  if (!user) return null;
+  switch (normalizeDiscipline(category)) {
+    case "Latin":
+      return (
+        toCompetitionLevel(user.competitionLevelLatin) ?? legacyFallback(user)
+      );
+    case "Standard":
+      return (
+        toCompetitionLevel(user.competitionLevelStandard) ??
+        legacyFallback(user)
+      );
+    case "Ten Dance":
+      return null;
+    default:
+      return getHighestCompetitionLevel(user);
+  }
+}
+
+/**
+ * Value served as the deprecated `competitionLevel` API field (older app
+ * versions only know it) and mirrored in the legacy column for a rolled-back
+ * revision: the highest per-discipline level, the legacy value when the
+ * profile has none. Removed with the column in phase 2 (#239).
+ */
+export const deriveLegacyCompetitionLevel = getHighestCompetitionLevel;
+
+/**
+ * Returns the record with `competitionLevel` replaced by the value derived
+ * from the per-discipline levels ({@link deriveLegacyCompetitionLevel}), for
+ * API responses read by older app versions.
+ */
+export function withDerivedCompetitionLevel<T extends CompetitionLevelProfile>(
+  record: T,
+): T & { competitionLevel: CompetitionLevel | null } {
+  return { ...record, competitionLevel: deriveLegacyCompetitionLevel(record) };
+}
+
+/** Level fields a writer may send. `undefined` = absent, `null` = cleared. */
+export interface CompetitionLevelWrite {
+  competitionLevel?: string | null;
+  competitionLevelLatin?: string | null;
+  competitionLevelStandard?: string | null;
+}
+
+/**
+ * Backward compatibility for writers that only know the deprecated single
+ * `competitionLevel` (older back-office): when it is written WITHOUT any
+ * per-discipline level in the same payload, it is copied to both disciplines
+ * (otherwise the per-discipline values, read first, would hide the edit).
+ * The legacy key itself is dropped: it is never written as such any more
+ * (see {@link legacyCompetitionLevelMirror}).
+ */
+export function mirrorLegacyCompetitionLevel<T extends CompetitionLevelWrite>(
+  fields: T,
+): Omit<T, "competitionLevel"> {
+  const { competitionLevel, ...rest } = fields;
+  if (
+    competitionLevel === undefined ||
+    rest.competitionLevelLatin !== undefined ||
+    rest.competitionLevelStandard !== undefined
+  ) {
+    return rest;
+  }
+  return {
+    ...rest,
+    competitionLevelLatin: competitionLevel,
+    competitionLevelStandard: competitionLevel,
+  };
+}
+
+/**
+ * Rollback mirror of the legacy column (#239, phase 1): when a write touches
+ * a per-discipline level, the legacy column receives the derived value, so a
+ * rolled-back revision serves a fresh value and the read fallback can never
+ * resurface a stale one. `undefined` when the write touches no level (column
+ * left as is). `current` = the stored levels, for partial updates.
+ */
+export function legacyCompetitionLevelMirror(
+  write: Omit<CompetitionLevelWrite, "competitionLevel">,
+  current?: Omit<CompetitionLevelWrite, "competitionLevel"> | null,
+): CompetitionLevel | null | undefined {
+  if (
+    write.competitionLevelLatin === undefined &&
+    write.competitionLevelStandard === undefined
+  ) {
+    return undefined;
+  }
+  return getHighestCompetitionLevel({
+    competitionLevelLatin:
+      write.competitionLevelLatin !== undefined
+        ? write.competitionLevelLatin
+        : (current?.competitionLevelLatin ?? null),
+    competitionLevelStandard:
+      write.competitionLevelStandard !== undefined
+        ? write.competitionLevelStandard
+        : (current?.competitionLevelStandard ?? null),
+  });
 }
 
 /**

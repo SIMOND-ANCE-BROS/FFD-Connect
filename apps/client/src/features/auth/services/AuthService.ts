@@ -124,8 +124,6 @@ export interface UserProfile {
   competitionLevelLatin?: string | null;
   /** Competition level in Standard; absent on an older backend. */
   competitionLevelStandard?: string | null;
-  /** @deprecated single legacy level, read only as a fallback. */
-  competitionLevel?: string | null;
   passportLevelLatin?: string | null;
   passportLevelStandard?: string | null;
   license?: {

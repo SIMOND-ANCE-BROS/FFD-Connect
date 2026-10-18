@@ -200,6 +200,17 @@ describe("AdminUsersQueryService", () => {
     expect(d).not.toHaveProperty("license");
   });
 
+  it("detail derives the deprecated single level (#239)", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      ...row,
+      competitionLevelLatin: null,
+      competitionLevelStandard: "Avancé",
+      competitionLevel: "Débutant",
+    } as never);
+    const d = await service.detail("u1");
+    expect(d.competitionLevel).toBe("Avancé");
+  });
+
   it("detail throws 404 for an unknown id", async () => {
     prisma.user.findUnique.mockResolvedValue(null);
     await expect(service.detail("nope")).rejects.toBeInstanceOf(
