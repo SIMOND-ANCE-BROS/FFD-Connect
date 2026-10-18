@@ -32,6 +32,10 @@ export interface AppTheme {
   disabledFill: string;
   /** Label and icon colour on a `disabledFill` background (≥ 4.5:1). */
   onDisabled: string;
+  /** Neutral solid fill (locked seat, inactive badge), paired with `onMuted`. */
+  mutedFill: string;
+  /** Text and icon colour on a `mutedFill` background (≥ 4.5:1). */
+  onMuted: string;
   secondary: string;
   accent: string;
   border: string;

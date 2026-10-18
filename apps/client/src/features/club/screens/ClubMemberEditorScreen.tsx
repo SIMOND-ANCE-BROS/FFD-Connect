@@ -117,7 +117,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
             styles.statusBadge,
             statusLabel === "ACTIVE"
               ? { backgroundColor: theme.primaryFill }
-              : { backgroundColor: theme.textSecondary },
+              : { backgroundColor: theme.mutedFill },
           ]}
         >
           <AppText
