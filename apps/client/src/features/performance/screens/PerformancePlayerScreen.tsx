@@ -357,7 +357,10 @@ export const PerformancePlayerScreen = () => {
 
         {/* Main Play/Pause */}
         <TouchableOpacity
-          style={[styles.playBtn, { backgroundColor: currentTheme.primary }]}
+          style={[
+            styles.playBtn,
+            { backgroundColor: currentTheme.primaryFill },
+          ]}
           onPress={togglePlayPause}
           testID="performance-player-play-pause-button"
           accessibilityRole="button"

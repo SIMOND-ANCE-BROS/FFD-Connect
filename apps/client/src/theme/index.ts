@@ -60,6 +60,19 @@ export const theme = {
     // Input placeholder (inputs sit on slate100 in light mode).
     placeholder: palette.slate550,
     primary: palette.ffdBlue,
+    // Fill of buttons, chips, badges and FABs that carry white text
+    // (onPrimary): primary itself, white on ffdBlue is 9.8:1.
+    primaryFill: palette.ffdBlue,
+    onPrimary: palette.white,
+    // Disabled buttons: muted fill + dark slate label, 6.15:1 (white on
+    // slate200 was 1.23:1, issue #22). WCAG exempts disabled controls, the
+    // label stays readable anyway.
+    disabledFill: palette.slate200,
+    onDisabled: palette.slate600,
+    // Neutral solid fill under white text/icons: locked seats of the seating
+    // plan, « Inactif » status badge. White on slate550 is 5.44:1.
+    mutedFill: palette.slate550,
+    onMuted: palette.white,
     secondary: palette.ffdCyanDeep,
     accent: palette.ffdRed,
     border: palette.slate200,
@@ -84,6 +97,20 @@ export const theme = {
     // 3.07:1 there, slate400 reaches 5.71:1.
     placeholder: palette.slate400,
     primary: palette.ffdCyan, // Lighter blue pops better on dark
+    // Fill under white text (onPrimary): #0088CE only reaches 3.88:1 under
+    // white, the deep cyan reaches 4.87:1 (WCAG AA, issue #22). primary stays
+    // the bright cyan for text, icons and borders on the dark surfaces.
+    primaryFill: palette.ffdCyanDeep,
+    onPrimary: palette.white,
+    // Disabled buttons: slate700 stays visible on the slate900 surface, the
+    // slate300 label reaches 6.97:1 on it (issue #22).
+    disabledFill: palette.slate700,
+    onDisabled: palette.slate300,
+    // Neutral solid fill under white text/icons (locked seats, « Inactif »
+    // badge): white on textSecondary (slate400) was 2.56:1, on slate600 it is
+    // 7.58:1 (issue #22).
+    mutedFill: palette.slate600,
+    onMuted: palette.white,
     secondary: palette.ffdBlue,
     accent: palette.ffdRed,
     border: palette.slate800,

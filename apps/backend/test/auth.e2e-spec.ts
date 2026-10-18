@@ -57,6 +57,9 @@ describe("AuthController (e2e)", () => {
       },
       impersonationLog: {
         findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+        findUnique: jest.fn(),
+        updateMany: jest.fn(),
       },
     };
 
@@ -328,5 +331,156 @@ describe("AuthController (e2e)", () => {
       .post("/api/v1/auth/impersonate/stop")
       .set("Authorization", `Bearer ${token}`)
       .expect(201);
+  });
+
+  describe("support access is ADMIN-only (#733)", () => {
+    const ADMIN_ID = "11111111-1111-4111-8111-111111111111";
+    const STAFF_ID = "44444444-4444-4444-8444-444444444444";
+    const TARGET_ID = "22222222-2222-4222-8222-222222222222";
+    const LOG_ID = "33333333-3333-4333-8333-333333333333";
+    const active = { disabledAt: null, club: null, extraRoles: [] };
+    let accounts: Record<string, Record<string, unknown>>;
+    let journal: Partial<
+      Record<
+        string,
+        {
+          actorId: string;
+          targetUserId: string;
+          startedAt: Date;
+          endedAt: Date | null;
+        }
+      >
+    >;
+
+    beforeEach(() => {
+      accounts = {
+        [ADMIN_ID]: { id: ADMIN_ID, role: "ADMIN", ...active },
+        [STAFF_ID]: { id: STAFF_ID, role: "STAFF", ...active },
+        [TARGET_ID]: {
+          id: TARGET_ID,
+          email: "dancer@example.com",
+          firstName: "Dan",
+          lastName: "Cer",
+          clubId: null,
+          clubName: null,
+          role: "LICENSEE",
+          ...active,
+        },
+      };
+      journal = {};
+      (prismaService.user.findUnique as jest.Mock).mockImplementation(
+        (args: { where: { id: string } }) =>
+          Promise.resolve(accounts[args.where.id] ?? null),
+      );
+      const log = prismaService.impersonationLog as unknown as Record<
+        string,
+        jest.Mock
+      >;
+      log.create
+        .mockReset()
+        .mockImplementation(
+          (args: { data: { actorId: string; targetUserId: string } }) => {
+            journal[LOG_ID] = {
+              actorId: args.data.actorId,
+              targetUserId: args.data.targetUserId,
+              startedAt: new Date(),
+              endedAt: null,
+            };
+            return Promise.resolve({ id: LOG_ID });
+          },
+        );
+      log.findUnique
+        .mockReset()
+        .mockImplementation((args: { where: { id: string } }) =>
+          Promise.resolve(journal[args.where.id] ?? null),
+        );
+      log.updateMany
+        .mockReset()
+        .mockImplementation(
+          (args: { where: { id: string; actorId: string } }) => {
+            const row = journal[args.where.id];
+            if (!row || row.endedAt || row.actorId !== args.where.actorId) {
+              return Promise.resolve({ count: 0 });
+            }
+            row.endedAt = new Date();
+            return Promise.resolve({ count: 1 });
+          },
+        );
+    });
+
+    const server = () => app.getHttpServer() as Parameters<typeof request>[0];
+    const tokenOf = (id: string, role: string) =>
+      jwtService.sign({ sub: id, email: `${id}@example.com`, role });
+    const open = (token: string) =>
+      request(server())
+        .post("/api/v1/auth/impersonate")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ targetUserId: TARGET_ID, reason: "Ticket support 42" });
+    const stop = (token: string) =>
+      request(server())
+        .post("/api/v1/auth/impersonate/stop")
+        .set("Authorization", `Bearer ${token}`);
+
+    it("lets an ADMIN open a session whose token names its journal row", async () => {
+      const res = await open(tokenOf(ADMIN_ID, "ADMIN")).expect(201);
+      const token = (res.body as { access_token: string }).access_token;
+      expect(jwtService.decode(token)).toMatchObject({
+        sub: TARGET_ID,
+        impersonatedBy: ADMIN_ID,
+        impersonationLogId: LOG_ID,
+      });
+      expect(prismaService.impersonationLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          actorId: ADMIN_ID,
+          actorRole: "ADMIN",
+          targetUserId: TARGET_ID,
+        }),
+        select: { id: true },
+      });
+    });
+
+    it("refuses a STAFF account (403) without journalling anything", async () => {
+      await open(tokenOf(STAFF_ID, "STAFF")).expect(403);
+      expect(prismaService.impersonationLog.create).not.toHaveBeenCalled();
+    });
+
+    it("refuses to open a second session from inside the first one", async () => {
+      const res = await open(tokenOf(ADMIN_ID, "ADMIN")).expect(201);
+      const token = (res.body as { access_token: string }).access_token;
+      await request(server())
+        .post("/api/v1/auth/impersonate")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ targetUserId: STAFF_ID })
+        .expect(403);
+    });
+
+    it("stops exactly its own session, then the token is dead", async () => {
+      const res = await open(tokenOf(ADMIN_ID, "ADMIN")).expect(201);
+      const token = (res.body as { access_token: string }).access_token;
+      await stop(token).expect(201);
+      expect(prismaService.impersonationLog.updateMany).toHaveBeenCalledWith({
+        where: { id: LOG_ID, actorId: ADMIN_ID, endedAt: null },
+        data: { endedAt: expect.any(Date) },
+      });
+      expect(journal[LOG_ID]?.endedAt).toBeInstanceOf(Date);
+      await stop(token).expect(401);
+    });
+
+    it("ends the session once the ADMIN is demoted to STAFF", async () => {
+      const res = await open(tokenOf(ADMIN_ID, "ADMIN")).expect(201);
+      const token = (res.body as { access_token: string }).access_token;
+      accounts[ADMIN_ID].role = "STAFF";
+      await stop(token).expect(401);
+    });
+
+    it("refuses a hand-made impersonation token naming no journal row", async () => {
+      const token = jwtService.sign({
+        sub: TARGET_ID,
+        email: "dancer@example.com",
+        role: "LICENSEE",
+        impersonatedBy: ADMIN_ID,
+      });
+      await stop(token).expect(401);
+    });
   });
 });

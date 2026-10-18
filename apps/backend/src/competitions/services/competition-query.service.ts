@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Prisma, RegistrationStatus, UserRole } from "@prisma/client";
 import { hasRole } from "../../auth/roles";
 import {
+  clubPendingRegistrationSelect,
   userEligibilityProfileSelect,
   userRolesClubNameSelect,
   userRolesClubSelect,
@@ -11,7 +12,9 @@ import { createPaginatedResponse } from "../../common/utils/pagination.util";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 import {
+  clubMembersScopeOf,
   organizedByClubWhere,
+  organizerActorOf,
   organizerMatcher,
 } from "../competition-organizer";
 import {
@@ -62,7 +65,15 @@ export const COMPETITION_BASE_SELECT = {
 /** Upper bound of a club's competition list (GET /competitions/club/mine). */
 export const CLUB_COMPETITIONS_LIMIT = 100;
 
-const EVENT_BASE_SELECT = {
+/**
+ * Upper bound of a club's pending registrations
+ * (GET /competitions/club/pending-registrations, #753), most recent first.
+ * Far above what a club validates at once; beyond it the oldest requests are
+ * left out until the newer ones are handled.
+ */
+export const CLUB_PENDING_REGISTRATIONS_LIMIT = 500;
+
+export const EVENT_BASE_SELECT = {
   id: true,
   category: true,
   ageGroup: true,
@@ -73,6 +84,12 @@ const EVENT_BASE_SELECT = {
   ageGroups: true,
   openLevels: true,
 } as const;
+
+/** `GET /competitions/active` — documented by CompetitionActiveDto (#729). */
+export const ACTIVE_COMPETITION_SELECT = {
+  ...COMPETITION_BASE_SELECT,
+  events: { select: EVENT_BASE_SELECT },
+} satisfies Prisma.CompetitionSelect;
 
 const CACHE_TTL = 300; // 5 minutes
 const CACHE_PREFIX = "competitions:";
@@ -281,10 +298,7 @@ export class CompetitionQueryService {
 
     return this.prisma.competition.findFirst({
       where: { date: { gte: today, lt: tomorrow } },
-      select: {
-        ...COMPETITION_BASE_SELECT,
-        events: { select: EVENT_BASE_SELECT },
-      },
+      select: ACTIVE_COMPETITION_SELECT,
     });
   }
 
@@ -300,18 +314,15 @@ export class CompetitionQueryService {
   ): Promise<
     (T & { isOrganizedByMyClub: boolean; clubMembersRegisteredCount: number })[]
   > {
-    const sameClubCondition = club.clubId
-      ? { clubId: club.clubId }
-      : club.clubName?.trim()
-        ? {
-            clubName: {
-              equals: club.clubName.trim(),
-              mode: "insensitive" as const,
-            },
-          }
-        : null;
+    const account = {
+      clubId: club.clubId ?? null,
+      clubName: club.clubName ?? null,
+    };
+    // Members of the account's club, by id (#749): a legacy account
+    // resolving to no single active club counts nobody, organises nothing.
+    const scope = await clubMembersScopeOf(this.prisma, account);
 
-    if (!sameClubCondition) {
+    if (!scope) {
       return competitions.map((comp) => ({
         ...comp,
         isOrganizedByMyClub: false,
@@ -325,7 +336,7 @@ export class CompetitionQueryService {
         status: {
           in: [RegistrationStatus.PENDING, RegistrationStatus.CONFIRMED],
         },
-        user: sameClubCondition,
+        user: scope.members,
         event: { competitionId: { in: ids } },
       },
       select: { event: { select: { competitionId: true } } },
@@ -341,10 +352,11 @@ export class CompetitionQueryService {
 
     // Same rule as the edit rights (#408): an ambiguous unlinked label is
     // nobody's.
-    const isMine = await organizerMatcher(this.prisma, competitions, {
-      clubId: club.clubId,
-      clubNames: [club.clubName],
-    });
+    const isMine = await organizerMatcher(
+      this.prisma,
+      competitions,
+      await organizerActorOf(this.prisma, account),
+    );
     return competitions.map((comp) => ({
       ...comp,
       isOrganizedByMyClub: isMine(comp),
@@ -359,41 +371,16 @@ export class CompetitionQueryService {
     });
     if (!organizer || !hasRole(organizer, UserRole.CLUB)) return [];
 
-    const sameClubCondition = organizer.clubId
-      ? { clubId: organizer.clubId }
-      : organizer.clubName?.trim()
-        ? {
-            clubName: {
-              equals: organizer.clubName.trim(),
-              mode: "insensitive" as const,
-            },
-          }
-        : null;
-    if (!sameClubCondition) return [];
+    // Members of the account's club, by id (#749): a legacy account
+    // resolving to no single active club (homonyms…) sees nothing.
+    const scope = await clubMembersScopeOf(this.prisma, organizer);
+    if (!scope) return [];
 
     const pending = await this.prisma.registration.findMany({
-      where: { status: RegistrationStatus.PENDING, user: sameClubCondition },
-      include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            clubName: true,
-          },
-        },
-        event: {
-          select: {
-            id: true,
-            category: true,
-            ageGroup: true,
-            eventType: true,
-            competitionId: true,
-          },
-        },
-      },
+      where: { status: RegistrationStatus.PENDING, user: scope.members },
+      select: clubPendingRegistrationSelect,
       orderBy: { createdAt: "desc" },
+      take: CLUB_PENDING_REGISTRATIONS_LIMIT,
     });
 
     const competitionIds = [
@@ -429,10 +416,7 @@ export class CompetitionQueryService {
     });
     if (!user || !hasRole(user, UserRole.CLUB)) return [];
 
-    const actor = {
-      clubId: user.clubId,
-      clubNames: [user.club?.name, user.clubName],
-    };
+    const actor = await organizerActorOf(this.prisma, user);
     const where = organizedByClubWhere(actor);
     if (!where) return [];
 

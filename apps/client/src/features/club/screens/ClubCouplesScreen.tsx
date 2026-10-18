@@ -314,7 +314,7 @@ export const ClubCouplesScreen = () => {
           <TouchableOpacity
             style={[
               styles.tab,
-              tab === "active" && { backgroundColor: theme.primary },
+              tab === "active" && { backgroundColor: theme.primaryFill },
             ]}
             onPress={() => setTab("active")}
             accessibilityRole="tab"
@@ -336,7 +336,7 @@ export const ClubCouplesScreen = () => {
           <TouchableOpacity
             style={[
               styles.tab,
-              tab === "history" && { backgroundColor: theme.primary },
+              tab === "history" && { backgroundColor: theme.primaryFill },
             ]}
             onPress={() => setTab("history")}
             accessibilityRole="tab"
@@ -363,7 +363,7 @@ export const ClubCouplesScreen = () => {
           ref={createButtonRef}
           style={[
             styles.fab,
-            { backgroundColor: theme.primary, bottom: insets.bottom + 20 },
+            { backgroundColor: theme.primaryFill, bottom: insets.bottom + 20 },
           ]}
           onPress={() => setCreateModalVisible(true)}
           accessibilityRole="button"

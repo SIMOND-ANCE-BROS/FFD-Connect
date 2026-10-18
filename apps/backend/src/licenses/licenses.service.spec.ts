@@ -107,6 +107,17 @@ describe("LicensesService", () => {
       expect(result.appleWalletAvailable).toBe(false);
     });
 
+    it("never exposes the static QR nor the Wallet pass during a support access (#759)", async () => {
+      mockPrisma.license.findUnique.mockResolvedValue({ number: "123" });
+      mockLicenseQr.buildQrCode.mockReturnValue("signed-qr");
+      mockWallet.isAvailable.mockReturnValue(true);
+
+      const result = await service.getLicense("1", { supportAccess: true });
+      expect(result.qrCode).toBeNull();
+      expect(result.appleWalletAvailable).toBe(false);
+      expect(mockLicenseQr.buildQrCode).not.toHaveBeenCalled();
+    });
+
     it("should throw NotFound if not found", async () => {
       mockPrisma.license.findUnique.mockResolvedValue(null);
       await expect(service.getLicense("1")).rejects.toThrow(NotFoundException);

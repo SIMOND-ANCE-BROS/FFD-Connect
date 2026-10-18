@@ -101,7 +101,10 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
       {/* Avatar / Statut (lecture seule, dérivé de la validité de la licence) */}
       <View style={styles.avatarBlock}>
         <View
-          style={[styles.avatarPlaceholder, { backgroundColor: theme.primary }]}
+          style={[
+            styles.avatarPlaceholder,
+            { backgroundColor: theme.primaryFill },
+          ]}
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >
@@ -113,8 +116,8 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
           style={[
             styles.statusBadge,
             statusLabel === "ACTIVE"
-              ? { backgroundColor: theme.primary }
-              : { backgroundColor: theme.textSecondary },
+              ? { backgroundColor: theme.primaryFill }
+              : { backgroundColor: theme.mutedFill },
           ]}
         >
           <AppText

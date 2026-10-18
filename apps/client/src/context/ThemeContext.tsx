@@ -18,7 +18,24 @@ export interface AppTheme {
   textSecondary: string;
   /** Placeholder text colour for inputs (AA on the input fill). */
   placeholder: string;
+  /** Brand colour for text, icons and borders on surface/background. */
   primary: string;
+  /**
+   * Solid fill of buttons, chips, badges, FABs and selected states that carry
+   * `onPrimary` text (WCAG AA in both themes). Tints (`${primary}1A`) and
+   * borders keep `primary`.
+   */
+  primaryFill: string;
+  /** Text and icon colour on a `primaryFill` background. */
+  onPrimary: string;
+  /** Fill of a disabled button (paired with `onDisabled`). */
+  disabledFill: string;
+  /** Label and icon colour on a `disabledFill` background (≥ 4.5:1). */
+  onDisabled: string;
+  /** Neutral solid fill (locked seat, inactive badge), paired with `onMuted`. */
+  mutedFill: string;
+  /** Text and icon colour on a `mutedFill` background (≥ 4.5:1). */
+  onMuted: string;
   secondary: string;
   accent: string;
   border: string;

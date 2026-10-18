@@ -166,6 +166,21 @@ describe("UsersService", () => {
       );
     });
 
+    it("serves the deprecated single level derived from the per-discipline ones (#239)", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({
+          competitionLevelLatin: "Intermédiaire",
+          competitionLevelStandard: null,
+          competitionLevel: "International",
+        }),
+      );
+
+      const result = await service.findOne("u1");
+
+      expect(result.competitionLevel).toBe("Intermédiaire");
+      expect(result.competitionLevelLatin).toBe("Intermédiaire");
+    });
+
     it("returns user data including the id and email", async () => {
       prisma.user.findUnique.mockResolvedValue(makeUser());
 
@@ -189,6 +204,23 @@ describe("UsersService", () => {
         ...license,
         qrCode: "signed:FFD-1",
         appleWalletAvailable: true,
+      });
+    });
+
+    it("withholds the static QR and the Wallet pass during a support access (#759)", async () => {
+      const license = {
+        id: "l1",
+        number: "FFD-1",
+        validUntil: new Date("2026-08-31T00:00:00.000Z"),
+      };
+      prisma.user.findUnique.mockResolvedValue(makeUser({ license }));
+
+      const result = await service.findOne("u1", { supportAccess: true });
+
+      expect(result.license).toEqual({
+        ...license,
+        qrCode: null,
+        appleWalletAvailable: false,
       });
     });
 
@@ -336,7 +368,7 @@ describe("UsersService", () => {
         id: "org1",
         role: UserRole.LICENSEE,
         extraRoles: [UserRole.CLUB],
-        clubId: null,
+        clubId: "c1",
         clubName: "DanceClub",
         club: { disabledAt: null },
       });
@@ -380,7 +412,7 @@ describe("UsersService", () => {
       prisma.user.findUnique.mockResolvedValue({
         id: "org1",
         role: UserRole.CLUB,
-        clubId: null,
+        clubId: "c1",
         clubName: "DanceClub",
       });
 
@@ -419,26 +451,85 @@ describe("UsersService", () => {
       expect(select).toHaveProperty("role", true);
     });
 
-    it("scopes the query to the organizer's club by clubName when no clubId exists", async () => {
+    it("scopes a legacy account (no clubId) to the one active club its name designates (#749)", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: "org1",
+        role: UserRole.CLUB,
+        clubId: null,
+        clubName: " DanceClub ",
+      });
+      prisma.club.findMany.mockResolvedValue([{ id: "club-7" }] as never);
+      prisma.club.findFirst.mockResolvedValue({ id: "club-7" });
+      prisma.user.count.mockResolvedValue(0);
+      prisma.user.findMany.mockResolvedValue([] as never);
+
+      await service.findClubMembers("org1");
+
+      expect(prisma.club.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "club-7", disabledAt: null },
+        }),
+      );
+      const expectedWhere = {
+        AND: [
+          {
+            OR: [
+              { clubId: "club-7" },
+              {
+                clubId: null,
+                clubName: { equals: "DanceClub", mode: "insensitive" },
+              },
+            ],
+          },
+          withActiveRole(UserRole.LICENSEE),
+        ],
+      };
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expectedWhere }),
+      );
+      expect(prisma.user.count).toHaveBeenCalledWith({ where: expectedWhere });
+    });
+
+    it("lists nobody for a legacy account whose name designates homonym clubs (#749)", async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: "org1",
         role: UserRole.CLUB,
         clubId: null,
         clubName: "DanceClub",
       });
-      prisma.user.count.mockResolvedValue(0);
-      prisma.user.findMany.mockResolvedValue([] as never);
+      // « DanceClub » and « danceclub »: the name designates two clubs.
+      prisma.club.findMany.mockResolvedValue([
+        { id: "club-7" },
+        { id: "club-8" },
+      ] as never);
 
-      await service.findClubMembers("org1");
+      const result = await service.findClubMembers("org1", {
+        skip: 0,
+        take: 10,
+      });
 
-      expect(prisma.user.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: {
-            clubName: "DanceClub",
-            ...withActiveRole(UserRole.LICENSEE),
-          },
-        }),
-      );
+      expect(result).toEqual({
+        data: [],
+        meta: { total: 0, skip: 0, take: 10, hasMore: false },
+      });
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
+      expect(prisma.user.count).not.toHaveBeenCalled();
+    });
+
+    it("lists nobody for a legacy account whose club is disabled (#749)", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: "org1",
+        role: UserRole.CLUB,
+        clubId: null,
+        clubName: "DanceClub",
+      });
+      prisma.club.findMany.mockResolvedValue([{ id: "club-7" }] as never);
+      prisma.club.findFirst.mockResolvedValue(null);
+
+      const result = await service.findClubMembers("org1");
+
+      expect(result.data).toEqual([]);
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
     });
 
     it("scopes the query to the organizer's club by clubId when available", async () => {
@@ -455,16 +546,20 @@ describe("UsersService", () => {
 
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { clubId: "club-42", ...withActiveRole(UserRole.LICENSEE) },
+          where: {
+            AND: [{ clubId: "club-42" }, withActiveRole(UserRole.LICENSEE)],
+          },
         }),
       );
+      // A linked account is its club: no name lookup at all.
+      expect(prisma.club.findMany).not.toHaveBeenCalled();
     });
 
     it("computes the most frequent partnerName from active registrations", async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: "org1",
         role: UserRole.CLUB,
-        clubId: null,
+        clubId: "c1",
         clubName: "DanceClub",
       });
 
@@ -503,7 +598,7 @@ describe("UsersService", () => {
       prisma.user.findUnique.mockResolvedValue({
         id: "org1",
         role: UserRole.CLUB,
-        clubId: null,
+        clubId: "c1",
         clubName: "DanceClub",
       });
 
@@ -526,7 +621,7 @@ describe("UsersService", () => {
       prisma.user.findUnique.mockResolvedValue({
         id: "org1",
         role: UserRole.CLUB,
-        clubId: null,
+        clubId: "c1",
         clubName: "DanceClub",
       });
 
@@ -549,7 +644,7 @@ describe("UsersService", () => {
       prisma.user.findUnique.mockResolvedValue({
         id: "org1",
         role: UserRole.CLUB,
-        clubId: null,
+        clubId: "c1",
         clubName: "DanceClub",
       });
       prisma.user.count.mockResolvedValue(30);
@@ -768,6 +863,7 @@ describe("UsersService", () => {
       prisma.result.findMany.mockResolvedValue([]);
       prisma.bugReport.findMany.mockResolvedValue([]);
       prisma.impersonationLog.findMany.mockResolvedValue([]);
+      prisma.healthDataAccessLog.findMany.mockResolvedValue([]);
     });
 
     const exportSelect = () =>
@@ -796,6 +892,7 @@ describe("UsersService", () => {
         results: [],
         bugReports: [],
         impersonationsReceived: [],
+        healthDataAccesses: [],
       });
     });
 
@@ -1325,7 +1422,9 @@ describe("UsersService", () => {
         startedAt: new Date("2026-08-01T10:00:00Z"),
         endedAt: null,
       };
-      prisma.impersonationLog.findMany.mockResolvedValue([session] as never);
+      prisma.impersonationLog.findMany.mockResolvedValue([
+        { ...session, _count: { actions: 0 } },
+      ] as never);
       prisma.user.findUnique.mockResolvedValue(makeExportedUser());
 
       const result = await service.exportMyData("u1");
@@ -1339,11 +1438,125 @@ describe("UsersService", () => {
         reason: true,
         startedAt: true,
         endedAt: true,
+        // Écritures faites pendant la session (#761), sans identité.
+        actions: {
+          select: { method: true, route: true, statusCode: true, at: true },
+          orderBy: { at: "asc" },
+          // Above the real maximum: 15 min × 100 requests/min.
+          take: 2000,
+        },
+        _count: { select: { actions: true } },
       });
       // Identité et IP de l'administrateur : données d'un tiers.
       expect(select.actorId).toBeUndefined();
       expect(select.ip).toBeUndefined();
-      expect(result.data.impersonationsReceived).toEqual([session]);
+      // Never stopped: the session ended when its 15-minute token expired.
+      expect(result.data.impersonationsReceived).toEqual([
+        {
+          ...session,
+          endedAt: new Date("2026-08-01T10:15:00Z"),
+          actionsCount: 0,
+        },
+      ]);
+    });
+
+    it("exporte la vraie fin d'une session d'accès support arrêtée (#733)", async () => {
+      const stopped = {
+        actorRole: UserRole.ADMIN,
+        reason: null,
+        startedAt: new Date("2026-08-01T10:00:00Z"),
+        endedAt: new Date("2026-08-01T10:04:00Z"),
+      };
+      prisma.impersonationLog.findMany.mockResolvedValue([
+        { ...stopped, _count: { actions: 0 } },
+      ] as never);
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      const result = await service.exportMyData("u1");
+
+      expect(result.data.impersonationsReceived).toEqual([
+        { ...stopped, actionsCount: 0 },
+      ]);
+    });
+
+    it("exporte les écritures faites pendant une session d'accès support (#761)", async () => {
+      const session = {
+        actorRole: UserRole.ADMIN,
+        reason: "Ticket 42",
+        startedAt: new Date("2026-08-01T10:00:00Z"),
+        endedAt: new Date("2026-08-01T10:05:00Z"),
+        actions: [
+          {
+            method: "PATCH",
+            route: "/clubs/me/registration-mode",
+            statusCode: 403,
+            at: new Date("2026-08-01T10:01:00Z"),
+          },
+        ],
+      };
+      // 2001 writes recorded, 2000 listed: the count shows the cut.
+      prisma.impersonationLog.findMany.mockResolvedValue([
+        { ...session, _count: { actions: 2001 } },
+      ] as never);
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      const result = await service.exportMyData("u1");
+
+      expect(result.data.impersonationsReceived).toEqual([
+        { ...session, actionsCount: 2001 },
+      ]);
+      expect(result.data.impersonationsReceived[0]).not.toHaveProperty(
+        "_count",
+      );
+    });
+
+    it("exporte les accès à ses données de santé avec la seule qualité de l'auteur (#732)", async () => {
+      const access = {
+        actorRole: "IMPERSONATOR",
+        action: "READ",
+        resourceType: "LICENSE_RENEWAL_REQUEST",
+        route: "GET /licenses/renewal/my",
+        createdAt: new Date("2026-09-01T10:00:00Z"),
+      };
+      prisma.healthDataAccessLog.findMany.mockResolvedValue([access] as never);
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      const result = await service.exportMyData("u1");
+
+      const query = prisma.healthDataAccessLog.findMany.mock.calls[0][0];
+      expect(query?.where).toEqual({ subjectUserId: "u1" });
+      expect(query?.orderBy).toEqual({ createdAt: "desc" });
+      expect(query?.take).toBe(500);
+      const select = query?.select as Record<string, unknown>;
+      expect(select).toEqual({
+        actorRole: true,
+        action: true,
+        resourceType: true,
+        route: true,
+        createdAt: true,
+      });
+      // Identité de l'auteur : donnée d'un tiers ; UUID internes : inutiles.
+      expect(select.actorUserId).toBeUndefined();
+      expect(select.id).toBeUndefined();
+      expect(select.resourceId).toBeUndefined();
+      expect(result.data.healthDataAccesses).toEqual([access]);
+    });
+
+    it("lit le journal des accès de santé avant d'y tracer l'export en cours (#732)", async () => {
+      const order: string[] = [];
+      prisma.healthDataAccessLog.findMany.mockImplementation(() => {
+        order.push("read");
+        return Promise.resolve([]);
+      });
+      healthAccess.record.mockImplementation(() => {
+        order.push("record");
+        return Promise.resolve();
+      });
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      await service.exportMyData("u1");
+
+      expect(order).toEqual(["read", "record"]);
     });
 
     it("exporte les sessions de connexion en métadonnées, jamais le hash du token", async () => {

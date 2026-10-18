@@ -232,8 +232,15 @@ describe("EntryQrService", () => {
     });
 
     it("uses the current time by default", () => {
-      const batch = service().issueBatch(SUBJECT, FAR_VALIDITY);
-      expect(batch?.firstStep).toBe(entryQrStep(new Date()));
+      // Freeze the clock: reading it twice (in issueBatch, then here) fails
+      // whenever a QR step boundary falls between the two reads (#750).
+      jest.useFakeTimers({ now: NOW });
+      try {
+        const batch = service().issueBatch(SUBJECT, FAR_VALIDITY);
+        expect(batch?.firstStep).toBe(entryQrStep(NOW));
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 

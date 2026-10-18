@@ -425,10 +425,10 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                     styles.cguCheckbox,
                     {
                       borderColor: state.cguAccepted
-                        ? currentTheme.primary
+                        ? currentTheme.primaryFill
                         : currentTheme.border,
                       backgroundColor: state.cguAccepted
-                        ? currentTheme.primary
+                        ? currentTheme.primaryFill
                         : "transparent",
                     },
                   ]}

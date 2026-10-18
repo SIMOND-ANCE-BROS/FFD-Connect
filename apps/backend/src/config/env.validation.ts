@@ -347,6 +347,29 @@ class EnvironmentVariables {
   @IsOptional()
   SEAT_REHOLD_COOLDOWN_MINUTES?: number;
 
+  // Support-access journal retention (#731), in days. Unset: 365 for the
+  // rows, 90 for the actor's full IP (then reduced to its network; capped at
+  // the row retention). Bounds mirrored in impersonation-log-retention.service.
+  @IsInt()
+  @Min(30)
+  @Max(3650)
+  @IsOptional()
+  IMPERSONATION_LOG_RETENTION_DAYS?: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(3650)
+  @IsOptional()
+  IMPERSONATION_LOG_IP_RETENTION_DAYS?: number;
+
+  // Back-office audit trail retention (#741), in days. Unset: 365. Bounds
+  // mirrored in admin-audit-log-retention.service.
+  @IsInt()
+  @Min(30)
+  @Max(3650)
+  @IsOptional()
+  ADMIN_AUDIT_LOG_RETENTION_DAYS?: number;
+
   // Fonctionnalités optionnelles
   @IsString()
   @IsOptional()

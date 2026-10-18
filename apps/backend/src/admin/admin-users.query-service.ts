@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { rolesOf, withRole } from "../auth/roles";
 import { listOrderBy, type SortOrder } from "../common/dto/sort-params";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
+import { withDerivedCompetitionLevel } from "../common/competition-level";
 import { PrismaService } from "../prisma/prisma.service";
 import { isLicenseExpired } from "../licenses/license-expiry";
 import { isCreatedByAdmin } from "./admin-audit.util";
@@ -135,7 +136,8 @@ export class AdminUsersQueryService {
     if (!row) throw new NotFoundException("Utilisateur introuvable");
     const { license, club, ...rest } = row;
     return {
-      ...rest,
+      // Deprecated single level derived from the per-discipline ones (#239).
+      ...withDerivedCompetitionLevel(rest),
       // Stored roles (no club status): a disabled club still shows its extra CLUB.
       roles: rolesOf(rest),
       createdByAdmin: await isCreatedByAdmin(this.prisma, id),

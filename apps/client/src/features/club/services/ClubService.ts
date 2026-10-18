@@ -12,11 +12,14 @@ export type ClubRegistrationMode =
   | "CLUB_ONLY"
   | "MEMBERS_AUTO_CONFIRM";
 
+/**
+ * `GET /clubs/me/helloasso`. Its `registrationMode` is deprecated (#665) and
+ * deliberately not read: use `getMyClubRegistrationMode`.
+ */
 export interface HelloAssoStatus {
   clubName: string;
   helloAssoConnected: boolean;
   organizationSlug: string | null;
-  registrationMode?: ClubRegistrationMode;
 }
 
 export interface ConnectHelloAssoParams {
@@ -37,8 +40,6 @@ export interface ClubMember {
   competitionLevelLatin?: string | null;
   /** Competition level in Standard (Débutant…International), per discipline. */
   competitionLevelStandard?: string | null;
-  /** @deprecated single legacy level, read only as a fallback. */
-  competitionLevel?: string | null;
   clubName?: string | null;
   license?: { number: string | null; validUntil: Date | null };
   partnerName?: string;
@@ -89,8 +90,6 @@ export interface SoloTeamMember {
     lastName: string;
     competitionLevelLatin?: string | null;
     competitionLevelStandard?: string | null;
-    /** @deprecated single legacy level, read only as a fallback. */
-    competitionLevel?: string | null;
   };
 }
 

@@ -17,7 +17,10 @@ import {
   clubHelloAssoStatusSelect,
   clubIdNameSelect,
 } from "../utils/prisma-selects";
-import { ClubsService } from "./clubs.service";
+import {
+  CLUB_ACCOUNT_UNRESOLVED_MESSAGES,
+  ClubsService,
+} from "./clubs.service";
 import { ClubsHelloAssoService } from "./clubs-helloasso.service";
 
 type MockPrisma = DeepMockProxy<PrismaClient>;
@@ -59,16 +62,12 @@ const makeClub = (overrides: Record<string, unknown> = {}) => ({
 describe("ClubsHelloAssoService", () => {
   let service: ClubsHelloAssoService;
   let prisma: MockPrisma;
-  let clubsService: jest.Mocked<
-    Pick<ClubsService, "getClubIdForOrganizer" | "findOrCreateByName">
-  >;
+  // The real club resolution (#743), on the mocked Prisma client.
+  let clubsService: ClubsService;
 
   beforeEach(async () => {
     prisma = mockDeep<PrismaClient>();
-    clubsService = {
-      getClubIdForOrganizer: jest.fn().mockResolvedValue("club-1"),
-      findOrCreateByName: jest.fn(),
-    };
+    clubsService = new ClubsService(prisma as unknown as PrismaService);
 
     const module = await Test.createTestingModule({
       providers: [
@@ -82,7 +81,6 @@ describe("ClubsHelloAssoService", () => {
 
     service = module.get<ClubsHelloAssoService>(ClubsHelloAssoService);
     jest.clearAllMocks();
-    clubsService.getClubIdForOrganizer.mockResolvedValue("club-1");
   });
 
   // ----------------------------------------------------------------
@@ -167,14 +165,111 @@ describe("ClubsHelloAssoService", () => {
       );
     });
 
-    it("resolves via clubName when clubId is null", async () => {
+    it("resolves a legacy account to the one active club its name designates", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ clubId: null, clubName: " test club " }) as never,
+      );
+      prisma.club.findMany.mockResolvedValue([{ id: "club-1" }] as never);
+      prisma.club.findFirst.mockResolvedValue({ id: "club-1" } as never);
+      prisma.club.findUnique.mockResolvedValue(makeClub() as never);
+      const result = await service.getMyClubHelloAssoStatus("user-1");
+      expect(result.clubName).toBe("Test Club");
+      expect(prisma.club.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { name: { equals: "test club", mode: "insensitive" } },
+          take: 2,
+        }),
+      );
+      expect(prisma.club.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "club-1", disabledAt: null },
+        }),
+      );
+      expect(prisma.club.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "club-1" } }),
+      );
+      expect(prisma.club.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // Legacy CLUB accounts without clubId (#743)
+  // ----------------------------------------------------------------
+  describe("legacy CLUB account without clubId (#743)", () => {
+    const DTO = {
+      clientId: "id",
+      clientSecret: "s",
+      organizationSlug: "slug",
+    };
+    const legacy = () =>
       prisma.user.findUnique.mockResolvedValue(
         makeUser({ clubId: null, clubName: "Test Club" }) as never,
       );
-      clubsService.findOrCreateByName.mockResolvedValue(makeClub() as never);
-      const result = await service.getMyClubHelloAssoStatus("user-1");
-      expect(result.helloAssoConnected).toBe(false);
-      expect(result.clubName).toBe("Test Club");
+    const actions = {
+      status: () => service.getMyClubHelloAssoStatus("user-1"),
+      mode: () =>
+        service.setRegistrationMode("user-1", ClubRegistrationMode.CLUB_ONLY),
+      connect: () => service.connectHelloAsso("user-1", DTO),
+    };
+    const expectNoClubTouched = () => {
+      expect(prisma.club.create).not.toHaveBeenCalled();
+      expect(prisma.club.update).not.toHaveBeenCalled();
+      expect(prisma.club.findUnique).not.toHaveBeenCalled();
+    };
+
+    it.each(Object.entries(actions))(
+      "%s: refuses when two clubs share the name up to case (homonyms)",
+      async (_name, run) => {
+        legacy();
+        prisma.club.findMany.mockResolvedValue([
+          { id: "club-1" },
+          { id: "club-2" },
+        ] as never);
+        await expect(run()).rejects.toThrow(
+          new BadRequestException(CLUB_ACCOUNT_UNRESOLVED_MESSAGES.ambiguous),
+        );
+        expectNoClubTouched();
+      },
+    );
+
+    it.each(Object.entries(actions))(
+      "%s: refuses when the club its name designates is disabled",
+      async (_name, run) => {
+        legacy();
+        prisma.club.findMany.mockResolvedValue([{ id: "club-1" }] as never);
+        prisma.club.findFirst.mockResolvedValue(null);
+        await expect(run()).rejects.toThrow(
+          new BadRequestException(CLUB_ACCOUNT_UNRESOLVED_MESSAGES.disabled),
+        );
+        expectNoClubTouched();
+      },
+    );
+
+    it.each(Object.entries(actions))(
+      "%s: refuses, and creates no club, when no club carries the name",
+      async (_name, run) => {
+        legacy();
+        prisma.club.findMany.mockResolvedValue([] as never);
+        await expect(run()).rejects.toThrow(
+          new BadRequestException(CLUB_ACCOUNT_UNRESOLVED_MESSAGES.none),
+        );
+        expectNoClubTouched();
+      },
+    );
+
+    it("connect: writes the credentials on the resolved club only", async () => {
+      legacy();
+      prisma.club.findMany.mockResolvedValue([{ id: "club-7" }] as never);
+      prisma.club.findFirst.mockResolvedValue({ id: "club-7" } as never);
+      prisma.club.findUnique.mockResolvedValue({
+        id: "club-7",
+        name: "Test Club",
+      } as never);
+      await service.connectHelloAsso("user-1", DTO);
+      expect(prisma.club.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "club-7" } }),
+      );
+      expect(prisma.club.create).not.toHaveBeenCalled();
     });
   });
 
@@ -414,7 +509,7 @@ describe("ClubsHelloAssoService", () => {
     beforeEach(() => {
       encrypting = new ClubsHelloAssoService(
         prisma as unknown as PrismaService,
-        clubsService as unknown as ClubsService,
+        clubsService,
         cipherWith({
           SECRETS_ENCRYPTION_KEY: key.toString("base64"),
           SECRETS_ENCRYPTION_KEY_PREVIOUS: previousKey.toString("base64"),
@@ -651,6 +746,37 @@ describe("ClubsHelloAssoService", () => {
       );
       const result = await service.getRegistrationModeForUser("user-1");
       expect(result).toBe(ClubRegistrationMode.CLUB_ONLY);
+    });
+
+    it("reads the one club a legacy member's name designates", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ clubId: null, clubName: "Test Club" }) as never,
+      );
+      prisma.club.findMany.mockResolvedValue([{ id: "club-1" }] as never);
+      prisma.club.findUnique.mockResolvedValue({
+        registrationMode: ClubRegistrationMode.CLUB_ONLY,
+      } as never);
+      await expect(service.getRegistrationModeForUser("user-1")).resolves.toBe(
+        ClubRegistrationMode.CLUB_ONLY,
+      );
+      expect(prisma.club.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "club-1" } }),
+      );
+    });
+
+    it("never reads a homonym club's mode for a legacy member (#743)", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ clubId: null, clubName: "Test Club" }) as never,
+      );
+      prisma.club.findMany.mockResolvedValue([
+        { id: "club-1" },
+        { id: "club-2" },
+      ] as never);
+      await expect(service.getRegistrationModeForUser("user-1")).resolves.toBe(
+        ClubRegistrationMode.MEMBERS_AUTO_CONFIRM,
+      );
+      expect(prisma.club.findUnique).not.toHaveBeenCalled();
+      expect(prisma.club.findFirst).not.toHaveBeenCalled();
     });
 
     it("returns MEMBERS_AUTO_CONFIRM when user has no club info", async () => {

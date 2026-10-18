@@ -56,6 +56,7 @@ function PartnershipCard({
     surface: string;
     border: string;
     primary: string;
+    primaryFill: string;
   };
   isCurrent: boolean;
 }) {
@@ -72,7 +73,7 @@ function PartnershipCard({
           {name}
         </AppText>
         {isCurrent && (
-          <View style={[styles.badge, { backgroundColor: theme.primary }]}>
+          <View style={[styles.badge, { backgroundColor: theme.primaryFill }]}>
             <AppText variant="caption" style={styles.badgeText}>
               Actuel
             </AppText>

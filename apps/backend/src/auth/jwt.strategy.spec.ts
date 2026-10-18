@@ -6,7 +6,10 @@ import {
   MockPrismaService,
 } from "../../test/mocks/prisma.mock";
 import { PrismaService } from "../prisma/prisma.service";
-import { accountStatusSelect } from "../utils/prisma-selects";
+import {
+  accountStatusSelect,
+  impersonationLogSessionSelect,
+} from "../utils/prisma-selects";
 import { JwtStrategy } from "./jwt.strategy";
 
 describe("JwtStrategy", () => {
@@ -49,6 +52,7 @@ describe("JwtStrategy", () => {
       where: { id: "user-1" },
       select: accountStatusSelect,
     });
+    expect(prisma.impersonationLog.findUnique).not.toHaveBeenCalled();
   });
 
   it("rejects a disabled account with 401", async () => {
@@ -105,91 +109,6 @@ describe("JwtStrategy", () => {
     expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
   });
 
-  describe("impersonation", () => {
-    const imp = { ...payload, impersonatedBy: "admin-1" };
-    const target = { role: UserRole.LICENSEE, disabledAt: null, club: null };
-    const mockLookups = (impersonator: unknown) =>
-      prisma.user.findUnique.mockImplementation((async (args: {
-        where: { id: string };
-      }) => (args.where.id === "user-1" ? target : impersonator)) as never);
-
-    it("accepts an active ADMIN impersonator", async () => {
-      mockLookups({ role: UserRole.ADMIN, disabledAt: null, club: null });
-      await expect(strategy.validate(imp)).resolves.toMatchObject({
-        userId: "user-1",
-        impersonatedBy: "admin-1",
-      });
-      expect(prisma.user.findUnique).toHaveBeenCalledWith({
-        where: { id: "admin-1" },
-        select: accountStatusSelect,
-      });
-    });
-
-    it("keeps writes simulated in an impersonation opened by the store-review account", async () => {
-      mockLookups({
-        role: UserRole.ADMIN,
-        disabledAt: null,
-        isStoreReview: true,
-        club: null,
-      });
-      await expect(strategy.validate(imp)).resolves.toMatchObject({
-        userId: "user-1",
-        impersonatedBy: "admin-1",
-        storeReview: true,
-      });
-    });
-
-    it("does not flag an impersonation opened by a regular admin", async () => {
-      mockLookups({ role: UserRole.ADMIN, disabledAt: null, club: null });
-      await expect(strategy.validate(imp)).resolves.toMatchObject({
-        storeReview: false,
-      });
-    });
-
-    it("rejects a disabled impersonator", async () => {
-      mockLookups({ role: UserRole.ADMIN, disabledAt: new Date(), club: null });
-      await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
-        UnauthorizedException,
-      );
-    });
-
-    it("rejects a demoted impersonator", async () => {
-      mockLookups({ role: UserRole.LICENSEE, disabledAt: null, club: null });
-      await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
-        UnauthorizedException,
-      );
-    });
-
-    it("rejects a missing impersonator", async () => {
-      mockLookups(null);
-      await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
-        UnauthorizedException,
-      );
-    });
-
-    it.each([
-      ["main", { role: UserRole.ADMIN, extraRoles: [] }],
-      ["extra", { role: UserRole.LICENSEE, extraRoles: [UserRole.ADMIN] }],
-    ])(
-      "rejects the session once the target holds ADMIN (%s role)",
-      async (_label, roles) => {
-        prisma.user.findUnique.mockImplementation((async (args: {
-          where: { id: string };
-        }) =>
-          args.where.id === "user-1"
-            ? { ...roles, disabledAt: null, club: null }
-            : {
-                role: UserRole.ADMIN,
-                disabledAt: null,
-                club: null,
-              }) as never);
-        await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
-          UnauthorizedException,
-        );
-      },
-    );
-  });
-
   it("returns every effective role from the database", async () => {
     prisma.user.findUnique.mockResolvedValueOnce({
       role: UserRole.ADMIN,
@@ -205,27 +124,152 @@ describe("JwtStrategy", () => {
     });
   });
 
-  it("accepts an impersonator whose ADMIN role is an extra role", async () => {
-    prisma.user.findUnique
-      .mockResolvedValueOnce({
+  describe("impersonation (ADMIN-only, #733)", () => {
+    const imp = {
+      ...payload,
+      impersonatedBy: "admin-1",
+      impersonationLogId: "log-1",
+    };
+    const activeAdmin = { role: UserRole.ADMIN, disabledAt: null, club: null };
+    const openSession = {
+      actorId: "admin-1",
+      targetUserId: "user-1",
+      startedAt: new Date(Date.now() - 60_000),
+      endedAt: null,
+    };
+    const mockLookups = (
+      impersonator: unknown,
+      target: unknown = {
         role: UserRole.LICENSEE,
-        extraRoles: [],
         disabledAt: null,
         club: null,
-      } as never)
-      .mockResolvedValueOnce({
+      },
+      session: unknown = openSession,
+    ) => {
+      prisma.user.findUnique.mockImplementation((async (args: {
+        where: { id: string };
+      }) => (args.where.id === "user-1" ? target : impersonator)) as never);
+      prisma.impersonationLog.findUnique.mockResolvedValue(session as never);
+    };
+
+    it("accepts an active ADMIN impersonator on an open session", async () => {
+      mockLookups(activeAdmin);
+      await expect(strategy.validate(imp)).resolves.toEqual({
+        userId: "user-1",
+        email: "test@example.com",
+        role: UserRole.LICENSEE,
+        roles: [UserRole.LICENSEE],
+        impersonatedBy: "admin-1",
+        impersonationLogId: "log-1",
+        storeReview: false,
+      });
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: "admin-1" },
+        select: accountStatusSelect,
+      });
+      expect(prisma.impersonationLog.findUnique).toHaveBeenCalledWith({
+        where: { id: "log-1" },
+        select: impersonationLogSessionSelect,
+      });
+    });
+
+    it("accepts a STAFF target (only ADMIN targets are refused)", async () => {
+      mockLookups(activeAdmin, {
+        role: UserRole.STAFF,
+        disabledAt: null,
+        club: null,
+      });
+      await expect(strategy.validate(imp)).resolves.toMatchObject({
+        role: UserRole.STAFF,
+        impersonatedBy: "admin-1",
+      });
+    });
+
+    it("accepts an impersonator whose ADMIN role is an extra role", async () => {
+      mockLookups({
         role: UserRole.LICENSEE,
         extraRoles: [UserRole.ADMIN],
         disabledAt: null,
         club: null,
-      } as never);
-    await expect(
-      strategy.validate({
-        sub: "t1",
-        email: "t@x.fr",
-        role: "LICENSEE",
-        impersonatedBy: "a1",
-      }),
-    ).resolves.toMatchObject({ userId: "t1", impersonatedBy: "a1" });
+      });
+      await expect(strategy.validate(imp)).resolves.toMatchObject({
+        userId: "user-1",
+        impersonatedBy: "admin-1",
+      });
+    });
+
+    it("keeps writes simulated in an impersonation opened by the store-review account", async () => {
+      mockLookups({ ...activeAdmin, isStoreReview: true });
+      await expect(strategy.validate(imp)).resolves.toMatchObject({
+        userId: "user-1",
+        impersonatedBy: "admin-1",
+        storeReview: true,
+      });
+    });
+
+    it.each([
+      ["disabled", { ...activeAdmin, disabledAt: new Date() }],
+      ["demoted to LICENSEE", { ...activeAdmin, role: UserRole.LICENSEE }],
+      // STAFF lost support access with #733: a session dies with the demotion.
+      ["demoted to STAFF", { ...activeAdmin, role: UserRole.STAFF }],
+      [
+        "STAFF with no ADMIN role at all",
+        { ...activeAdmin, role: UserRole.CLUB, extraRoles: [UserRole.STAFF] },
+      ],
+      ["missing", null],
+    ])("rejects an impersonator who is %s", async (_label, impersonator) => {
+      mockLookups(impersonator);
+      await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it.each([
+      ["main", { role: UserRole.ADMIN, extraRoles: [] }],
+      ["extra", { role: UserRole.LICENSEE, extraRoles: [UserRole.ADMIN] }],
+    ])(
+      "rejects the session once the target holds ADMIN (%s role)",
+      async (_label, roles) => {
+        mockLookups(activeAdmin, { ...roles, disabledAt: null, club: null });
+        await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
+          UnauthorizedException,
+        );
+        expect(prisma.impersonationLog.findUnique).not.toHaveBeenCalled();
+      },
+    );
+
+    it("rejects an impersonation token that names no journal row", async () => {
+      mockLookups(activeAdmin);
+      await expect(
+        strategy.validate({ ...payload, impersonatedBy: "admin-1" }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(prisma.impersonationLog.findUnique).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["stopped", { ...openSession, endedAt: new Date() }],
+      ["purged", null],
+      ["of another actor", { ...openSession, actorId: "admin-2" }],
+      ["on another target", { ...openSession, targetUserId: "user-2" }],
+      [
+        "older than 15 minutes (#762)",
+        { ...openSession, startedAt: new Date(Date.now() - 15 * 60_000 - 1) },
+      ],
+    ])("rejects the token once its session is %s", async (_label, session) => {
+      mockLookups(activeAdmin, undefined, session);
+      await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it("still accepts a session just under its 15 minutes (#762)", async () => {
+      mockLookups(activeAdmin, undefined, {
+        ...openSession,
+        startedAt: new Date(Date.now() - 14 * 60_000),
+      });
+      await expect(strategy.validate(imp)).resolves.toMatchObject({
+        impersonatedBy: "admin-1",
+      });
+    });
   });
 });

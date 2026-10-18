@@ -36,6 +36,7 @@ import {
 } from "@nestjs/throttler";
 import { AppModule } from "../src/app.module";
 import { SessionCleanupService } from "../src/auth/session-cleanup.service";
+import { ResultsNotificationScheduler } from "../src/competitions/services/results-notification.scheduler";
 import { NotificationsService } from "../src/notifications/notifications.service";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { RedisService } from "../src/redis/redis.service";
@@ -67,6 +68,12 @@ const mockSessionCleanup = {
   cleanupExpiredSessions: jest.fn(),
   cleanupUserSessions: jest.fn(),
   manualCleanup: jest.fn(),
+};
+
+const mockResultsNotificationScheduler = {
+  onModuleInit: jest.fn(),
+  handleCron: jest.fn(),
+  runPass: jest.fn(),
 };
 
 const mockRedis = {
@@ -107,7 +114,11 @@ function applyBaseOverrides(
     .overrideProvider(NotificationsService)
     .useValue(mockNotifications)
     .overrideProvider(SessionCleanupService)
-    .useValue(mockSessionCleanup);
+    .useValue(mockSessionCleanup)
+    // No boot pass: it would notify the results other suites left in the
+    // shared database (#713). Suites call notifyResultsPublished directly.
+    .overrideProvider(ResultsNotificationScheduler)
+    .useValue(mockResultsNotificationScheduler);
 
   if (opts.throttle) {
     builder = builder

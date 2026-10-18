@@ -12,7 +12,7 @@ import { trimEmailTransform } from "../email-identity";
 /**
  * Démarrage d'une impersonation « se connecter en tant que » (#545).
  * Cible identifiée par UUID OU email (l'un des deux requis — vérifié côté
- * service). La raison est facultative pour l'admin, obligatoire pour le staff.
+ * service). Réservé à l'admin (#733) ; la raison est facultative.
  */
 export class ImpersonateDto {
   @ApiPropertyOptional({ description: "UUID de l'utilisateur cible" })
@@ -30,7 +30,7 @@ export class ImpersonateDto {
 
   @ApiPropertyOptional({
     description:
-      "Raison de l'impersonation (obligatoire pour le staff, journalisée). Elle est restituée à l'utilisateur ciblé dans son export RGPD (GET /users/me/export) : n'y écrire aucune donnée personnelle d'un tiers.",
+      "Raison de l'impersonation (facultative, journalisée). Elle est restituée à l'utilisateur ciblé dans son export RGPD (GET /users/me/export) : n'y écrire aucune donnée personnelle d'un tiers.",
   })
   @IsOptional()
   @IsString()

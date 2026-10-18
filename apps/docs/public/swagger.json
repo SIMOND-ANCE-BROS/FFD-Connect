@@ -1433,7 +1433,7 @@
     },
     "/auth/impersonate": {
       "post": {
-        "description": "Phase 1 : réservé aux ADMIN. Retourne un access token court (15 min) dont l'identité est la cible, avec un claim d'audit. Interdit de cibler un admin. Actions destructives bloquées sous impersonation. Journalisé (RGPD).",
+        "description": "Réservé aux ADMIN (#733). Retourne un access token court (15 min) dont l'identité est la cible, avec un claim d'audit et l'identifiant de la ligne du journal de la session. Interdit de cibler un admin ; un licencié, un club ou un staff peut être ciblé. Refusé depuis une session d'impersonation (pas de session en chaîne). Limité à 5 appels par minute et par admin. Actions destructives ou durables (suppression, export, mot de passe, identifiants de paiement du club, appareil et préférences push…) bloquées sous impersonation. Journalisé (RGPD).",
         "operationId": "AuthController_impersonate",
         "parameters": [],
         "requestBody": {
@@ -1591,7 +1591,7 @@
     },
     "/auth/impersonate/stop": {
       "post": {
-        "description": "Clôt la session d'impersonation ouverte (audit). Le client restaure ensuite sa session d'origine.",
+        "description": "Clôt la session d'impersonation portée par le token (audit) : sa ligne du journal, et elle seule. Le token d'impersonation cesse alors d'être accepté. Sans token d'impersonation, ne fait rien. Le client restaure ensuite sa session d'origine.",
         "operationId": "AuthController_stopImpersonation",
         "parameters": [],
         "responses": {
@@ -7044,7 +7044,7 @@
                       "type": "string",
                       "nullable": true,
                       "deprecated": true,
-                      "description": "Ancien niveau unique, conservé pour les anciennes versions de l'app. Préférer les niveaux par discipline."
+                      "description": "Ancien niveau unique, conservé pour les anciennes versions de l'app : dérivé des niveaux par discipline (le plus élevé). Préférer les niveaux par discipline ; supprimé en phase 2 de #239."
                     },
                     "licenseNumber": {
                       "type": "string",
@@ -7078,7 +7078,7 @@
                         "qrCode": {
                           "type": "string",
                           "nullable": true,
-                          "description": "Contenu du QR de licence signé par le serveur, à afficher tel quel. Null si la signature est désactivée."
+                          "description": "Contenu du QR de licence signé par le serveur, à afficher tel quel. Null si la signature est désactivée, ou pendant un accès support (« se connecter en tant que »)."
                         },
                         "appleWalletAvailable": {
                           "type": "boolean",
@@ -7318,7 +7318,7 @@
         "tags": ["users"]
       },
       "patch": {
-        "description": "Permet de lier ou dissocier la licence WDSF (données envoyées après vérification GET /wdsf/athlete/:min). Envoyer wdsf: null pour supprimer le lien.",
+        "description": "Permet de lier ou dissocier la licence WDSF (données envoyées après vérification GET /wdsf/athlete/:min). Envoyer wdsf: null pour supprimer le lien. Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "UsersController_updateProfile",
         "parameters": [],
         "requestBody": {
@@ -7653,7 +7653,7 @@
     },
     "/users/me/export": {
       "get": {
-        "description": "Retourne en un seul JSON les données personnelles de l'utilisateur connecté actuellement couvertes par l'export (profil dont date de désactivation, licence, demandes de renouvellement de licence, inscriptions y compris en tant que partenaire, résultats de compétition, partenariats, équipes solo, réservations de places, notifications, appareils, préférences, propositions de correction, musiques proposées, signalements, sessions de connexion en métadonnées, sessions d'impersonation reçues avec le seul rôle de leur auteur) — droit à la portabilité, RGPD art. 20. Ne contient jamais de secrets ni de données de tiers ; le journal d'audit d'administration en est exclu.",
+        "description": "Retourne en un seul JSON les données personnelles de l'utilisateur connecté actuellement couvertes par l'export (profil dont date de désactivation, licence, demandes de renouvellement de licence, inscriptions y compris en tant que partenaire, résultats de compétition, partenariats, équipes solo, réservations de places, notifications, appareils, préférences, propositions de correction, musiques proposées, signalements, sessions de connexion en métadonnées, sessions d'impersonation reçues avec le seul rôle de leur auteur, accès à ses données de santé avec la seule qualité de leur auteur) — droit à la portabilité, RGPD art. 20. Ne contient jamais de secrets ni de données de tiers ; le journal d'audit d'administration en est exclu.",
         "operationId": "UsersController_exportMyData",
         "parameters": [],
         "responses": {
@@ -7838,6 +7838,9 @@
           },
           "401": {
             "description": "Non authentifié"
+          },
+          "403": {
+            "description": "Refusé pendant un accès support (« se connecter en tant que »)"
           },
           "404": {
             "description": "Aucune licence pour ce compte"
@@ -13236,7 +13239,7 @@
     },
     "/clubs/me/registration-mode": {
       "get": {
-        "description": "Retourne le mode d'inscription du club de l'utilisateur connecté (licencié ou organisateur). Permet au client de masquer le bouton « S'inscrire » lorsque le mode est CLUB_ONLY.",
+        "description": "Retourne le mode d'inscription du club de l'utilisateur connecté (licencié ou compte club). Source du réglage pour les paramètres du club (#665, remplace le champ déprécié de `GET /clubs/me/helloasso`) et pour masquer le bouton « S'inscrire » lorsque le mode est CLUB_ONLY.",
         "operationId": "ClubsController_getMyClubRegistrationMode",
         "parameters": [],
         "responses": {
@@ -13245,14 +13248,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "registrationMode": {
-                      "type": "string",
-                      "enum": ["CLUB_AND_MEMBERS_PENDING", "CLUB_ONLY", "MEMBERS_AUTO_CONFIRM"],
-                      "nullable": true
-                    }
-                  }
+                  "$ref": "#/components/schemas/ClubRegistrationModeDto"
                 }
               }
             }
@@ -13434,11 +13430,11 @@
             "JWT-auth": []
           }
         ],
-        "summary": "Mode d'inscription du club du licencié",
+        "summary": "Mode d'inscription du club de l'utilisateur connecté",
         "tags": ["clubs"]
       },
       "patch": {
-        "description": "Définit qui peut inscrire les licenciés et comment : CLUB_AND_MEMBERS_PENDING (licenciés en attente de validation), CLUB_ONLY (seul le club inscrit), MEMBERS_AUTO_CONFIRM (validation automatique).",
+        "description": "Définit qui peut inscrire les licenciés et comment : CLUB_AND_MEMBERS_PENDING (licenciés en attente de validation), CLUB_ONLY (seul le club inscrit), MEMBERS_AUTO_CONFIRM (validation automatique). Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "ClubsController_setRegistrationMode",
         "parameters": [],
         "requestBody": {
@@ -13453,7 +13449,14 @@
         },
         "responses": {
           "200": {
-            "description": "Mode mis à jour"
+            "description": "Mode mis à jour",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubRegistrationModeUpdatedDto"
+                }
+              }
+            }
           },
           "400": {
             "description": "Utilisateur non organisateur ou club non assigné"
@@ -13614,12 +13617,19 @@
     },
     "/clubs/me/helloasso": {
       "get": {
-        "description": "Retourne si le club a déjà connecté un compte HelloAsso (sans exposer les identifiants).",
+        "description": "Retourne si le club a déjà connecté un compte HelloAsso (sans exposer les identifiants). Le champ `registrationMode` est déprécié : lire `GET /clubs/me/registration-mode` (#665).",
         "operationId": "ClubsController_getHelloAssoStatus",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "Statut récupéré"
+            "description": "Statut récupéré",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelloAssoStatusDto"
+                }
+              }
+            }
           },
           "400": {
             "description": "Utilisateur non organisateur ou club non assigné"
@@ -13778,7 +13788,7 @@
         "tags": ["clubs"]
       },
       "put": {
-        "description": "Permet à un organisateur de lier les identifiants HelloAsso de son club. Ensuite, tous les paiements (places, etc.) pour les compétitions organisées par ce club utiliseront ce compte.",
+        "description": "Permet à un organisateur de lier les identifiants HelloAsso de son club. Ensuite, tous les paiements (places, etc.) pour les compétitions organisées par ce club utiliseront ce compte. Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "ClubsController_connectHelloAsso",
         "parameters": [],
         "requestBody": {
@@ -14125,7 +14135,7 @@
         "tags": ["clubs"]
       },
       "put": {
-        "description": "Choisit le connecteur de paiement en ligne utilisé pour les places des compétitions organisées par le club (#388). Seuls les connecteurs disponibles sont acceptés (aujourd'hui : HELLOASSO). Les identifiants se saisissent sur la route propre au connecteur (HelloAsso : `PUT /clubs/me/helloasso`) ; changer de connecteur n'efface pas ceux du précédent.",
+        "description": "Choisit le connecteur de paiement en ligne utilisé pour les places des compétitions organisées par le club (#388). Seuls les connecteurs disponibles sont acceptés (aujourd'hui : HELLOASSO). Les identifiants se saisissent sur la route propre au connecteur (HelloAsso : `PUT /clubs/me/helloasso`) ; changer de connecteur n'efface pas ceux du précédent. Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "ClubsController_setPaymentProvider",
         "parameters": [],
         "requestBody": {
@@ -14704,6 +14714,7 @@
     },
     "/clubs/me/partnerships/{id}/end": {
       "patch": {
+        "description": "Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "ClubsController_endPartnership",
         "parameters": [
           {
@@ -16539,63 +16550,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "example": "comp-123"
-                          },
-                          "name": {
-                            "type": "string",
-                            "example": "Championnat de France 2026"
-                          },
-                          "startDate": {
-                            "type": "string",
-                            "format": "date-time"
-                          },
-                          "endDate": {
-                            "type": "string",
-                            "format": "date-time"
-                          },
-                          "location": {
-                            "type": "string",
-                            "example": "Paris, France"
-                          },
-                          "status": {
-                            "type": "string",
-                            "enum": ["UPCOMING", "ACTIVE", "COMPLETED"],
-                            "example": "UPCOMING"
-                          }
-                        }
-                      }
-                    },
-                    "meta": {
-                      "type": "object",
-                      "properties": {
-                        "total": {
-                          "type": "number",
-                          "example": 100
-                        },
-                        "skip": {
-                          "type": "number",
-                          "example": 0
-                        },
-                        "take": {
-                          "type": "number",
-                          "example": 10
-                        },
-                        "hasMore": {
-                          "type": "boolean",
-                          "example": true
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/CompetitionPageDto"
                 }
               }
             }
@@ -16955,39 +16910,21 @@
     },
     "/competitions/active": {
       "get": {
-        "description": "Retourne la compétition qui est actuellement en cours (date du jour entre startDate et endDate).",
+        "description": "Retourne la première compétition dont la date de début (`date`) tombe aujourd'hui (heure du serveur), avec ses épreuves, ou `null` s'il n'y en a aucune. Pas de 404.",
         "operationId": "CompetitionsController_findActive",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "Compétition active trouvée",
+            "description": "Compétition qui commence aujourd'hui (heure du serveur), avec ses épreuves. `null` (corps vide) s'il n'y en a aucune.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "startDate": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "endDate": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "location": {
-                      "type": "string"
-                    },
-                    "status": {
-                      "type": "string",
-                      "enum": ["ACTIVE"]
+                  "nullable": true,
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CompetitionActiveDto"
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -17068,7 +17005,7 @@
             }
           },
           "404": {
-            "description": "Aucune compétition active trouvée pour aujourd'hui",
+            "description": "Ressource non trouvée",
             "content": {
               "application/json": {
                 "schema": {
@@ -17080,7 +17017,11 @@
                     },
                     "message": {
                       "type": "string",
-                      "example": "No active competition found"
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
                     }
                   }
                 }
@@ -17160,7 +17101,7 @@
             }
           }
         },
-        "summary": "Récupère la compétition active du jour",
+        "summary": "Récupère la compétition du jour",
         "tags": ["competitions"]
       }
     },
@@ -17938,7 +17879,7 @@
     },
     "/competitions/unregister-member": {
       "post": {
-        "description": "Désinscrit un licencié du club. Le membre reçoit une notification.",
+        "description": "Désinscrit un licencié du club. Le membre reçoit une notification. Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "CompetitionsController_unregisterMember",
         "parameters": [],
         "requestBody": {
@@ -19557,7 +19498,7 @@
     },
     "/competitions/{id}": {
       "get": {
-        "description": "Retourne les informations détaillées d'une compétition spécifique, incluant tous ses événements et inscriptions.",
+        "description": "Retourne les informations détaillées d'une compétition spécifique, avec ses épreuves et son planning.",
         "operationId": "CompetitionsController_findOne",
         "parameters": [
           {
@@ -19577,56 +19518,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "startDate": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "endDate": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "location": {
-                      "type": "string"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "requireRotatingQr": {
-                      "type": "boolean",
-                      "description": "QR d'entrée tournant obligatoire au check-in (#668) : les scanners le gardent en cache pour refuser aussi hors ligne un QR statique."
-                    },
-                    "events": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "category": {
-                            "type": "string"
-                          },
-                          "level": {
-                            "type": "string"
-                          },
-                          "registrations": {
-                            "type": "array"
-                          }
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/CompetitionDetailDto"
                 }
               }
             }
@@ -20730,7 +20622,7 @@
     },
     "/competitions/{id}/unregister": {
       "post": {
-        "description": "Permet à un utilisateur de se désinscrire d'un événement auquel il était inscrit.",
+        "description": "Permet à un utilisateur de se désinscrire d'un événement auquel il était inscrit. Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "CompetitionsController_unregister",
         "parameters": [
           {
@@ -22944,7 +22836,7 @@
         "tags": ["Notifications"]
       },
       "patch": {
-        "description": "Idempotent. N'affecte que les notifications push : le feed in-app (la cloche) continue d'être alimenté pour tous les types. Un type non réglable est refusé (400), un type qui ne concerne pas le rôle de l'appelant également (403).",
+        "description": "Idempotent. N'affecte que les notifications push : le feed in-app (la cloche) continue d'être alimenté pour tous les types. Un type non réglable est refusé (400), un type qui ne concerne pas le rôle de l'appelant également (403), comme tout appel pendant un accès support (« se connecter en tant que »).",
         "operationId": "NotificationsController_updateMyPreference",
         "parameters": [],
         "requestBody": {
@@ -23151,7 +23043,7 @@
     },
     "/notifications/device-token": {
       "post": {
-        "description": "Appelé par le client à l'ouverture de session et au renouvellement du token FCM. Idempotent : l'upsert se fait sur le token, qui est ré-attribué à l'utilisateur authentifié s'il était lié à un autre compte (appareil partagé ou revendu). Limité à 5 appels par minute et par utilisateur ; au-delà de 20 appareils, les plus anciens (lastSeenAt) sont supprimés.",
+        "description": "Appelé par le client à l'ouverture de session et au renouvellement du token FCM. Idempotent : l'upsert se fait sur le token, qui est ré-attribué à l'utilisateur authentifié s'il était lié à un autre compte (appareil partagé ou revendu). Limité à 5 appels par minute et par utilisateur ; au-delà de 20 appareils, les plus anciens (lastSeenAt) sont supprimés. Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "NotificationsController_registerDeviceToken",
         "parameters": [],
         "requestBody": {
@@ -23799,12 +23691,12 @@
                     "qrCode": {
                       "type": "string",
                       "nullable": true,
-                      "description": "Contenu du QR de licence signé par le serveur, à afficher tel quel (valable jusqu'à la fin de validité de la licence). Null si la signature est désactivée.",
+                      "description": "Contenu du QR de licence signé par le serveur, à afficher tel quel (valable jusqu'à la fin de validité de la licence). Null si la signature est désactivée, ou pendant un accès support (« se connecter en tant que »).",
                       "example": "{\"v\":1,\"id\":\"FFD-123456\",\"exp\":\"2026-08-31\",\"sig\":\"…\"}"
                     },
                     "appleWalletAvailable": {
                       "type": "boolean",
-                      "description": "Vrai si le serveur peut produire le pass Apple Wallet (pass configuré et QR signés) : l'app n'affiche le bouton « Ajouter à Apple Wallet » que dans ce cas.",
+                      "description": "Vrai si le serveur peut produire le pass Apple Wallet (pass configuré et QR signés) : l'app n'affiche le bouton « Ajouter à Apple Wallet » que dans ce cas. Toujours faux pendant un accès support.",
                       "example": true
                     },
                     "createdAt": {
@@ -25888,6 +25780,389 @@
         "tags": ["licenses"]
       }
     },
+    "/users/me/privacy-policy": {
+      "get": {
+        "description": "Version en vigueur, dernière version dont l'utilisateur a pris connaissance, et s'il faut lui signaler la mise à jour (pending).",
+        "operationId": "PrivacyPolicyController_getNotice",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivacyPolicyNoticeDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Avis de mise à jour de la politique de confidentialité",
+        "tags": ["users"]
+      }
+    },
+    "/users/me/privacy-policy/acknowledge": {
+      "post": {
+        "description": "Enregistre la version dont l'utilisateur a pris connaissance ; l'avis ne s'affiche plus pour cette version. 409 si la version envoyée n'est plus celle en vigueur.",
+        "operationId": "PrivacyPolicyController_acknowledge",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcknowledgePrivacyPolicyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivacyPolicyNoticeDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "La version envoyée n'est plus celle en vigueur"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "J'ai pris connaissance de la politique de confidentialité",
+        "tags": ["users"]
+      }
+    },
     "/health/live": {
       "get": {
         "operationId": "HealthController_live",
@@ -27299,7 +27574,7 @@
           },
           "reason": {
             "type": "string",
-            "description": "Raison de l'impersonation (obligatoire pour le staff, journalisée). Elle est restituée à l'utilisateur ciblé dans son export RGPD (GET /users/me/export) : n'y écrire aucune donnée personnelle d'un tiers."
+            "description": "Raison de l'impersonation (facultative, journalisée). Elle est restituée à l'utilisateur ciblé dans son export RGPD (GET /users/me/export) : n'y écrire aucune donnée personnelle d'un tiers."
           }
         }
       },
@@ -28261,7 +28536,7 @@
             "type": "string",
             "nullable": true,
             "deprecated": true,
-            "description": "Ancien niveau unique (repli) — préférer les niveaux par discipline"
+            "description": "Ancien niveau unique, dérivé des niveaux par discipline (le plus élevé) — préférer les niveaux par discipline"
           },
           "competitionLevelLatin": {
             "type": "string",
@@ -28396,7 +28671,7 @@
             "nullable": true,
             "enum": ["International", "Avancé", "Intermédiaire", "Débutant", null],
             "deprecated": true,
-            "description": "Ancien niveau unique. Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard."
+            "description": "Ancien niveau unique (anciens back-offices). Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard ; sinon il est ignoré."
           },
           "competitionLevelLatin": {
             "type": "string",
@@ -28524,7 +28799,7 @@
             "nullable": true,
             "enum": ["International", "Avancé", "Intermédiaire", "Débutant", null],
             "deprecated": true,
-            "description": "Ancien niveau unique. Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard."
+            "description": "Ancien niveau unique (anciens back-offices). Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard ; sinon il est ignoré."
           },
           "competitionLevelLatin": {
             "type": "string",
@@ -30190,6 +30465,48 @@
         },
         "required": ["text"]
       },
+      "ClubRegistrationModeDto": {
+        "type": "object",
+        "properties": {
+          "registrationMode": {
+            "nullable": true,
+            "description": "CLUB_AND_MEMBERS_PENDING = licenciés peuvent s'inscrire, validation par le club ; CLUB_ONLY = seul le club inscrit les licenciés ; MEMBERS_AUTO_CONFIRM = inscriptions licenciés validées automatiquement. null quand l'utilisateur n'a pas de club (ou qu'un ancien compte sans club rattaché désigne plusieurs clubs ou aucun).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClubRegistrationMode"
+              }
+            ]
+          }
+        },
+        "required": ["registrationMode"]
+      },
+      "HelloAssoStatusDto": {
+        "type": "object",
+        "properties": {
+          "clubName": {
+            "type": "string"
+          },
+          "helloAssoConnected": {
+            "type": "boolean",
+            "description": "Identifiants HelloAsso renseignés (jamais exposés)"
+          },
+          "organizationSlug": {
+            "type": "string",
+            "nullable": true,
+            "description": "Slug de l'organisation HelloAsso, quand le club est connecté"
+          },
+          "registrationMode": {
+            "deprecated": true,
+            "description": "Déprécié (#665) : le mode d'inscription n'a rien de propre à HelloAsso. Lire `GET /clubs/me/registration-mode`. Conservé pour les applications déjà installées.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClubRegistrationMode"
+              }
+            ]
+          }
+        },
+        "required": ["clubName", "helloAssoConnected", "organizationSlug", "registrationMode"]
+      },
       "ConnectHelloAssoDto": {
         "type": "object",
         "properties": {
@@ -30260,12 +30577,31 @@
         "type": "object",
         "properties": {
           "registrationMode": {
-            "type": "string",
-            "enum": ["CLUB_AND_MEMBERS_PENDING", "CLUB_ONLY", "MEMBERS_AUTO_CONFIRM"],
-            "description": "CLUB_AND_MEMBERS_PENDING = licenciés peuvent s'inscrire, validation par le club ; CLUB_ONLY = seul le club inscrit les licenciés ; MEMBERS_AUTO_CONFIRM = inscriptions licenciés validées automatiquement."
+            "description": "CLUB_AND_MEMBERS_PENDING = licenciés peuvent s'inscrire, validation par le club ; CLUB_ONLY = seul le club inscrit les licenciés ; MEMBERS_AUTO_CONFIRM = inscriptions licenciés validées automatiquement.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClubRegistrationMode"
+              }
+            ]
           }
         },
         "required": ["registrationMode"]
+      },
+      "ClubRegistrationModeUpdatedDto": {
+        "type": "object",
+        "properties": {
+          "clubName": {
+            "type": "string"
+          },
+          "registrationMode": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClubRegistrationMode"
+              }
+            ]
+          }
+        },
+        "required": ["clubName", "registrationMode"]
       },
       "CreatePartnershipDto": {
         "type": "object",
@@ -30337,6 +30673,628 @@
           }
         },
         "required": ["userId"]
+      },
+      "CompetitionEventRegistrationDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "partnerName": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": ["PENDING", "CONFIRMED", "CANCELLED"]
+          },
+          "bibNumber": {
+            "type": "number",
+            "nullable": true
+          },
+          "checkedIn": {
+            "type": "boolean"
+          },
+          "checkInTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "feePaid": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "coupleAgeGroup": {
+            "type": "string",
+            "nullable": true
+          },
+          "coupleDisciplineLatin": {
+            "type": "boolean"
+          },
+          "coupleDisciplineStandard": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "partnerName",
+          "status",
+          "bibNumber",
+          "checkedIn",
+          "checkInTime",
+          "feePaid",
+          "createdAt",
+          "coupleAgeGroup",
+          "coupleDisciplineLatin",
+          "coupleDisciplineStandard"
+        ]
+      },
+      "CompetitionListEventDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "description": "Spécialité : Latin, Standard ou Ten Dance",
+            "example": "Latin"
+          },
+          "ageGroup": {
+            "type": "string",
+            "description": "Classe d'âge de l'épreuve",
+            "example": "Adulte"
+          },
+          "eventType": {
+            "type": "string",
+            "enum": ["SOLO", "COUPLE"]
+          },
+          "level": {
+            "type": "string",
+            "nullable": true,
+            "description": "Niveau d'une épreuve classificatrice",
+            "example": "Avancé"
+          },
+          "eventKind": {
+            "type": "string",
+            "enum": ["CLASSIFICATRICE", "OPEN", "MAJEURE", "SOLO_TEAM", "SHOW_DANSE", null],
+            "nullable": true,
+            "description": "Nature de l'épreuve (Article 9)"
+          },
+          "ageGroups": {
+            "description": "Open : classes d'âge réunies (vide hors Open)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "openLevels": {
+            "description": "Open : niveaux admis (vide = tous niveaux)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "registrations": {
+            "description": "Authentifié uniquement : inscriptions actives (PENDING, CONFIRMED) de l'utilisateur à cette épreuve.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitionEventRegistrationDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "ageGroup",
+          "eventType",
+          "level",
+          "eventKind",
+          "ageGroups",
+          "openLevels"
+        ]
+      },
+      "CompetitionListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ffdId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Identifiant FFD (null : créée dans l'app)"
+          },
+          "title": {
+            "type": "string",
+            "example": "Championnat de France 2026"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Date de début"
+          },
+          "location": {
+            "type": "string",
+            "example": "Palais des Sports"
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "zipCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "nullable": true,
+            "example": "Paris"
+          },
+          "latitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "eventsDescription": {
+            "type": "string",
+            "nullable": true,
+            "description": "Programme des épreuves (texte libre FFD)"
+          },
+          "programUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "PDF du programme des épreuves"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Date de fin"
+          },
+          "type": {
+            "type": "string",
+            "nullable": true,
+            "description": "Libellé libre du type (affichage)"
+          },
+          "competitionType": {
+            "type": "string",
+            "enum": ["PROXIMITE", "NATIONALE", "MAJEURE", "INTERNATIONALE", null],
+            "nullable": true,
+            "description": "Article 8"
+          },
+          "majorSubType": {
+            "type": "string",
+            "nullable": true,
+            "description": "Sous-type d'une compétition MAJEURE"
+          },
+          "organizer": {
+            "type": "string",
+            "nullable": true,
+            "description": "Libellé du club organisateur"
+          },
+          "organizerClubId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Club organisateur relié (#408)"
+          },
+          "circularUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "registrationUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "ticketingUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "layout": {
+            "type": "array",
+            "description": "Plan de salle : éléments libres (`id`, `type`, `label`…)",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "nullable": true
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "registrationDeadline": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Date limite d'inscription"
+          },
+          "eventsSource": {
+            "type": "string",
+            "enum": ["GENERIC", "DESCRIPTION", "CIRCULAR", null],
+            "nullable": true,
+            "description": "Origine des épreuves synchronisées (DESCRIPTION / CIRCULAR = déduites, à vérifier)"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["UPCOMING", "LIVE", "PAST", "CANCELLED"],
+            "example": "UPCOMING"
+          },
+          "delayMinutes": {
+            "type": "number",
+            "description": "Retard annoncé, en minutes",
+            "example": 0
+          },
+          "requireRotatingQr": {
+            "type": "boolean",
+            "description": "QR d'entrée tournant obligatoire au check-in (#668) : les scanners le gardent en cache pour refuser aussi hors ligne un QR statique."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitionListEventDto"
+            }
+          },
+          "isRegistered": {
+            "type": "boolean",
+            "description": "Authentifié uniquement : l'utilisateur est inscrit à au moins une épreuve."
+          },
+          "isEligible": {
+            "type": "boolean",
+            "description": "Authentifié uniquement : au moins une épreuve est ouverte à l'utilisateur."
+          },
+          "isOrganizedByMyClub": {
+            "type": "boolean",
+            "description": "Compte CLUB uniquement : compétition organisée par son club."
+          },
+          "clubMembersRegisteredCount": {
+            "type": "number",
+            "description": "Compte CLUB uniquement : nombre de membres du club inscrits (PENDING, CONFIRMED)."
+          }
+        },
+        "required": [
+          "id",
+          "ffdId",
+          "title",
+          "date",
+          "location",
+          "address",
+          "zipCode",
+          "city",
+          "latitude",
+          "longitude",
+          "description",
+          "eventsDescription",
+          "programUrl",
+          "endDate",
+          "type",
+          "competitionType",
+          "majorSubType",
+          "organizer",
+          "organizerClubId",
+          "circularUrl",
+          "registrationUrl",
+          "ticketingUrl",
+          "layout",
+          "imageUrl",
+          "registrationDeadline",
+          "eventsSource",
+          "status",
+          "delayMinutes",
+          "requireRotatingQr",
+          "createdAt",
+          "updatedAt",
+          "events"
+        ]
+      },
+      "CompetitionPageMetaDto": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number",
+            "example": 100
+          },
+          "skip": {
+            "type": "number",
+            "example": 0
+          },
+          "take": {
+            "type": "number",
+            "example": 10
+          },
+          "hasMore": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": ["total", "skip", "take", "hasMore"]
+      },
+      "CompetitionPageDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitionListItemDto"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/CompetitionPageMetaDto"
+          }
+        },
+        "required": ["data", "meta"]
+      },
+      "CompetitionEventDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "description": "Spécialité : Latin, Standard ou Ten Dance",
+            "example": "Latin"
+          },
+          "ageGroup": {
+            "type": "string",
+            "description": "Classe d'âge de l'épreuve",
+            "example": "Adulte"
+          },
+          "eventType": {
+            "type": "string",
+            "enum": ["SOLO", "COUPLE"]
+          },
+          "level": {
+            "type": "string",
+            "nullable": true,
+            "description": "Niveau d'une épreuve classificatrice",
+            "example": "Avancé"
+          },
+          "eventKind": {
+            "type": "string",
+            "enum": ["CLASSIFICATRICE", "OPEN", "MAJEURE", "SOLO_TEAM", "SHOW_DANSE", null],
+            "nullable": true,
+            "description": "Nature de l'épreuve (Article 9)"
+          },
+          "ageGroups": {
+            "description": "Open : classes d'âge réunies (vide hors Open)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "openLevels": {
+            "description": "Open : niveaux admis (vide = tous niveaux)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "ageGroup",
+          "eventType",
+          "level",
+          "eventKind",
+          "ageGroups",
+          "openLevels"
+        ]
+      },
+      "CompetitionActiveDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ffdId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Identifiant FFD (null : créée dans l'app)"
+          },
+          "title": {
+            "type": "string",
+            "example": "Championnat de France 2026"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Date de début"
+          },
+          "location": {
+            "type": "string",
+            "example": "Palais des Sports"
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "zipCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "nullable": true,
+            "example": "Paris"
+          },
+          "latitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "eventsDescription": {
+            "type": "string",
+            "nullable": true,
+            "description": "Programme des épreuves (texte libre FFD)"
+          },
+          "programUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "PDF du programme des épreuves"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Date de fin"
+          },
+          "type": {
+            "type": "string",
+            "nullable": true,
+            "description": "Libellé libre du type (affichage)"
+          },
+          "competitionType": {
+            "type": "string",
+            "enum": ["PROXIMITE", "NATIONALE", "MAJEURE", "INTERNATIONALE", null],
+            "nullable": true,
+            "description": "Article 8"
+          },
+          "majorSubType": {
+            "type": "string",
+            "nullable": true,
+            "description": "Sous-type d'une compétition MAJEURE"
+          },
+          "organizer": {
+            "type": "string",
+            "nullable": true,
+            "description": "Libellé du club organisateur"
+          },
+          "organizerClubId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Club organisateur relié (#408)"
+          },
+          "circularUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "registrationUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "ticketingUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "layout": {
+            "type": "array",
+            "description": "Plan de salle : éléments libres (`id`, `type`, `label`…)",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "nullable": true
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "registrationDeadline": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Date limite d'inscription"
+          },
+          "eventsSource": {
+            "type": "string",
+            "enum": ["GENERIC", "DESCRIPTION", "CIRCULAR", null],
+            "nullable": true,
+            "description": "Origine des épreuves synchronisées (DESCRIPTION / CIRCULAR = déduites, à vérifier)"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["UPCOMING", "LIVE", "PAST", "CANCELLED"],
+            "example": "UPCOMING"
+          },
+          "delayMinutes": {
+            "type": "number",
+            "description": "Retard annoncé, en minutes",
+            "example": 0
+          },
+          "requireRotatingQr": {
+            "type": "boolean",
+            "description": "QR d'entrée tournant obligatoire au check-in (#668) : les scanners le gardent en cache pour refuser aussi hors ligne un QR statique."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitionEventDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "ffdId",
+          "title",
+          "date",
+          "location",
+          "address",
+          "zipCode",
+          "city",
+          "latitude",
+          "longitude",
+          "description",
+          "eventsDescription",
+          "programUrl",
+          "endDate",
+          "type",
+          "competitionType",
+          "majorSubType",
+          "organizer",
+          "organizerClubId",
+          "circularUrl",
+          "registrationUrl",
+          "ticketingUrl",
+          "layout",
+          "imageUrl",
+          "registrationDeadline",
+          "eventsSource",
+          "status",
+          "delayMinutes",
+          "requireRotatingQr",
+          "createdAt",
+          "updatedAt",
+          "events"
+        ]
       },
       "RegisterMemberDto": {
         "type": "object",
@@ -30624,6 +31582,230 @@
         },
         "required": ["events", "schedule"]
       },
+      "CompetitionScheduleItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "example": "EVENT"
+          },
+          "eventId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Épreuve concernée"
+          }
+        },
+        "required": ["id", "startTime", "title", "type", "eventId"]
+      },
+      "CompetitionDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ffdId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Identifiant FFD (null : créée dans l'app)"
+          },
+          "title": {
+            "type": "string",
+            "example": "Championnat de France 2026"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Date de début"
+          },
+          "location": {
+            "type": "string",
+            "example": "Palais des Sports"
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "zipCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "nullable": true,
+            "example": "Paris"
+          },
+          "latitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "eventsDescription": {
+            "type": "string",
+            "nullable": true,
+            "description": "Programme des épreuves (texte libre FFD)"
+          },
+          "programUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "PDF du programme des épreuves"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Date de fin"
+          },
+          "type": {
+            "type": "string",
+            "nullable": true,
+            "description": "Libellé libre du type (affichage)"
+          },
+          "competitionType": {
+            "type": "string",
+            "enum": ["PROXIMITE", "NATIONALE", "MAJEURE", "INTERNATIONALE", null],
+            "nullable": true,
+            "description": "Article 8"
+          },
+          "majorSubType": {
+            "type": "string",
+            "nullable": true,
+            "description": "Sous-type d'une compétition MAJEURE"
+          },
+          "organizer": {
+            "type": "string",
+            "nullable": true,
+            "description": "Libellé du club organisateur"
+          },
+          "organizerClubId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Club organisateur relié (#408)"
+          },
+          "circularUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "registrationUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "ticketingUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "layout": {
+            "type": "array",
+            "description": "Plan de salle : éléments libres (`id`, `type`, `label`…)",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "nullable": true
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "registrationDeadline": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Date limite d'inscription"
+          },
+          "eventsSource": {
+            "type": "string",
+            "enum": ["GENERIC", "DESCRIPTION", "CIRCULAR", null],
+            "nullable": true,
+            "description": "Origine des épreuves synchronisées (DESCRIPTION / CIRCULAR = déduites, à vérifier)"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["UPCOMING", "LIVE", "PAST", "CANCELLED"],
+            "example": "UPCOMING"
+          },
+          "delayMinutes": {
+            "type": "number",
+            "description": "Retard annoncé, en minutes",
+            "example": 0
+          },
+          "requireRotatingQr": {
+            "type": "boolean",
+            "description": "QR d'entrée tournant obligatoire au check-in (#668) : les scanners le gardent en cache pour refuser aussi hors ligne un QR statique."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitionEventDto"
+            }
+          },
+          "schedule": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitionScheduleItemDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "ffdId",
+          "title",
+          "date",
+          "location",
+          "address",
+          "zipCode",
+          "city",
+          "latitude",
+          "longitude",
+          "description",
+          "eventsDescription",
+          "programUrl",
+          "endDate",
+          "type",
+          "competitionType",
+          "majorSubType",
+          "organizer",
+          "organizerClubId",
+          "circularUrl",
+          "registrationUrl",
+          "ticketingUrl",
+          "layout",
+          "imageUrl",
+          "registrationDeadline",
+          "eventsSource",
+          "status",
+          "delayMinutes",
+          "requireRotatingQr",
+          "createdAt",
+          "updatedAt",
+          "events",
+          "schedule"
+        ]
+      },
       "RegisterEventDto": {
         "type": "object",
         "properties": {
@@ -30796,7 +31978,8 @@
           },
           "anonymisedKept": {
             "type": "number",
-            "description": "Lignes gardées parce qu'elles portent un effacement RGPD (compte supprimé, partenaire supprimé)",
+            "nullable": true,
+            "description": "Lignes gardées parce qu'elles portent un effacement RGPD (compte supprimé, partenaire supprimé). null pour le club organisateur (#713), comme dans le rapport d'import : le nombre reste au journal d'audit.",
             "example": 0
           }
         },
@@ -31729,6 +32912,38 @@
           }
         },
         "required": ["version", "stepSeconds", "toleranceSteps", "keys"]
+      },
+      "PrivacyPolicyNoticeDto": {
+        "type": "object",
+        "properties": {
+          "currentVersion": {
+            "type": "string",
+            "example": "2026-10-17",
+            "description": "Version en vigueur de la politique de confidentialité"
+          },
+          "seenVersion": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-10-17",
+            "description": "Dernière version signalée à l'utilisateur et dont il a pris connaissance (null : aucune)"
+          },
+          "pending": {
+            "type": "boolean",
+            "description": "true : afficher l'avis « la politique de confidentialité a été mise à jour »"
+          }
+        },
+        "required": ["currentVersion", "seenVersion", "pending"]
+      },
+      "AcknowledgePrivacyPolicyDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "example": "2026-10-17",
+            "description": "Version dont l'utilisateur a pris connaissance"
+          }
+        },
+        "required": ["version"]
       },
       "CreateCheckoutDto": {
         "type": "object",

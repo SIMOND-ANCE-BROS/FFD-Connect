@@ -37,6 +37,7 @@ describe("AuthService", () => {
       create: jest.fn(),
       findFirst: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
   };
 
@@ -646,7 +647,9 @@ describe("AuthService", () => {
 
     it("admin impersonne un licencié : token signé avec impersonatedBy + audit", async () => {
       mockPrismaService.user.findUnique.mockResolvedValue(licenseeTarget);
-      mockPrismaService.impersonationLog.create.mockResolvedValue({});
+      mockPrismaService.impersonationLog.create.mockResolvedValue({
+        id: "log-1",
+      });
       mockJwtService.sign.mockReturnValue("imp-token");
 
       const res = await service.impersonate(
@@ -658,16 +661,53 @@ describe("AuthService", () => {
       );
 
       expect(res.access_token).toBe("imp-token");
+      // The token names its journal row (#733) and lives 15 minutes.
       expect(mockJwtService.sign).toHaveBeenCalledWith(
-        expect.objectContaining({ sub: "target-1", impersonatedBy: "admin-1" }),
-        expect.objectContaining({ expiresIn: expect.stringContaining("m") }),
+        expect.objectContaining({
+          sub: "target-1",
+          impersonatedBy: "admin-1",
+          impersonationLogId: "log-1",
+        }),
+        { expiresIn: "15m" },
       );
+      expect(mockPrismaService.impersonationLog.create).toHaveBeenCalledWith({
+        data: {
+          actorId: "admin-1",
+          actorRole: UserRole.ADMIN,
+          targetUserId: "target-1",
+          targetRole: UserRole.LICENSEE,
+          reason: null,
+          ip: "1.2.3.4",
+        },
+        select: { id: true },
+      });
+    });
+
+    it("admin peut cibler un compte staff, motif conservé (#733)", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        ...licenseeTarget,
+        role: UserRole.STAFF,
+      });
+      mockPrismaService.impersonationLog.create.mockResolvedValue({
+        id: "log-2",
+      });
+      mockJwtService.sign.mockReturnValue("imp-token");
+
+      await expect(
+        service.impersonate(
+          "admin-1",
+          [UserRole.ADMIN],
+          { userId: "target-1" },
+          "  Ticket 42  ",
+          undefined,
+        ),
+      ).resolves.toHaveProperty("access_token", "imp-token");
       expect(mockPrismaService.impersonationLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            actorId: "admin-1",
-            targetUserId: "target-1",
-            targetRole: UserRole.LICENSEE,
+            targetRole: UserRole.STAFF,
+            reason: "Ticket 42",
+            ip: null,
           }),
         }),
       );
@@ -708,17 +748,32 @@ describe("AuthService", () => {
       expect(mockPrismaService.impersonationLog.create).not.toHaveBeenCalled();
     });
 
-    it("refuse un acteur non admin/staff", async () => {
-      await expect(
-        service.impersonate(
-          "u-1",
-          [UserRole.LICENSEE],
-          { userId: "target-1" },
-          undefined,
-          undefined,
-        ),
-      ).rejects.toThrow(ForbiddenException);
-    });
+    it.each([
+      ["licencié", [UserRole.LICENSEE]],
+      ["staff (#733)", [UserRole.STAFF]],
+      ["club + staff (#733)", [UserRole.CLUB, UserRole.STAFF]],
+    ])(
+      "refuse un acteur non admin (%s), sans rien journaliser",
+      async (_label, roles) => {
+        mockPrismaService.user.findUnique.mockResolvedValue(licenseeTarget);
+        await expect(
+          service.impersonate(
+            "u-1",
+            roles,
+            { userId: "target-1" },
+            "support",
+            undefined,
+          ),
+        ).rejects.toThrow(
+          new ForbiddenException("Impersonation réservée à l'administrateur."),
+        );
+        expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+        expect(
+          mockPrismaService.impersonationLog.create,
+        ).not.toHaveBeenCalled();
+        expect(mockJwtService.sign).not.toHaveBeenCalled();
+      },
+    );
 
     it("refuse de s'impersonner soi-même", async () => {
       mockPrismaService.user.findUnique.mockResolvedValue({
@@ -782,19 +837,6 @@ describe("AuthService", () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it("staff sans raison → BadRequest", async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(licenseeTarget);
-      await expect(
-        service.impersonate(
-          "staff-1",
-          [UserRole.STAFF],
-          { userId: "target-1" },
-          "  ",
-          undefined,
-        ),
-      ).rejects.toThrow(BadRequestException);
-    });
-
     it("refuse d'impersonner un compte dont le rôle ADMIN est un rôle supplémentaire", async () => {
       mockPrismaService.user.findUnique.mockResolvedValue({
         ...licenseeTarget,
@@ -810,23 +852,6 @@ describe("AuthService", () => {
           undefined,
         ),
       ).rejects.toThrow("Impossible d'impersonner un administrateur.");
-    });
-
-    it("refuse un acteur staff qui cible un compte avec un rôle STAFF supplémentaire", async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue({
-        ...licenseeTarget,
-        role: UserRole.LICENSEE,
-        extraRoles: [UserRole.STAFF],
-      });
-      await expect(
-        service.impersonate(
-          "staff-1",
-          [UserRole.STAFF],
-          { userId: "target-1" },
-          "support",
-          undefined,
-        ),
-      ).rejects.toThrow("Un staff ne peut cibler qu'un licencié ou un club.");
     });
 
     it("applique les règles admin à un acteur ADMIN + STAFF", async () => {
@@ -859,7 +884,9 @@ describe("AuthService", () => {
               : { role: UserRole.LICENSEE },
           ),
       );
-      mockPrismaService.impersonationLog.create.mockResolvedValue({});
+      mockPrismaService.impersonationLog.create.mockResolvedValue({
+        id: "log-1",
+      });
       mockJwtService.sign.mockReturnValue("imp-token");
 
       await service.impersonate(
@@ -875,50 +902,45 @@ describe("AuthService", () => {
           actorRole: UserRole.ADMIN,
           targetRole: UserRole.CLUB,
         }),
+        select: { id: true },
       });
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledTimes(1);
     });
 
-    it("journalise STAFF quand le staff (sans ADMIN) autorise l'impersonation", async () => {
-      mockPrismaService.user.findUnique.mockImplementation(
-        ({ where }: { where: { id?: string } }) =>
-          Promise.resolve(
-            where.id === "target-1" ? licenseeTarget : { role: UserRole.CLUB },
-          ),
-      );
-      mockPrismaService.impersonationLog.create.mockResolvedValue({});
-      mockJwtService.sign.mockReturnValue("imp-token");
+    describe("stopImpersonation (#733)", () => {
+      it("clôt exactement la ligne du journal portée par le jeton", async () => {
+        mockPrismaService.impersonationLog.updateMany.mockResolvedValue({
+          count: 1,
+        });
 
-      await service.impersonate(
-        "staff-1",
-        [UserRole.CLUB, UserRole.STAFF],
-        { userId: "target-1" },
-        "support",
-        undefined,
-      );
+        await service.stopImpersonation("admin-1", "log-1");
 
-      expect(mockPrismaService.impersonationLog.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          actorRole: UserRole.STAFF,
-          targetRole: UserRole.LICENSEE,
-        }),
+        expect(
+          mockPrismaService.impersonationLog.updateMany,
+        ).toHaveBeenCalledWith({
+          where: { id: "log-1", actorId: "admin-1", endedAt: null },
+          data: { endedAt: expect.any(Date) },
+        });
+        expect(
+          mockPrismaService.impersonationLog.findFirst,
+        ).not.toHaveBeenCalled();
       });
-    });
 
-    it("stopImpersonation clôt le log ouvert", async () => {
-      mockPrismaService.impersonationLog.findFirst.mockResolvedValue({
-        id: "log-1",
+      it("ne fait rien sans identifiant de session", async () => {
+        await service.stopImpersonation("admin-1", undefined);
+        expect(
+          mockPrismaService.impersonationLog.updateMany,
+        ).not.toHaveBeenCalled();
       });
-      mockPrismaService.impersonationLog.update.mockResolvedValue({});
 
-      await service.stopImpersonation("admin-1");
-
-      expect(mockPrismaService.impersonationLog.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: "log-1" },
-          data: expect.objectContaining({ endedAt: expect.any(Date) }),
-        }),
-      );
+      it("ignore une ligne déjà close ou d'un autre acteur", async () => {
+        mockPrismaService.impersonationLog.updateMany.mockResolvedValue({
+          count: 0,
+        });
+        await expect(
+          service.stopImpersonation("admin-2", "log-1"),
+        ).resolves.toBeUndefined();
+      });
     });
   });
 });

@@ -84,6 +84,7 @@ describe('results import helpers', () => {
       'Aucun résultat importé à supprimer.',
     );
     expect(deletionSummary({ deleted: 1, anonymisedKept: 0 })).toBe('1 résultat supprimé.');
+    expect(deletionSummary({ deleted: 1, anonymisedKept: null })).toBe('1 résultat supprimé.');
     expect(deletionSummary({ deleted: 3, anonymisedKept: 1 })).toBe(
       '3 résultats supprimés ; 1 ligne anonymisée conservée (effacement RGPD).',
     );

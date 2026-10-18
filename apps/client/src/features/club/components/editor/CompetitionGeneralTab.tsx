@@ -146,8 +146,8 @@ export const CompetitionGeneralTab: React.FC<Props> = ({
                   styles.chipRadius8,
                   isSelected
                     ? {
-                        backgroundColor: theme.primary,
-                        borderColor: theme.primary,
+                        backgroundColor: theme.primaryFill,
+                        borderColor: theme.primaryFill,
                       }
                     : { borderColor: theme.border },
                 ]}

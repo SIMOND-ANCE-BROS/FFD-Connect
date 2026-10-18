@@ -5,36 +5,29 @@
 
 import { TrackCorrectionStatus } from "@prisma/client";
 
-/**
- * Sélecteur pour les informations utilisateur de base (sans mot de passe)
- */
-export const userBaseSelect = {
-  id: true,
-  email: true,
-  firstName: true,
-  lastName: true,
-  role: true,
-  createdAt: true,
-  updatedAt: true,
-  ageGroup: true,
-  category: true,
-  clubId: true,
-  clubName: true,
-  birthDate: true,
-  nationalRanking: true,
-  passportLevelLatin: true,
-  passportLevelStandard: true,
+/** Niveaux de compétition par discipline (source de vérité, #239). */
+export const competitionLevelsPerDisciplineSelect = {
+  competitionLevelLatin: true,
+  competitionLevelStandard: true,
 } as const;
 
 /**
  * Niveaux de compétition d'un utilisateur : un par discipline + l'ancien
- * niveau unique (déprécié, lu en repli). À lire via
- * getCompetitionLevelForCategory (src/common/competition-level).
+ * niveau unique (déprécié, lu en repli seulement si aucun niveau par
+ * discipline ; colonne supprimée en phase 2 de #239). À lire via
+ * getCompetitionLevelForCategory (src/common/competition-level) et à servir
+ * via withDerivedCompetitionLevel.
  */
 export const competitionLevelsSelect = {
+  ...competitionLevelsPerDisciplineSelect,
   competitionLevel: true,
-  competitionLevelLatin: true,
-  competitionLevelStandard: true,
+} as const;
+
+/** Reprise des niveaux par discipline depuis l'ancien niveau unique (#239). */
+export const userCompetitionLevelBackfillSelect = {
+  id: true,
+  category: true,
+  competitionLevel: true,
 } as const;
 
 /** Champs du profil dont dépend l'éligibilité à une épreuve. */
@@ -62,66 +55,6 @@ export const partnershipCandidateSelect = {
 } as const;
 
 /**
- * Sélecteur pour les informations utilisateur avec licence
- */
-export const userWithLicenseSelect = {
-  ...userBaseSelect,
-  license: {
-    select: {
-      id: true,
-      number: true,
-      validUntil: true,
-      category: true,
-      clubName: true,
-      qrCodeSignature: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  },
-} as const;
-
-/**
- * Sélecteur pour les informations utilisateur minimales (pour les listes)
- */
-export const userMinimalSelect = {
-  id: true,
-  firstName: true,
-  lastName: true,
-  email: true,
-  clubName: true,
-  nationalRanking: true,
-} as const;
-
-/**
- * Sélecteur pour les compétitions de base
- */
-export const competitionBaseSelect = {
-  id: true,
-  ffdId: true,
-  title: true,
-  date: true,
-  location: true,
-  address: true,
-  zipCode: true,
-  city: true,
-  latitude: true,
-  longitude: true,
-  description: true,
-  eventsDescription: true,
-  programUrl: true,
-  endDate: true,
-  type: true,
-  organizer: true,
-  circularUrl: true,
-  registrationUrl: true,
-  imageUrl: true,
-  status: true,
-  delayMinutes: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
-
-/**
  * Champs minimaux de la compétition pour la logique d'inscription
  * (évite de charger le JSON de layout). `registrationDeadline` sert au
  * contrôle serveur de la date limite (#821).
@@ -135,44 +68,35 @@ export const competitionForRegistrationSelect = {
 } as const;
 
 /**
- * Sélecteur pour les événements de base
+ * Inscriptions en attente vues par le club (#753), GET
+ * /competitions/club/pending-registrations : le contrat
+ * `ClubPendingRegistration` du client, plus `createdAt` (date affichée).
  */
-export const eventBaseSelect = {
+export const clubPendingRegistrationSelect = {
   id: true,
-  category: true,
-  ageGroup: true,
-  competitionId: true,
-} as const;
-
-/**
- * Sélecteur pour les inscriptions de base
- */
-export const registrationBaseSelect = {
-  id: true,
-  userId: true,
   eventId: true,
+  userId: true,
   partnerName: true,
   status: true,
-  bibNumber: true,
-  checkedIn: true,
-  checkInTime: true,
-  feePaid: true,
   createdAt: true,
-  updatedAt: true,
-} as const;
-
-/**
- * Sélecteur pour les notifications de base
- */
-export const notificationBaseSelect = {
-  id: true,
-  userId: true,
-  title: true,
-  body: true,
-  type: true,
-  read: true,
-  createdAt: true,
-  updatedAt: true,
+  user: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      clubName: true,
+    },
+  },
+  event: {
+    select: {
+      id: true,
+      category: true,
+      ageGroup: true,
+      eventType: true,
+      competitionId: true,
+    },
+  },
 } as const;
 
 /**
@@ -764,6 +688,40 @@ export const impersonationLogExportSelect = {
   reason: true,
   startedAt: true,
   endedAt: true,
+  // Writes made during the session (#761), in order. Bounded above the real
+  // maximum (15 minutes × 100 requests/min under the global throttler).
+  actions: {
+    select: {
+      method: true,
+      route: true,
+      statusCode: true,
+      at: true,
+    },
+    orderBy: { at: "asc" },
+    take: 2000,
+  },
+  // Total count, so a truncated list shows in the export.
+  _count: { select: { actions: true } },
+} as const;
+
+/**
+ * Accès support (#733) : ce que `JwtStrategy` relit de la ligne du journal
+ * désignée par le jeton d'impersonation, à chaque requête de la session.
+ */
+export const impersonationLogSessionSelect = {
+  actorId: true,
+  targetUserId: true,
+  startedAt: true,
+  endedAt: true,
+} as const;
+
+/**
+ * Rétention du journal des accès support (#731) : ce que la troncature de
+ * l'adresse IP de l'intervenant relit, rien d'autre.
+ */
+export const impersonationLogIpSelect = {
+  id: true,
+  ip: true,
 } as const;
 
 /**
@@ -1237,6 +1195,21 @@ export const healthDataAccessLogSelect = {
   createdAt: true,
 } as const;
 
+/**
+ * Export RGPD (#732) : accès aux données de santé de l'utilisateur (lignes dont
+ * il est la personne concernée). Qualité de l'auteur, nature, ressource, point
+ * d'entrée et date — jamais l'identifiant de l'auteur (`actorUserId`, donnée
+ * d'un tiers, même règle que les accès support) ni les UUID internes (`id`,
+ * `resourceId`), sans valeur pour la personne.
+ */
+export const healthDataAccessLogExportSelect = {
+  actorRole: true,
+  action: true,
+  resourceType: true,
+  route: true,
+  createdAt: true,
+} as const;
+
 /** Back-office: club options for selects (id + name only). */
 export const adminClubOptionSelect = { id: true, name: true } as const;
 
@@ -1293,7 +1266,7 @@ export const adminUserEditableSelect = {
   ageGroup: true,
   passportLevelLatin: true,
   passportLevelStandard: true,
-  ...competitionLevelsSelect,
+  ...competitionLevelsPerDisciplineSelect,
   nationalRanking: true,
   role: true,
   extraRoles: true,
@@ -1400,6 +1373,23 @@ export const clubHelloAssoStatusSelect = {
   helloAssoClientId: true,
   helloAssoClientSecret: true,
   helloAssoOrgSlug: true,
+} as const;
+
+/** A club's registration mode (registration policy of its members). */
+export const clubRegistrationModeSelect = {
+  registrationMode: true,
+} as const;
+
+/** A club's name and registration mode (club settings). */
+export const clubNameRegistrationModeSelect = {
+  name: true,
+  registrationMode: true,
+} as const;
+
+/** A user's club reference: linked id, or the legacy free-text name. */
+export const userClubRefSelect = {
+  clubId: true,
+  clubName: true,
 } as const;
 
 /** Back-office club page: one member row. */
@@ -1597,6 +1587,11 @@ export const parentalConsentSubjectSelect = {
   firstName: true,
   email: true,
   birthDate: true,
+} as const;
+
+/** Avis de mise à jour de la politique de confidentialité (#734). */
+export const privacyPolicySeenVersionSelect = {
+  privacyPolicySeenVersion: true,
 } as const;
 
 /** Parental consent (#61): birth date only, for the health-data gate. */

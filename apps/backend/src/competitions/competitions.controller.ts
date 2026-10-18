@@ -43,6 +43,11 @@ import { CompetitionResultsService } from "./services/competition-results.servic
 import { CheckInDto, CheckInResponseDto } from "./dto/checkin.dto";
 import { CompetitionResultDto } from "./dto/competition-result.dto";
 import {
+  ApiActiveCompetitionResponse,
+  CompetitionDetailDto,
+  CompetitionPageDto,
+} from "./dto/competition-response.dto";
+import {
   CompetitionProgramDto,
   ReplaceCompetitionProgramDto,
 } from "./dto/competition-program.dto";
@@ -104,38 +109,7 @@ export class CompetitionsController {
   @ApiResponse({
     status: 200,
     description: "Liste paginée des compétitions récupérée avec succès",
-    schema: {
-      type: "object",
-      properties: {
-        data: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id: { type: "string", example: "comp-123" },
-              name: { type: "string", example: "Championnat de France 2026" },
-              startDate: { type: "string", format: "date-time" },
-              endDate: { type: "string", format: "date-time" },
-              location: { type: "string", example: "Paris, France" },
-              status: {
-                type: "string",
-                enum: ["UPCOMING", "ACTIVE", "COMPLETED"],
-                example: "UPCOMING",
-              },
-            },
-          },
-        },
-        meta: {
-          type: "object",
-          properties: {
-            total: { type: "number", example: 100 },
-            skip: { type: "number", example: 0 },
-            take: { type: "number", example: 10 },
-            hasMore: { type: "boolean", example: true },
-          },
-        },
-      },
-    },
+    type: CompetitionPageDto,
   })
   findAll(
     @Request() req: { user?: { userId: string } },
@@ -146,39 +120,11 @@ export class CompetitionsController {
 
   @Get("active")
   @ApiOperation({
-    summary: "Récupère la compétition active du jour",
+    summary: "Récupère la compétition du jour",
     description:
-      "Retourne la compétition qui est actuellement en cours (date du jour entre startDate et endDate).",
+      "Retourne la première compétition dont la date de début (`date`) tombe aujourd'hui (heure du serveur), avec ses épreuves, ou `null` s'il n'y en a aucune. Pas de 404.",
   })
-  @ApiResponse({
-    status: 200,
-    description: "Compétition active trouvée",
-    schema: {
-      type: "object",
-      properties: {
-        id: { type: "string" },
-        name: { type: "string" },
-        startDate: { type: "string", format: "date-time" },
-        endDate: { type: "string", format: "date-time" },
-        location: { type: "string" },
-        status: { type: "string", enum: ["ACTIVE"] },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 404,
-    description: "Aucune compétition active trouvée pour aujourd'hui",
-    schema: {
-      type: "object",
-      properties: {
-        statusCode: { type: "number", example: 404 },
-        message: {
-          type: "string",
-          example: "No active competition found",
-        },
-      },
-    },
-  })
+  @ApiActiveCompetitionResponse()
   findActive() {
     return this.queryService.findActiveCompetition();
   }
@@ -290,13 +236,16 @@ export class CompetitionsController {
   }
 
   @Post("unregister-member")
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  // Frees a (possibly paid) seat and notifies the member: never from a
+  // support session (#761).
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Désinscrire un membre du club (organisateur)",
     description:
-      "Désinscrit un licencié du club. Le membre reçoit une notification.",
+      "Désinscrit un licencié du club. Le membre reçoit une notification. " +
+      "Refusé (403) pendant un accès support (« se connecter en tant que »).",
   })
   @ApiBody({ type: UnregisterMemberDto })
   @ApiResponse({ status: 200, description: "Désinscription effectuée" })
@@ -577,7 +526,7 @@ export class CompetitionsController {
   @ApiOperation({
     summary: "Récupère les détails d'une compétition",
     description:
-      "Retourne les informations détaillées d'une compétition spécifique, incluant tous ses événements et inscriptions.",
+      "Retourne les informations détaillées d'une compétition spécifique, avec ses épreuves et son planning.",
   })
   @ApiParam({
     name: "id",
@@ -587,35 +536,7 @@ export class CompetitionsController {
   @ApiResponse({
     status: 200,
     description: "Détails de la compétition récupérés avec succès",
-    schema: {
-      type: "object",
-      properties: {
-        id: { type: "string" },
-        name: { type: "string" },
-        startDate: { type: "string", format: "date-time" },
-        endDate: { type: "string", format: "date-time" },
-        location: { type: "string" },
-        status: { type: "string" },
-        requireRotatingQr: {
-          type: "boolean",
-          description:
-            "QR d'entrée tournant obligatoire au check-in (#668) : les scanners le gardent en cache pour refuser aussi hors ligne un QR statique.",
-        },
-        events: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              name: { type: "string" },
-              category: { type: "string" },
-              level: { type: "string" },
-              registrations: { type: "array" },
-            },
-          },
-        },
-      },
-    },
+    type: CompetitionDetailDto,
   })
   @ApiResponse({
     status: 404,
@@ -865,13 +786,15 @@ export class CompetitionsController {
   }
 
   @Post(":id/unregister")
-  @UseGuards(JwtAuthGuard, ThrottlerUserGuard)
+  // Frees a (possibly paid) seat: never from a support session (#761).
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, ThrottlerUserGuard)
   @Throttle({ default: { ttl: 60_000, limit: 5 } }) // 5 désinscriptions/min per user
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Désinscrit un utilisateur d'un événement de compétition",
     description:
-      "Permet à un utilisateur de se désinscrire d'un événement auquel il était inscrit.",
+      "Permet à un utilisateur de se désinscrire d'un événement auquel il était inscrit. " +
+      "Refusé (403) pendant un accès support (« se connecter en tant que »).",
   })
   @ApiParam({ name: "id", description: "ID de la compétition" })
   @ApiBody({ type: UnregisterEventDto })

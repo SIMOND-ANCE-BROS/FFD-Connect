@@ -1,11 +1,13 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { PartnershipStatus, Prisma, UserRole } from "@prisma/client";
 import { hasRole, withActiveRole } from "../auth/roles";
+import { withDerivedCompetitionLevel } from "../common/competition-level";
 import {
   competitionLevelsSelect,
   userRolesClubSelect,
 } from "../utils/prisma-selects";
 import { PrismaService } from "../prisma/prisma.service";
+import { clubMembersScopeOf } from "../competitions/competition-organizer";
 import { ClubsService } from "./clubs.service";
 
 @Injectable()
@@ -65,22 +67,13 @@ export class PartnershipQueryService {
       throw new BadRequestException("Only club role can manage club data");
     }
 
-    const primaryClubId =
-      await this.clubsService.getClubIdForOrganizer(organizerUserId);
+    // The account's club, by id (#749): a legacy account resolving to no
+    // single active club (homonyms…) lists nobody — never a bare name match.
+    const scope = await clubMembersScopeOf(this.prisma, organizer);
+    if (!scope) return [];
 
-    const primaryCondition: Prisma.UserWhereInput = organizer.clubId
-      ? { clubId: primaryClubId }
-      : organizer.clubName?.trim()
-        ? {
-            clubName: {
-              equals: organizer.clubName.trim(),
-              mode: "insensitive",
-            },
-          }
-        : { clubId: primaryClubId };
-
-    const orConditions: Prisma.UserWhereInput[] = [primaryCondition];
-    if (secondaryClubId && secondaryClubId !== primaryClubId) {
+    const orConditions: Prisma.UserWhereInput[] = [scope.members];
+    if (secondaryClubId && secondaryClubId !== scope.clubId) {
       orConditions.push({ clubId: secondaryClubId });
     }
 
@@ -144,6 +137,9 @@ export class PartnershipQueryService {
       busyIds.add(p.user2Id);
     }
 
-    return valid.filter((m) => !busyIds.has(m.id));
+    // Deprecated single level derived for older app versions (#239).
+    return valid
+      .filter((m) => !busyIds.has(m.id))
+      .map((m) => withDerivedCompetitionLevel(m));
   }
 }

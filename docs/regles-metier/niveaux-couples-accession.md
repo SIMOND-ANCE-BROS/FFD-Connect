@@ -8,7 +8,7 @@ Ce document décrit comment l'application gère le **niveau de compétition** (D
 
 - Le niveau de compétition est **propre à chaque discipline** : un danseur peut être Débutant en Standards et International en Latines.
 - Il est stocké sur l'utilisateur dans `competitionLevelLatin` et `competitionLevelStandard`.
-- L'ancien champ unique `competitionLevel` est **déprécié** : il n'est plus lu qu'en repli (anciennes versions de l'app, rollback) et sera supprimé dans une migration ultérieure. La migration `20261009150000_user_competition_level_per_discipline` l'a recopié au mieux : discipline déclarée Latin → niveau Latines seulement, Standard → niveau Standards seulement, sinon (10 danses ou inconnue) les deux.
+- L'ancien champ unique `competitionLevel` est **déprécié** (#239) : il n'est plus lu qu'en repli, pour un profil qui n'a **aucun** niveau par discipline ; l'API le sert encore aux anciennes versions de l'app, dérivé des niveaux par discipline (le plus élevé). Retrait en deux phases : `docs/exploitation/retrait-niveau-competition-unique.md`. La migration `20261009150000_user_competition_level_per_discipline` l'a recopié au mieux : discipline déclarée Latin → niveau Latines seulement, Standard → niveau Standards seulement, sinon (10 danses ou inconnue) les deux.
 - Un back-office qui n'envoie que l'ancien champ voit sa valeur recopiée dans les deux disciplines.
 - Toute règle qui dépend du niveau le lit via `getCompetitionLevelForCategory(user, disciplineDeLÉpreuve)` (`apps/backend/src/common/competition-level`).
 

@@ -7,6 +7,7 @@ import {
 } from "@nestjs/throttler";
 import { TestingModuleBuilder } from "@nestjs/testing";
 import { SessionCleanupService } from "./../src/auth/session-cleanup.service";
+import { ResultsNotificationScheduler } from "./../src/competitions/services/results-notification.scheduler";
 import { API_GLOBAL_PREFIX } from "./../src/common/api-prefix";
 import { HEALTH_PREFIX_EXCLUDE } from "./../src/health/health.controller";
 import { ThrottlerUserGuard } from "./../src/common/guards/throttler-user.guard";
@@ -47,44 +48,53 @@ const mockQueue = {
 export function applyE2EOverrides(
   builder: TestingModuleBuilder,
 ): TestingModuleBuilder {
-  return builder
-    .overrideProvider(SessionCleanupService)
-    .useValue({
-      onModuleInit: jest.fn(),
-      cleanupExpiredSessions: jest.fn(),
-      cleanupUserSessions: jest.fn(),
-      manualCleanup: jest.fn(),
-    })
-    .overrideProvider(MetricsService)
-    .useValue({
-      onModuleInit: jest.fn(),
-      recordHttpMetric: jest.fn(),
-      recordDatabaseMetric: jest.fn(),
-    })
-    .overrideProvider(SyncProcessor)
-    .useValue({ process: jest.fn() })
-    .overrideProvider(getQueueToken("ffd-sync"))
-    .useValue(mockQueue)
-    .overrideGuard(ThrottlerGuard)
-    .useValue({ canActivate: () => true })
-    .overrideGuard(ThrottlerUserGuard)
-    .useValue({ canActivate: () => true })
-    .overrideProvider(ThrottlerStorageService)
-    .useValue({
-      increment: jest.fn().mockResolvedValue({
-        totalHits: 1,
-        timeToExpire: 60000,
-        isBlocked: false,
-        timeToBlockExpire: 0,
-      }),
-    })
-    .overrideProvider(ThrottlerStorage)
-    .useValue({
-      increment: jest.fn().mockResolvedValue({
-        totalHits: 1,
-        timeToExpire: 60000,
-        isBlocked: false,
-        timeToBlockExpire: 0,
-      }),
-    });
+  return (
+    builder
+      .overrideProvider(SessionCleanupService)
+      .useValue({
+        onModuleInit: jest.fn(),
+        cleanupExpiredSessions: jest.fn(),
+        cleanupUserSessions: jest.fn(),
+        manualCleanup: jest.fn(),
+      })
+      // Results notification pass (#713): no boot pass against the test DB.
+      .overrideProvider(ResultsNotificationScheduler)
+      .useValue({
+        onModuleInit: jest.fn(),
+        handleCron: jest.fn(),
+        runPass: jest.fn(),
+      })
+      .overrideProvider(MetricsService)
+      .useValue({
+        onModuleInit: jest.fn(),
+        recordHttpMetric: jest.fn(),
+        recordDatabaseMetric: jest.fn(),
+      })
+      .overrideProvider(SyncProcessor)
+      .useValue({ process: jest.fn() })
+      .overrideProvider(getQueueToken("ffd-sync"))
+      .useValue(mockQueue)
+      .overrideGuard(ThrottlerGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(ThrottlerUserGuard)
+      .useValue({ canActivate: () => true })
+      .overrideProvider(ThrottlerStorageService)
+      .useValue({
+        increment: jest.fn().mockResolvedValue({
+          totalHits: 1,
+          timeToExpire: 60000,
+          isBlocked: false,
+          timeToBlockExpire: 0,
+        }),
+      })
+      .overrideProvider(ThrottlerStorage)
+      .useValue({
+        increment: jest.fn().mockResolvedValue({
+          totalHits: 1,
+          timeToExpire: 60000,
+          isBlocked: false,
+          timeToBlockExpire: 0,
+        }),
+      })
+  );
 }

@@ -23,9 +23,11 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { NoImpersonationGuard } from "../auth/no-impersonation.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { ClubPaymentProviderQueryService } from "./club-payment-provider.query-service";
 import { ClubPaymentProviderService } from "./club-payment-provider.service";
+import { ClubRegistrationModeQueryService } from "./club-registration-mode.query-service";
 import { ClubsHelloAssoService } from "./clubs-helloasso.service";
 import {
   ClubPaymentProviderStatusDto,
@@ -40,7 +42,12 @@ import { EndPartnershipDto } from "./dto/end-partnership.dto";
 import { ValidatePartnershipDto } from "./dto/validate-partnership.dto";
 import { CreateSoloTeamDto } from "./dto/create-soloteam.dto";
 import { AddSoloTeamMemberDto } from "./dto/add-soloteam-member.dto";
-import { SetRegistrationModeDto } from "./dto/registration-mode.dto";
+import { HelloAssoStatusDto } from "./dto/helloasso-status.dto";
+import {
+  ClubRegistrationModeDto,
+  ClubRegistrationModeUpdatedDto,
+  SetRegistrationModeDto,
+} from "./dto/registration-mode.dto";
 import {
   StoreReviewRead,
   StoreReviewReadable,
@@ -59,6 +66,7 @@ import {
 export class ClubsController {
   constructor(
     private readonly clubsHelloAssoService: ClubsHelloAssoService,
+    private readonly clubRegistrationModeQueryService: ClubRegistrationModeQueryService,
     private readonly clubPaymentProviderQueryService: ClubPaymentProviderQueryService,
     private readonly clubPaymentProviderService: ClubPaymentProviderService,
     private readonly partnershipService: PartnershipService,
@@ -69,34 +77,25 @@ export class ClubsController {
   @StoreReviewReadable()
   @Get("me/registration-mode")
   @ApiOperation({
-    summary: "Mode d'inscription du club du licencié",
+    summary: "Mode d'inscription du club de l'utilisateur connecté",
     description:
-      "Retourne le mode d'inscription du club de l'utilisateur connecté (licencié ou organisateur). " +
-      "Permet au client de masquer le bouton « S'inscrire » lorsque le mode est CLUB_ONLY.",
+      "Retourne le mode d'inscription du club de l'utilisateur connecté (licencié ou compte club). " +
+      "Source du réglage pour les paramètres du club (#665, remplace le champ déprécié de `GET /clubs/me/helloasso`) " +
+      "et pour masquer le bouton « S'inscrire » lorsque le mode est CLUB_ONLY.",
   })
   @ApiResponse({
     status: 200,
+    type: ClubRegistrationModeDto,
     description: "Mode du club (null si l'utilisateur n'a pas de club)",
-    schema: {
-      type: "object",
-      properties: {
-        registrationMode: {
-          type: "string",
-          enum: [
-            "CLUB_AND_MEMBERS_PENDING",
-            "CLUB_ONLY",
-            "MEMBERS_AUTO_CONFIRM",
-          ],
-          nullable: true,
-        },
-      },
-    },
   })
-  async getMyClubRegistrationMode(@Request() req: RequestWithUser) {
-    const mode = await this.clubsHelloAssoService.getRegistrationModeForUser(
-      req.user.userId,
-    );
-    return { registrationMode: mode };
+  async getMyClubRegistrationMode(
+    @Request() req: RequestWithUser,
+  ): Promise<ClubRegistrationModeDto> {
+    const registrationMode =
+      await this.clubRegistrationModeQueryService.getMyClubRegistrationMode(
+        req.user.userId,
+      );
+    return { registrationMode };
   }
 
   @StoreReviewReadable()
@@ -106,25 +105,34 @@ export class ClubsController {
   @ApiOperation({
     summary: "État de la connexion HelloAsso du club de l'organisateur",
     description:
-      "Retourne si le club a déjà connecté un compte HelloAsso (sans exposer les identifiants).",
+      "Retourne si le club a déjà connecté un compte HelloAsso (sans exposer les identifiants). " +
+      "Le champ `registrationMode` est déprécié : lire `GET /clubs/me/registration-mode` (#665).",
   })
-  @ApiResponse({ status: 200, description: "Statut récupéré" })
+  @ApiResponse({
+    status: 200,
+    type: HelloAssoStatusDto,
+    description: "Statut récupéré",
+  })
   @ApiResponse({
     status: 400,
     description: "Utilisateur non organisateur ou club non assigné",
   })
-  async getHelloAssoStatus(@Request() req: RequestWithUser) {
+  async getHelloAssoStatus(
+    @Request() req: RequestWithUser,
+  ): Promise<HelloAssoStatusDto> {
     return this.clubsHelloAssoService.getMyClubHelloAssoStatus(req.user.userId);
   }
 
   @Put("me/helloasso")
-  @UseGuards(RolesGuard)
+  // Durable payment credentials: never set from a support session (#733).
+  @UseGuards(NoImpersonationGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
   @ApiOperation({
     summary: "Connecter le compte HelloAsso du club de l'organisateur",
     description:
       "Permet à un organisateur de lier les identifiants HelloAsso de son club. " +
-      "Ensuite, tous les paiements (places, etc.) pour les compétitions organisées par ce club utiliseront ce compte.",
+      "Ensuite, tous les paiements (places, etc.) pour les compétitions organisées par ce club utiliseront ce compte. " +
+      "Refusé (403) pendant un accès support (« se connecter en tant que »).",
   })
   @ApiResponse({ status: 200, description: "HelloAsso connecté avec succès" })
   @ApiResponse({
@@ -162,7 +170,8 @@ export class ClubsController {
   }
 
   @Put("me/payment-provider")
-  @UseGuards(RolesGuard)
+  // Where club payments go: never changed from a support session (#733).
+  @UseGuards(NoImpersonationGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
   @ApiOperation({
     summary: "Choisir le connecteur de paiement du club de l'organisateur",
@@ -170,7 +179,8 @@ export class ClubsController {
       "Choisit le connecteur de paiement en ligne utilisé pour les places des compétitions organisées par le club (#388). " +
       "Seuls les connecteurs disponibles sont acceptés (aujourd'hui : HELLOASSO). " +
       "Les identifiants se saisissent sur la route propre au connecteur (HelloAsso : `PUT /clubs/me/helloasso`) ; " +
-      "changer de connecteur n'efface pas ceux du précédent.",
+      "changer de connecteur n'efface pas ceux du précédent. " +
+      "Refusé (403) pendant un accès support (« se connecter en tant que »).",
   })
   @ApiResponse({ status: 200, type: ClubPaymentProviderStatusDto })
   @ApiResponse({
@@ -189,7 +199,8 @@ export class ClubsController {
   }
 
   @Patch("me/registration-mode")
-  @UseGuards(RolesGuard)
+  // Club-wide setting that outlives the session: never from support (#761).
+  @UseGuards(NoImpersonationGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
   @ApiOperation({
     summary: "Mode d'inscription du club",
@@ -197,9 +208,14 @@ export class ClubsController {
       "Définit qui peut inscrire les licenciés et comment : " +
       "CLUB_AND_MEMBERS_PENDING (licenciés en attente de validation), " +
       "CLUB_ONLY (seul le club inscrit), " +
-      "MEMBERS_AUTO_CONFIRM (validation automatique).",
+      "MEMBERS_AUTO_CONFIRM (validation automatique). " +
+      "Refusé (403) pendant un accès support (« se connecter en tant que »).",
   })
-  @ApiResponse({ status: 200, description: "Mode mis à jour" })
+  @ApiResponse({
+    status: 200,
+    type: ClubRegistrationModeUpdatedDto,
+    description: "Mode mis à jour",
+  })
   @ApiResponse({
     status: 400,
     description: "Utilisateur non organisateur ou club non assigné",
@@ -207,7 +223,7 @@ export class ClubsController {
   async setRegistrationMode(
     @Request() req: RequestWithUser,
     @Body() body: SetRegistrationModeDto,
-  ) {
+  ): Promise<ClubRegistrationModeUpdatedDto> {
     return this.clubsHelloAssoService.setRegistrationMode(
       req.user.userId,
       body.registrationMode,
@@ -248,9 +264,14 @@ export class ClubsController {
   }
 
   @Patch("me/partnerships/:id/end")
-  @UseGuards(RolesGuard)
+  // Ends a couple for good: never from a support session (#761).
+  @UseGuards(NoImpersonationGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
-  @ApiOperation({ summary: "Mettre fin à un partenariat" })
+  @ApiOperation({
+    summary: "Mettre fin à un partenariat",
+    description:
+      "Refusé (403) pendant un accès support (« se connecter en tant que »).",
+  })
   async endPartnership(
     @Request() req: RequestWithUser,
     @Param("id") id: string,

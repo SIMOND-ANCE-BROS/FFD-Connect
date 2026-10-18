@@ -19,7 +19,11 @@ import {
 } from "../licenses/beta-license-placeholder";
 import { isLicenseExpired } from "../licenses/license-expiry";
 import { PrismaService } from "../prisma/prisma.service";
-import { accountStatusSelect, licenseIdSelect } from "../utils/prisma-selects";
+import {
+  accountStatusSelect,
+  idOnlySelect,
+  licenseIdSelect,
+} from "../utils/prisma-selects";
 import {
   ACCOUNT_DISABLED_MESSAGE,
   AccountStatusFields,
@@ -34,7 +38,9 @@ import {
 } from "./email-identity";
 import { LICENSE_NUMBER_MAX_LENGTH } from "./dto/register.dto";
 import { PasswordValidator } from "./password-validator";
+import { IMPERSONATION_TOKEN_EXPIRY_MINUTES } from "./impersonation-session";
 import { hasRole, rolesOf } from "./roles";
+import { PRIVACY_POLICY_VERSION } from "../privacy-policy/privacy-policy-version";
 
 const BCRYPT_ROUNDS = 12;
 
@@ -104,7 +110,6 @@ export class AuthService {
       nationalRanking: true,
       passportLevelLatin: true,
       passportLevelStandard: true,
-      competitionLevel: true,
       license: {
         select: {
           id: true,
@@ -295,6 +300,9 @@ export class AuthService {
             // empty (= unknown) rather than declaring "Ten Dance" (#555).
             category: normalizeDiscipline(license.category),
             birthDate,
+            // Signs up under the current policy (linked from the sign-up
+            // form): no "policy updated" notice right after (#734).
+            privacyPolicySeenVersion: PRIVACY_POLICY_VERSION,
           },
           select: {
             id: true,
@@ -433,18 +441,16 @@ export class AuthService {
     };
   }
 
-  /** Durée d'un token d'impersonation (court, non rafraîchissable). */
-  private readonly IMPERSONATION_TOKEN_EXPIRY_MINUTES = 15;
-
   /**
    * Impersonation « se connecter en tant que » (#545). Émet un access token
-   * court dont le `sub` = cible et un claim `impersonatedBy` = acteur (tracé
-   * dans chaque requête). Journalise l'accès (audit RGPD). PAS de refresh token
+   * court dont le `sub` = cible, un claim `impersonatedBy` = acteur et un claim
+   * `impersonationLogId` = la ligne du journal de cette session (#733), relue
+   * à chaque requête. Journalise l'accès (audit RGPD). PAS de refresh token
    * (session courte, il faut ré-impersonner).
    *
-   * Règles : l'acteur doit être ADMIN ou STAFF ; on ne peut jamais impersonner
-   * un ADMIN ; un STAFF ne peut cibler que licencié/club et doit fournir une
-   * raison (consentement géré côté flux, phase 2).
+   * Règles (#733) : réservé à l'ADMIN (rôle principal ou supplémentaire, relu
+   * en base par JwtStrategy) ; on ne peut jamais impersonner un ADMIN ; un
+   * licencié, un club ou un staff peut être ciblé.
    */
   async impersonate(
     actorId: string,
@@ -453,9 +459,10 @@ export class AuthService {
     reason: string | undefined,
     ip: string | undefined,
   ): Promise<{ access_token: string; user: Record<string, unknown> }> {
-    const actorIsAdmin = actorRoles.includes(UserRole.ADMIN);
-    if (!actorIsAdmin && !actorRoles.includes(UserRole.STAFF)) {
-      throw new ForbiddenException("Impersonation réservée à l'admin/staff.");
+    if (!actorRoles.includes(UserRole.ADMIN)) {
+      throw new ForbiddenException(
+        "Impersonation réservée à l'administrateur.",
+      );
     }
     if (!target.userId && !target.email) {
       throw new BadRequestException("Cible manquante (userId ou email).");
@@ -491,30 +498,19 @@ export class AuthService {
         "Impossible d'impersonner un administrateur.",
       );
     }
-    if (!actorIsAdmin) {
-      if (hasRole(targetUser, UserRole.STAFF)) {
-        throw new ForbiddenException(
-          "Un staff ne peut cibler qu'un licencié ou un club.",
-        );
-      }
-      if (!reason?.trim()) {
-        throw new BadRequestException(
-          "Une raison est obligatoire pour le staff.",
-        );
-      }
-    }
 
-    await this.prisma.impersonationLog.create({
+    const log = await this.prisma.impersonationLog.create({
       data: {
         actorId,
         // The role that authorised this impersonation, not the main role:
-        // actorRoles come from the database (JwtStrategy), not the token claim.
-        actorRole: actorIsAdmin ? UserRole.ADMIN : UserRole.STAFF,
+        // only ADMIN can (#733), whatever the actor's main role.
+        actorRole: UserRole.ADMIN,
         targetUserId: targetUser.id,
         targetRole: targetUser.role,
         reason: reason?.trim() || null,
         ip: ip ?? null,
       },
+      select: idOnlySelect,
     });
 
     const payload = {
@@ -523,9 +519,10 @@ export class AuthService {
       role: targetUser.role,
       clubName: targetUser.clubName ?? undefined,
       impersonatedBy: actorId,
+      impersonationLogId: log.id,
     };
     const access_token = this.jwtService.sign(payload, {
-      expiresIn: `${this.IMPERSONATION_TOKEN_EXPIRY_MINUTES}m`,
+      expiresIn: `${IMPERSONATION_TOKEN_EXPIRY_MINUTES}m`,
     });
 
     this.logger.warn(
@@ -547,19 +544,27 @@ export class AuthService {
     };
   }
 
-  /** Clôt la session d'impersonation ouverte la plus récente de l'acteur. */
-  async stopImpersonation(actorId: string): Promise<void> {
-    const open = await this.prisma.impersonationLog.findFirst({
-      where: { actorId, endedAt: null },
-      orderBy: { startedAt: "desc" },
-      select: { id: true },
+  /**
+   * Clôt la session d'impersonation désignée par le jeton (#733) : la ligne
+   * du journal portée par le claim `impersonationLogId`, et elle seule (une
+   * autre session ouverte du même acteur, sur un autre appareil, reste
+   * ouverte). Sans ce claim — appel hors impersonation —, rien à clore. Une
+   * session jamais arrêtée prend fin à l'expiration de son jeton
+   * (`effectiveImpersonationEnd`).
+   */
+  async stopImpersonation(
+    actorId: string,
+    impersonationLogId: string | undefined,
+  ): Promise<void> {
+    if (!impersonationLogId) return;
+    const { count } = await this.prisma.impersonationLog.updateMany({
+      where: { id: impersonationLogId, actorId, endedAt: null },
+      data: { endedAt: new Date() },
     });
-    if (open) {
-      await this.prisma.impersonationLog.update({
-        where: { id: open.id },
-        data: { endedAt: new Date() },
-      });
-      this.logger.warn(`Impersonation STOP — actor=${actorId}`);
+    if (count > 0) {
+      this.logger.warn(
+        `Impersonation STOP — actor=${actorId} log=${impersonationLogId}`,
+      );
     }
   }
 }

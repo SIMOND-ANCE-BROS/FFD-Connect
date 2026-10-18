@@ -87,7 +87,7 @@ export const PlayerControls = ({
       style={[
         styles.playButton,
         {
-          backgroundColor: currentTheme.primary,
+          backgroundColor: currentTheme.primaryFill,
           shadowColor: currentTheme.primary,
         },
       ]}

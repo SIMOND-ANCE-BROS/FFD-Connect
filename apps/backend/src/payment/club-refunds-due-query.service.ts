@@ -8,6 +8,7 @@ import { hasRole } from "../auth/roles";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import {
   organizedByClubWhere,
+  organizerActorOf,
   organizerMatcher,
   type OrganizerClubActor,
 } from "../competitions/competition-organizer";
@@ -92,10 +93,7 @@ export class ClubRefundsDueQueryService {
     if (!hasRole(user, UserRole.CLUB)) {
       throw new ForbiddenException("Only a club account can list its refunds");
     }
-    return {
-      clubId: user.clubId,
-      clubNames: [user.club?.name, user.clubName],
-    };
+    return organizerActorOf(this.prisma, user);
   }
 
   /**

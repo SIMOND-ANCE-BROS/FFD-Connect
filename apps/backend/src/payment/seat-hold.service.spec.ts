@@ -319,13 +319,13 @@ describe("SeatHoldService (#428)", () => {
           select: { seatIndex: true, expiresAt: true },
           take: 1001,
         });
+        // The service reads the clock between `before` and `after`: bracket
+        // `since` instead of assuming no millisecond elapsed (#755).
+        const after = Date.now();
+        const cooldown = DEFAULT_REHOLD_COOLDOWN_MINUTES * MINUTE;
         const since = (query?.where?.expiresAt as { gt: Date }).gt.getTime();
-        expect(before - since).toBeGreaterThanOrEqual(
-          DEFAULT_REHOLD_COOLDOWN_MINUTES * MINUTE,
-        );
-        expect(before - since).toBeLessThan(
-          DEFAULT_REHOLD_COOLDOWN_MINUTES * MINUTE + 5000,
-        );
+        expect(since).toBeGreaterThanOrEqual(before - cooldown);
+        expect(since).toBeLessThanOrEqual(after - cooldown);
         expect(prisma.seatBooking.create).toHaveBeenCalled();
       });
 

@@ -134,7 +134,7 @@ export const TimingList: React.FC<TimingListProps> = ({
             styles.row,
             {
               backgroundColor: isMyEvent
-                ? theme.primary
+                ? theme.primaryFill
                 : item.type === "BREAK"
                   ? theme.surface
                   : "transparent",

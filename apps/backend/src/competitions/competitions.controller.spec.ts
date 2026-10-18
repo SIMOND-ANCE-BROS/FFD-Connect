@@ -167,11 +167,10 @@ describe("CompetitionsController", () => {
       expect(result).toBe(active);
     });
 
-    it("propagates NotFoundException when no active competition", async () => {
-      queryService.findActiveCompetition.mockRejectedValue(
-        new NotFoundException("No active competition"),
-      );
-      await expect(controller.findActive()).rejects.toThrow(NotFoundException);
+    it("returns null (no 404) when no competition starts today (#729)", async () => {
+      queryService.findActiveCompetition.mockResolvedValue(null);
+
+      await expect(controller.findActive()).resolves.toBeNull();
     });
   });
 

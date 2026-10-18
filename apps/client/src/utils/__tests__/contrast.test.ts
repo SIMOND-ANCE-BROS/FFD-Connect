@@ -140,8 +140,44 @@ describe("theme contrast (WCAG AA)", () => {
     );
   });
 
-  it("keeps the brand cyan for dark surfaces, where it already passes", () => {
+  // Solid fills of buttons, chips, badges and FABs (primaryFill) carry
+  // onPrimary text. Dark mode: 3.88 (white on #0088CE) → 4.87 (#0077B6).
+  it.each([
+    ["light", light.onPrimary, light.primaryFill],
+    ["dark", dark.onPrimary, dark.primaryFill],
+  ])("%s: onPrimary on primaryFill meets AA (#22)", (_name, fg, bg) => {
+    expect(meetsWcagAA(fg, bg)).toBe(true);
+  });
+
+  // Disabled buttons (TrackCorrectionModal, LicenseRenewalScreen, AppButton).
+  // WCAG exempts disabled controls, the label stays AA anyway: white on
+  // slate200 was 1.23:1 before issue #22.
+  it.each([
+    ["light", light.onDisabled, light.disabledFill],
+    ["dark", dark.onDisabled, dark.disabledFill],
+  ])("%s: onDisabled on disabledFill meets AA (#22)", (_name, fg, bg) => {
+    expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
+  });
+
+  // Locked seats of the seating plan (DraggableLayoutItem, ItemPopupModal)
+  // and the « Inactif » badge (ClubMemberEditorScreen) used white on
+  // textSecondary: 2.56:1 in dark mode (slate400) before issue #22.
+  it.each([
+    ["light", light.onMuted, light.mutedFill],
+    ["dark", dark.onMuted, dark.mutedFill],
+  ])("%s: onMuted on mutedFill meets AA (#22)", (_name, fg, bg) => {
+    expect(meetsWcagAA(fg, bg)).toBe(true);
+  });
+
+  it("dark: white on textSecondary stays below AA (use mutedFill)", () => {
+    expect(meetsWcagAA(colors.white, dark.textSecondary)).toBe(false);
+  });
+
+  it("keeps the bright brand cyan for text and icons on dark surfaces", () => {
     expect(dark.primary).toBe(colors.ffdCyan);
-    expect(contrastRatio(colors.ffdCyan, colors.white)).toBeLessThan(4.5);
+    expect(dark.primaryFill).not.toBe(dark.primary);
+    expect(contrastRatio(dark.onPrimary, dark.primaryFill)).toBeGreaterThan(
+      contrastRatio(colors.white, colors.ffdCyan),
+    );
   });
 });

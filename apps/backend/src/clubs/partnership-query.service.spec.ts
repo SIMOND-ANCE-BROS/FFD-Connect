@@ -51,15 +51,12 @@ const makePartnership = (overrides: Record<string, unknown> = {}) => ({
 describe("PartnershipQueryService", () => {
   let service: PartnershipQueryService;
   let prisma: MockPrisma;
-  let clubsService: jest.Mocked<
-    Pick<ClubsService, "getClubIdForOrganizer" | "findOrCreateByName">
-  >;
+  let clubsService: jest.Mocked<Pick<ClubsService, "getClubIdForOrganizer">>;
 
   beforeEach(async () => {
     prisma = mockDeep<PrismaClient>();
     clubsService = {
       getClubIdForOrganizer: jest.fn().mockResolvedValue("club-1"),
-      findOrCreateByName: jest.fn(),
     };
 
     const module = await Test.createTestingModule({
@@ -238,6 +235,69 @@ describe("PartnershipQueryService", () => {
         "club-2",
       );
       expect(result).toHaveLength(1);
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            AND: [
+              expect.any(Object),
+              { OR: [{ clubId: "club-1" }, { clubId: "club-2" }] },
+            ],
+          },
+        }),
+      );
+    });
+
+    it("scopes a legacy account (no clubId) to the one active club its name designates (#749)", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ clubId: null, clubName: " Test Club " }) as never,
+      );
+      prisma.club.findMany.mockResolvedValue([{ id: "club-7" }] as never);
+      prisma.club.findFirst.mockResolvedValue({ id: "club-7" } as never);
+      prisma.user.findMany.mockResolvedValue([] as never);
+
+      await service.getMembersForPartnership("organizer-1", "club-7");
+
+      // The secondary club is the resolved club itself: not added twice.
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            AND: [
+              expect.any(Object),
+              {
+                OR: [
+                  {
+                    OR: [
+                      { clubId: "club-7" },
+                      {
+                        clubId: null,
+                        clubName: { equals: "Test Club", mode: "insensitive" },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      );
+      // A read never creates a club.
+      expect(clubsService.getClubIdForOrganizer).not.toHaveBeenCalled();
+      expect(prisma.club.create).not.toHaveBeenCalled();
+    });
+
+    it("lists nobody for a legacy account whose name designates homonym clubs (#749)", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ clubId: null, clubName: "Test Club" }) as never,
+      );
+      prisma.club.findMany.mockResolvedValue([
+        { id: "club-7" },
+        { id: "club-8" },
+      ] as never);
+
+      const result = await service.getMembersForPartnership("organizer-1");
+
+      expect(result).toEqual([]);
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
     });
   });
 });

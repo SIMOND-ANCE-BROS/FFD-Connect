@@ -62,11 +62,24 @@ describe("Results import HTTP access (integration, real DB)", () => {
         ...data,
       },
     });
+    // An impersonation token names its open journal row (#733).
+    const session = impersonatedBy
+      ? await prisma.impersonationLog.create({
+          data: {
+            actorId: impersonatedBy,
+            actorRole: UserRole.ADMIN,
+            targetUserId: user.id,
+            targetRole: user.role,
+          },
+          select: { id: true },
+        })
+      : null;
     return jwt.sign({
       sub: user.id,
       email: user.email,
       role: user.role,
       ...(impersonatedBy && { impersonatedBy }),
+      ...(session && { impersonationLogId: session.id }),
     });
   };
 
@@ -195,6 +208,14 @@ describe("Results import HTTP access (integration, real DB)", () => {
     await prisma.refreshToken.deleteMany({
       where: { user: { email: { endsWith: domain } } },
     });
+    const users = await prisma.user.findMany({
+      where: { email: { endsWith: domain } },
+      select: { id: true },
+      take: 100,
+    });
+    await prisma.impersonationLog.deleteMany({
+      where: { targetUserId: { in: users.map((u) => u.id) } },
+    });
     await prisma.user.deleteMany({ where: { email: { endsWith: domain } } });
     await prisma.club.deleteMany({
       where: { id: { in: [organiserClubId, otherClubId, disabledClubId] } },
@@ -270,7 +291,8 @@ describe("Results import HTTP access (integration, real DB)", () => {
     expect(await prisma.result.count({ where: { eventId } })).toBe(1);
 
     const undo = await deleteAs(token).expect(200);
-    expect(undo.body).toEqual({ deleted: 1, anonymisedKept: 0 });
+    // The erased-row count is withheld from the club (#713).
+    expect(undo.body).toEqual({ deleted: 1, anonymisedKept: null });
     expect(await prisma.result.count({ where: { eventId } })).toBe(0);
   });
 

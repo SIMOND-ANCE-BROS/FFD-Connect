@@ -10,10 +10,13 @@ import {
   RegistrationStatus,
   UserRole,
 } from "@prisma/client";
+import { effectiveImpersonationEnd } from "../auth/impersonation-session";
 import { hasRole, rolesOf, withActiveRole } from "../auth/roles";
 import { userRolesClubSelect } from "../utils/prisma-selects";
+import { clubMembersScopeOf } from "../competitions/competition-organizer";
 import * as bcrypt from "bcrypt";
 import { computeSoloAgeGroup, getReferenceYear } from "../common/age-group";
+import { withDerivedCompetitionLevel } from "../common/competition-level";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { LicenseQrService } from "../licenses/qr/license-qr.service";
@@ -26,6 +29,7 @@ import {
   deviceTokenExportSelect,
   exportEventContextSelect,
   impersonationLogExportSelect,
+  healthDataAccessLogExportSelect,
   parentalConsentExportSelect,
   licenseBaseSelect,
   licenseRenewalRequestExportSelect,
@@ -54,7 +58,8 @@ const USER_BASE_SELECT = {
   role: true,
   category: true,
   ageGroup: true,
-  // Per-discipline levels + deprecated single level (kept for older clients).
+  // Per-discipline levels + deprecated single level (read fallback; served
+  // derived from the per-discipline levels for older clients, #239).
   ...competitionLevelsSelect,
   clubName: true,
   createdAt: true,
@@ -177,28 +182,22 @@ export class UsersService {
       throw new NotFoundException("Organizer not found or invalid role");
     }
 
-    const sameClubCondition = organizer.clubId
-      ? { clubId: organizer.clubId }
-      : organizer.clubName
-        ? { clubName: organizer.clubName }
-        : null;
-    if (!sameClubCondition) {
+    if (!organizer.clubId && !organizer.clubName?.trim()) {
       throw new NotFoundException("Organizer has no club assigned");
     }
+    // The account's club, by id (#749): a legacy account resolving to no
+    // single active club (homonyms…) lists nobody.
+    const scope = await clubMembersScopeOf(this.prisma, organizer);
+    if (!scope) return createPaginatedResponse([], 0, skip ?? 0, take ?? 10);
 
-    // 2. Fetch all users of the same club (by clubId or clubName) with pagination
+    // 2. Fetch the club's members (dancers only) with pagination
+    const membersWhere: Prisma.UserWhereInput = {
+      AND: [scope.members, withActiveRole(UserRole.LICENSEE)],
+    };
     const [total, members] = await Promise.all([
-      this.prisma.user.count({
-        where: {
-          ...sameClubCondition,
-          ...withActiveRole(UserRole.LICENSEE),
-        },
-      }),
+      this.prisma.user.count({ where: membersWhere }),
       this.prisma.user.findMany({
-        where: {
-          ...sameClubCondition,
-          ...withActiveRole(UserRole.LICENSEE), // Only fetch dancers/members
-        },
+        where: membersWhere,
         skip,
         take,
         select: {
@@ -248,7 +247,8 @@ export class UsersService {
       }
       const { registrations: _, ...rest } = member;
       return {
-        ...rest,
+        // Deprecated single level derived for older app versions (#239).
+        ...withDerivedCompetitionLevel(rest),
         partnerName,
         wdsf: buildWdsfFromUser(member),
       };
@@ -281,7 +281,7 @@ export class UsersService {
    * }
    * ```
    */
-  async findOne(id: string) {
+  async findOne(id: string, { supportAccess = false } = {}) {
     // Utiliser select au lieu de include pour optimiser la requête
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -307,17 +307,24 @@ export class UsersService {
     // The club status only feeds rolesOf; it must not leak into the payload.
     const { club, ...profile } = user;
     const wdsf = buildWdsfFromUser(profile);
-    // Signed QR content of the license (#168) — null when signing is off.
+    // Signed QR content of the license (#168) — null when signing is off,
+    // and during a support access (#759): the static QR stays valid until the
+    // licence expires, so it would let the intervening admin in instead of
+    // the holder; same for the Wallet pass that carries it.
     const license = profile.license
       ? {
           ...profile.license,
-          qrCode: this.licenseQrService.buildQrCode(profile.license),
+          qrCode: supportAccess
+            ? null
+            : this.licenseQrService.buildQrCode(profile.license),
           // The app shows "Add to Apple Wallet" only when true (#162).
-          appleWalletAvailable: this.appleWalletPassGenerator.isAvailable(),
+          appleWalletAvailable:
+            !supportAccess && this.appleWalletPassGenerator.isAvailable(),
         }
       : null;
     return {
-      ...profile,
+      // Deprecated single level derived for older app versions (#239).
+      ...withDerivedCompetitionLevel(profile),
       license,
       roles: rolesOf({ ...profile, club }),
       wdsf,
@@ -451,14 +458,19 @@ export class UsersService {
    *
    * Arbitrages #251 (à revoir par le responsable de traitement) :
    * - sessions d'impersonation ciblant l'utilisateur : date, motif et RÔLE de
-   *   l'auteur seulement, jamais son identité ni son IP (données d'un tiers) ;
+   *   l'auteur seulement, jamais son identité ni son IP (données d'un tiers),
+   *   avec les écritures faites pendant chaque session (#761 : méthode,
+   *   modèle de route, statut, date) ;
    * - sessions de connexion (refresh tokens) : métadonnées seulement (création,
    *   expiration, révocation), jamais le hash du token ;
    * - journal d'audit admin (`AdminAuditLog`, actions effectuées PAR
    *   l'utilisateur en tant qu'admin) : EXCLU. C'est un journal de traçabilité
    *   de l'activité d'administration, dont les lignes (`before`/`after`)
    *   contiennent les données des comptes administrés, donc de tiers ; il reste
-   *   communicable sur demande écrite (art. 15), après occultation des tiers.
+   *   communicable sur demande écrite (art. 15), après occultation des tiers ;
+   * - journal des accès aux données de santé (#732) : lignes dont
+   *   l'utilisateur est la personne concernée, avec la QUALITÉ de l'auteur
+   *   (ADMIN, OWNER, IMPERSONATOR, SYSTEM), jamais son identité.
    */
   async exportMyData(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -471,6 +483,8 @@ export class UsersService {
         lastLoginAt: true,
         // Date de désactivation du compte par un administrateur (#251).
         disabledAt: true,
+        // Dernière version de la politique de confidentialité lue (#734).
+        privacyPolicySeenVersion: true,
         license: {
           select: {
             number: true,
@@ -572,29 +586,39 @@ export class UsersService {
       throw new NotFoundException("Utilisateur introuvable");
     }
     // Tables sans relation Prisma vers User : requêtes dédiées, bornées.
-    const [results, bugReports, impersonations] = await Promise.all([
-      this.prisma.result.findMany({
-        // Held, or as the couple's recognised second member (#652).
-        where: { OR: [{ userId }, { partnerUserId: userId }] },
-        select: resultExportSelect,
-        orderBy: { createdAt: "desc" },
-        take: 1000,
-      }),
-      this.prisma.bugReport.findMany({
-        where: { userId },
-        select: bugReportExportSelect,
-        orderBy: { createdAt: "desc" },
-        take: 200,
-      }),
-      // Impersonations ciblant l'utilisateur : rôle de l'auteur, jamais son
-      // identité (cf. arbitrages ci-dessus).
-      this.prisma.impersonationLog.findMany({
-        where: { targetUserId: userId },
-        select: impersonationLogExportSelect,
-        orderBy: { startedAt: "desc" },
-        take: 200,
-      }),
-    ]);
+    const [results, bugReports, impersonations, healthDataAccesses] =
+      await Promise.all([
+        this.prisma.result.findMany({
+          // Held, or as the couple's recognised second member (#652).
+          where: { OR: [{ userId }, { partnerUserId: userId }] },
+          select: resultExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 1000,
+        }),
+        this.prisma.bugReport.findMany({
+          where: { userId },
+          select: bugReportExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 200,
+        }),
+        // Impersonations ciblant l'utilisateur : rôle de l'auteur, jamais son
+        // identité (cf. arbitrages ci-dessus).
+        this.prisma.impersonationLog.findMany({
+          where: { targetUserId: userId },
+          select: impersonationLogExportSelect,
+          orderBy: { startedAt: "desc" },
+          take: 200,
+        }),
+        // Accès à ses données de santé (#732, art. 15) : qualité de l'auteur,
+        // jamais son identité. Lu AVANT la trace de cet export, qui figurera
+        // donc dans l'export suivant. Rétention 1 an : 500 lignes suffisent.
+        this.prisma.healthDataAccessLog.findMany({
+          where: { subjectUserId: userId },
+          select: healthDataAccessLogExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 500,
+        }),
+      ]);
     // Nom des pistes visées par les propositions : filtré comme partout côté
     // non-admin. L'export ne doit pas démasquer une piste modérée (titre
     // masqué ou piste blacklistée) que l'utilisateur a pu cibler.
@@ -658,7 +682,18 @@ export class UsersService {
           totalParticipants: totalParticipantsOf(details),
         })),
         bugReports,
-        impersonationsReceived: impersonations,
+        // A session never stopped ended when its token expired (#733):
+        // endedAt = min(stop, startedAt + 15 min), null while still usable.
+        // `actionsCount` (#761): every write of the session, so a list cut
+        // at its bound shows as such.
+        impersonationsReceived: impersonations.map(
+          ({ _count, ...session }) => ({
+            ...session,
+            endedAt: effectiveImpersonationEnd(session),
+            actionsCount: _count.actions,
+          }),
+        ),
+        healthDataAccesses,
       },
     };
   }

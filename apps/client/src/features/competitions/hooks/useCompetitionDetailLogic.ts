@@ -8,6 +8,7 @@ import {
 } from "../../../constants/errorMessages";
 import { useSignInAndReturn } from "../../../navigation/authReturn";
 import { RootStackParamList } from "../../../navigation/types";
+import { analytics } from "../../../services/analytics";
 import { createLogger } from "../../../utils/logger";
 import {
   cancelDeadlineNotificationForCompetition,
@@ -132,8 +133,9 @@ export const useCompetitionDetailLogic = (
   const { data: clubRegistrationMode, isLoading: isClubModeLoading } = useQuery(
     {
       queryKey: ["clubRegistrationMode"],
+      // Own route since #665 (no longer read from the HelloAsso status).
       queryFn: () =>
-        ClubService.getHelloAssoStatus().then(
+        ClubService.getMyClubRegistrationMode().then(
           (r) => r.registrationMode ?? "MEMBERS_AUTO_CONFIRM",
         ),
       enabled: userRole === "CLUB",
@@ -193,7 +195,6 @@ export const useCompetitionDetailLogic = (
               ageGroup: profile.ageGroup ?? config.ageGroup,
               competitionLevelLatin: profile.competitionLevelLatin,
               competitionLevelStandard: profile.competitionLevelStandard,
-              competitionLevel: profile.competitionLevel,
             });
           } catch {
             setUserProfile(config);
@@ -440,6 +441,12 @@ export const useCompetitionDetailLogic = (
   });
 
   const handleRegister = (event: Event) => {
+    // Funnel start (#484): « S'inscrire » tapped on an event, before the
+    // partner / members step. The usage recorder honours the opt-out.
+    analytics.logEvent("registration_start", {
+      competition_id: competitionId,
+      event_id: event.id,
+    });
     if (userRole === "CLUB") {
       setSelectedEventForRegistration(event);
       return;

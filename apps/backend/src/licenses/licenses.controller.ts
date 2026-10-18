@@ -28,6 +28,7 @@ import {
   CONFLICT_ERROR_SCHEMA,
 } from "../common/decorators/api-error-responses.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { NoImpersonationGuard } from "../auth/no-impersonation.guard";
 import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { Throttle } from "@nestjs/throttler";
 import {
@@ -114,13 +115,13 @@ export class LicensesController {
           type: "string",
           nullable: true,
           description:
-            "Contenu du QR de licence signé par le serveur, à afficher tel quel (valable jusqu'à la fin de validité de la licence). Null si la signature est désactivée.",
+            "Contenu du QR de licence signé par le serveur, à afficher tel quel (valable jusqu'à la fin de validité de la licence). Null si la signature est désactivée, ou pendant un accès support (« se connecter en tant que »).",
           example: '{"v":1,"id":"FFD-123456","exp":"2026-08-31","sig":"…"}',
         },
         appleWalletAvailable: {
           type: "boolean",
           description:
-            "Vrai si le serveur peut produire le pass Apple Wallet (pass configuré et QR signés) : l'app n'affiche le bouton « Ajouter à Apple Wallet » que dans ce cas.",
+            "Vrai si le serveur peut produire le pass Apple Wallet (pass configuré et QR signés) : l'app n'affiche le bouton « Ajouter à Apple Wallet » que dans ce cas. Toujours faux pendant un accès support.",
           example: true,
         },
         createdAt: { type: "string", format: "date-time" },
@@ -151,7 +152,9 @@ export class LicensesController {
     },
   })
   async getMyLicense(@Req() req: RequestWithUser) {
-    return this.licensesService.getLicense(req.user.userId);
+    return this.licensesService.getLicense(req.user.userId, {
+      supportAccess: Boolean(req.user.impersonatedBy),
+    });
   }
 
   /*
@@ -184,9 +187,13 @@ export class LicensesController {
   // --- Demande de renouvellement (workflow documents + OCR) ---
   // Each response carries the medical certificate's OCR hints: read during an
   // impersonation, it is traced as a health-data access (#63).
+  // A support access may only read the request (#760): starting it, replacing
+  // a certificate (the old one is deleted) and submitting the sworn statement
+  // stay the licensee's own acts — 403 under impersonation.
 
   @StoreReviewSimulation(simulatedRenewalStart)
   @UseInterceptors(ImpersonatedRenewalAccessInterceptor)
+  @UseGuards(NoImpersonationGuard)
   @Post("renewal/start")
   @ApiOperation({
     summary: "Démarrer une demande de renouvellement",
@@ -218,7 +225,7 @@ export class LicensesController {
   @Post("renewal/:id/documents")
   // Each upload runs a paid Azure OCR call: 10 uploads/min per user (#633).
   // The app sends one document per pick (2 document types per request).
-  @UseGuards(ThrottlerUserGuard)
+  @UseGuards(NoImpersonationGuard, ThrottlerUserGuard)
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @ApiOperation({
     summary: "Déposer un document sur une demande (OCR automatique)",
@@ -302,6 +309,7 @@ export class LicensesController {
 
   @StoreReviewSimulation(simulatedRenewalSubmit)
   @UseInterceptors(ImpersonatedRenewalAccessInterceptor)
+  @UseGuards(NoImpersonationGuard)
   @Post("renewal/:id/submit")
   @ApiOperation({
     summary: "Soumettre la demande de renouvellement",

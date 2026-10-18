@@ -1,4 +1,4 @@
-import { changedFields, legacyCompetitionLevelHint, withLegacy } from './diff';
+import { changedFields, withLegacy } from './diff';
 
 const base = {
   firstName: 'Jeanne',
@@ -68,30 +68,5 @@ describe('changedFields — per-discipline levels', () => {
     expect(changedFields(a, { ...a, competitionLevelStandard: 'Intermédiaire' })).toEqual({
       competitionLevelStandard: 'Intermédiaire',
     });
-  });
-});
-
-describe('legacyCompetitionLevelHint', () => {
-  it('shows the legacy single level when no discipline level is set', () => {
-    expect(
-      legacyCompetitionLevelHint({
-        competitionLevel: 'Avancé',
-        competitionLevelLatin: null,
-        competitionLevelStandard: null,
-      }),
-    ).toBe('Ancien niveau unique : Avancé');
-  });
-  it('hides it as soon as one discipline level is set', () => {
-    expect(
-      legacyCompetitionLevelHint({
-        competitionLevel: 'Avancé',
-        competitionLevelLatin: 'Avancé',
-        competitionLevelStandard: null,
-      }),
-    ).toBeUndefined();
-  });
-  it('is undefined when there is no legacy level either', () => {
-    expect(legacyCompetitionLevelHint({ competitionLevel: '  ' })).toBeUndefined();
-    expect(legacyCompetitionLevelHint({})).toBeUndefined();
   });
 });

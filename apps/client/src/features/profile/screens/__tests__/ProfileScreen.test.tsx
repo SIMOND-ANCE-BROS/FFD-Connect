@@ -189,7 +189,6 @@ describe("ProfileScreen", () => {
           data: {
             competitionLevelLatin: "Avancé",
             competitionLevelStandard: "Débutant",
-            competitionLevel: "Intermédiaire",
           },
         });
       }
@@ -208,7 +207,7 @@ describe("ProfileScreen", () => {
     ).toBeTruthy();
   });
 
-  it("falls back to the legacy single level, and hides the row without any level", async () => {
+  it("ignores the deprecated single level and hides the row without any discipline level (#239)", async () => {
     mockGet.mockImplementation((url: string) =>
       url === "/users/me"
         ? Promise.resolve({ data: { competitionLevel: "Avancé" } })
@@ -219,7 +218,9 @@ describe("ProfileScreen", () => {
     const first = await render(
       <ProfileScreen navigation={mockNavigation} route={route} />,
     );
-    expect(await first.findByText("Avancé")).toBeTruthy();
+    expect(await first.findByText("Aucune licence associée")).toBeTruthy();
+    expect(first.queryByText("Niveau de compétition")).toBeNull();
+    expect(first.queryByText("Avancé")).toBeNull();
     await first.unmount();
 
     mockGet.mockImplementation((url: string) =>

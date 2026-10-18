@@ -961,7 +961,7 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
         )}
         {Platform.OS === "ios" && pickerFor && (
           <TouchableOpacity
-            style={[styles.dateDone, { backgroundColor: theme.primary }]}
+            style={[styles.dateDone, { backgroundColor: theme.primaryFill }]}
             onPress={() => setPickerFor(null)}
             accessibilityRole="button"
           >

@@ -170,13 +170,13 @@ export function DraggableLayoutItem({
                 const idx = vertical ? col * cols + row : row * cols + col;
                 const locked = lockedSet.has(idx);
                 const seatStyle = {
-                  backgroundColor: locked ? theme.textSecondary : theme.primary,
-                  opacity: locked ? 0.6 : 0.9,
-                  borderColor: locked ? theme.border : theme.primary,
+                  backgroundColor: locked ? theme.mutedFill : theme.primaryFill,
+                  opacity: 0.9,
+                  borderColor: locked ? theme.border : theme.primaryFill,
                 };
                 return (
                   <View key={idx} style={[styles.seatFlex, seatStyle]}>
-                    {locked && <Lock size={8} color={theme.surface} />}
+                    {locked && <Lock size={8} color={theme.onMuted} />}
                   </View>
                 );
               })}
@@ -192,13 +192,13 @@ export function DraggableLayoutItem({
           {Array.from({ length: item.capacity }).map((_, idx) => {
             const locked = lockedSet.has(idx);
             const tableSeatStyle = {
-              backgroundColor: locked ? theme.textSecondary : theme.primary,
-              opacity: locked ? 0.6 : 0.9,
-              borderColor: locked ? theme.border : theme.primary,
+              backgroundColor: locked ? theme.mutedFill : theme.primaryFill,
+              opacity: 0.9,
+              borderColor: locked ? theme.border : theme.primaryFill,
             };
             return (
               <View key={idx} style={[styles.seat, tableSeatStyle]}>
-                {locked && <Lock size={8} color={theme.surface} />}
+                {locked && <Lock size={8} color={theme.onMuted} />}
               </View>
             );
           })}
@@ -211,13 +211,13 @@ export function DraggableLayoutItem({
           {Array.from({ length: Math.min(item.capacity, 12) }).map((_, idx) => {
             const locked = lockedSet.has(idx);
             const otherSeatStyle = {
-              backgroundColor: locked ? theme.textSecondary : theme.accent,
-              opacity: locked ? 0.6 : 0.9,
+              backgroundColor: locked ? theme.mutedFill : theme.accent,
+              opacity: 0.9,
               borderColor: locked ? theme.border : theme.accent,
             };
             return (
               <View key={idx} style={[styles.seat, otherSeatStyle]}>
-                {locked && <Lock size={8} color={theme.surface} />}
+                {locked && <Lock size={8} color={theme.onMuted} />}
               </View>
             );
           })}

@@ -1,10 +1,12 @@
 import { PrismaClient } from "@prisma/client";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
 import {
+  clubManagersOfClubWhere,
+  clubMembersScopeOf,
   findClubIdByName,
-  isOrganizedByClub,
   matchClubByName,
   organizedByClubWhere,
+  organizerActorOf,
   organizerMatcher,
   resolveOrganizerClubId,
 } from "./competition-organizer";
@@ -83,49 +85,6 @@ describe("competition-organizer (#408)", () => {
     });
   });
 
-  describe("isOrganizedByClub", () => {
-    it("decides on ids when both sides are linked (rename, homonyms)", () => {
-      const competition = { organizerClubId: "c1", organizer: "Old name" };
-      expect(
-        isOrganizedByClub(competition, { clubId: "c1", clubNames: ["New"] }),
-      ).toBe(true);
-      expect(
-        isOrganizedByClub(
-          { organizerClubId: "c1", organizer: "Club X" },
-          { clubId: "c2", clubNames: ["club x"] },
-        ),
-      ).toBe(false);
-    });
-
-    it("matches the label for an unlinked competition (case, spaces ignored)", () => {
-      expect(
-        isOrganizedByClub(
-          { organizerClubId: null, organizer: "  dance CLUB " },
-          { clubId: "c1", clubNames: [null, "Dance Club"] },
-        ),
-      ).toBe(true);
-    });
-
-    it("matches the label for a legacy account without clubId", () => {
-      expect(
-        isOrganizedByClub(
-          { organizerClubId: "c1", organizer: "Dance Club" },
-          { clubId: null, clubNames: ["dance club"] },
-        ),
-      ).toBe(true);
-    });
-
-    it("never matches an empty organiser", () => {
-      expect(
-        isOrganizedByClub(
-          { organizer: "  " },
-          { clubId: null, clubNames: ["", " "] },
-        ),
-      ).toBe(false);
-      expect(isOrganizedByClub({}, { clubNames: [undefined] })).toBe(false);
-    });
-  });
-
   describe("organizerMatcher", () => {
     const rows = [
       { organizerClubId: "c1", organizer: "Old label" }, // mine by id
@@ -164,6 +123,21 @@ describe("competition-organizer (#408)", () => {
       );
     });
 
+    it("never lets a label override the link (#625)", async () => {
+      // Row linked to c2 but labelled with c1's exact name.
+      prisma.club.findMany.mockResolvedValue([
+        { id: "c1", name: "Club A" },
+      ] as never);
+      const isMine = await organizerMatcher(
+        prisma,
+        [{ organizerClubId: "c2", organizer: "Club A" }],
+        { clubId: "c1", clubNames: ["Club A"] },
+      );
+      expect(isMine({ organizerClubId: "c2", organizer: "Club A" })).toBe(
+        false,
+      );
+    });
+
     it("needs no lookup when every row is linked", async () => {
       const isMine = await organizerMatcher(prisma, rows.slice(0, 2), {
         clubId: "c1",
@@ -173,13 +147,62 @@ describe("competition-organizer (#408)", () => {
       expect(prisma.club.findMany).not.toHaveBeenCalled();
     });
 
-    it("keeps the name rule for a legacy account without clubId", async () => {
+    it("grants nothing to an actor without club id, even on an exact label (#625)", async () => {
       const isMine = await organizerMatcher(prisma, rows, {
         clubId: null,
-        clubNames: ["club x"],
+        clubNames: ["club x", "Club A", "Old label"],
       });
-      expect(isMine(rows[3])).toBe(true);
+      expect(rows.map(isMine)).toEqual([false, false, false, false, false]);
       expect(prisma.club.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("organizerActorOf (#625)", () => {
+    it("uses the club id and the club's current name, never User.clubName, for a linked account", async () => {
+      await expect(
+        organizerActorOf(prisma, {
+          clubId: "c1",
+          clubName: "Stale copy",
+          club: { name: "Current Name" },
+        }),
+      ).resolves.toEqual({ clubId: "c1", clubNames: ["Current Name"] });
+      expect(prisma.club.findMany).not.toHaveBeenCalled();
+    });
+
+    it("resolves a legacy account to the one active club its name designates", async () => {
+      prisma.club.findMany.mockResolvedValue([{ id: "c7" }] as never);
+      prisma.club.findFirst.mockResolvedValue({ id: "c7" } as never);
+      await expect(
+        organizerActorOf(prisma, { clubId: null, clubName: " Club A " }),
+      ).resolves.toEqual({ clubId: "c7", clubNames: [" Club A "] });
+      expect(prisma.club.findFirst).toHaveBeenCalledWith({
+        where: { id: "c7", disabledAt: null },
+        select: { id: true },
+      });
+    });
+
+    it("leaves a legacy account of a disabled club without id", async () => {
+      prisma.club.findMany.mockResolvedValue([{ id: "c7" }] as never);
+      prisma.club.findFirst.mockResolvedValue(null);
+      await expect(
+        organizerActorOf(prisma, { clubId: null, clubName: "Club A" }),
+      ).resolves.toEqual({ clubId: null, clubNames: ["Club A"] });
+    });
+
+    it("leaves a legacy account with an ambiguous or unknown name without id", async () => {
+      prisma.club.findMany.mockResolvedValueOnce([
+        { id: "c1" },
+        { id: "c2" },
+      ] as never);
+      await expect(
+        organizerActorOf(prisma, { clubId: null, clubName: "Club X" }),
+      ).resolves.toEqual({ clubId: null, clubNames: ["Club X"] });
+
+      prisma.club.findMany.mockResolvedValueOnce([]);
+      await expect(
+        organizerActorOf(prisma, { clubId: null, clubName: "Inconnu" }),
+      ).resolves.toEqual({ clubId: null, clubNames: ["Inconnu"] });
+      expect(prisma.club.findFirst).not.toHaveBeenCalled();
     });
   });
 
@@ -205,16 +228,111 @@ describe("competition-organizer (#408)", () => {
       });
     });
 
-    it("matches names only for a legacy account without clubId", () => {
+    it("escapes LIKE wildcards in the names (#625)", () => {
       expect(
-        organizedByClubWhere({ clubId: null, clubNames: ["Club A"] }),
+        organizedByClubWhere({ clubId: "c1", clubNames: ["Club_A 100%"] }),
       ).toEqual({
-        OR: [{ organizer: { equals: "Club A", mode: "insensitive" } }],
+        OR: [
+          { organizerClubId: "c1" },
+          {
+            organizerClubId: null,
+            organizer: { equals: "Club\\_A 100\\%", mode: "insensitive" },
+          },
+        ],
       });
     });
 
-    it("returns null for an account with neither id nor name", () => {
+    it("returns null for an actor without club id, whatever its names (#625)", () => {
+      expect(
+        organizedByClubWhere({ clubId: null, clubNames: ["Club A"] }),
+      ).toBeNull();
       expect(organizedByClubWhere({ clubNames: [" ", null] })).toBeNull();
     });
+  });
+
+  describe("clubManagersOfClubWhere (#625)", () => {
+    it("addresses linked managers and legacy accounts named after a unique club", async () => {
+      prisma.club.findMany.mockResolvedValue([{ id: "c1" }] as never);
+      await expect(
+        clubManagersOfClubWhere(prisma, { id: "c1", name: " Club_A " }),
+      ).resolves.toEqual({
+        OR: [
+          { clubId: "c1" },
+          {
+            clubId: null,
+            clubName: { equals: "Club\\_A", mode: "insensitive" },
+          },
+        ],
+      });
+    });
+
+    it("addresses linked managers only when a homonym club exists", async () => {
+      prisma.club.findMany.mockResolvedValue([
+        { id: "c1" },
+        { id: "c2" },
+      ] as never);
+      await expect(
+        clubManagersOfClubWhere(prisma, { id: "c1", name: "Club X" }),
+      ).resolves.toEqual({ clubId: "c1" });
+    });
+  });
+
+  describe("clubMembersScopeOf (#749)", () => {
+    it("scopes a linked account to its club id, without any name lookup", async () => {
+      await expect(
+        clubMembersScopeOf(prisma, { clubId: "c1", clubName: "Club A" }),
+      ).resolves.toEqual({ clubId: "c1", members: { clubId: "c1" } });
+      expect(prisma.club.findMany).not.toHaveBeenCalled();
+    });
+
+    it("scopes a legacy account to the one active club its name designates", async () => {
+      prisma.club.findMany.mockResolvedValue([{ id: "c1" }] as never);
+      prisma.club.findFirst.mockResolvedValue({ id: "c1" } as never);
+      await expect(
+        clubMembersScopeOf(prisma, { clubId: null, clubName: " Club_A " }),
+      ).resolves.toEqual({
+        clubId: "c1",
+        members: {
+          OR: [
+            { clubId: "c1" },
+            {
+              clubId: null,
+              clubName: { equals: "Club\\_A", mode: "insensitive" },
+            },
+          ],
+        },
+      });
+      expect(prisma.club.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "c1", disabledAt: null } }),
+      );
+    });
+
+    it("scopes nobody when the legacy name designates homonym clubs", async () => {
+      prisma.club.findMany.mockResolvedValue([
+        { id: "c1" },
+        { id: "c2" },
+      ] as never);
+      await expect(
+        clubMembersScopeOf(prisma, { clubId: null, clubName: "Club A" }),
+      ).resolves.toBeNull();
+    });
+
+    it("scopes nobody when the legacy name designates a disabled club", async () => {
+      prisma.club.findMany.mockResolvedValue([{ id: "c1" }] as never);
+      prisma.club.findFirst.mockResolvedValue(null);
+      await expect(
+        clubMembersScopeOf(prisma, { clubId: null, clubName: "Club A" }),
+      ).resolves.toBeNull();
+    });
+
+    it.each([null, "", "  "])(
+      "scopes nobody for a legacy account without a name (%p), without lookup",
+      async (clubName) => {
+        await expect(
+          clubMembersScopeOf(prisma, { clubId: null, clubName }),
+        ).resolves.toBeNull();
+        expect(prisma.club.findMany).not.toHaveBeenCalled();
+      },
+    );
   });
 });

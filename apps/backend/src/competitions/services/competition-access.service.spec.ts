@@ -11,7 +11,7 @@ describe("CompetitionAccessService", () => {
   const prisma = {
     competition: { findUnique: jest.fn() },
     user: { findUnique: jest.fn() },
-    club: { findMany: jest.fn() },
+    club: { findMany: jest.fn(), findFirst: jest.fn() },
   };
   const service = new CompetitionAccessService(
     prisma as unknown as PrismaService,
@@ -35,6 +35,11 @@ describe("CompetitionAccessService", () => {
     prisma.club.findMany.mockResolvedValue([
       { id: "club-1", name: "Dance Club Paris" },
     ]);
+    // Legacy-account resolution: the named club is active.
+    prisma.club.findFirst.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve({ id: where.id }),
+    );
   });
 
   describe("assertCanManageCheckIn", () => {
@@ -303,9 +308,9 @@ describe("CompetitionAccessService", () => {
         ).rejects.toThrow(ForbiddenException);
       });
 
-      it("matches a legacy account without clubId on the label", async () => {
+      it("lets a legacy account in once its name resolves to the linked club (#625)", async () => {
         prisma.competition.findUnique.mockResolvedValue({
-          organizer: "Dance Club Paris",
+          organizer: "Ancien libellé",
           organizerClubId: "club-1",
         });
         prisma.user.findUnique.mockResolvedValue(
@@ -315,6 +320,66 @@ describe("CompetitionAccessService", () => {
         await expect(
           service.assertCanManageCompetition("comp-1", club),
         ).resolves.toBeUndefined();
+      });
+
+      it("refuses a legacy account named like the label but resolving to another club (#625)", async () => {
+        prisma.competition.findUnique.mockResolvedValue({
+          organizer: "Dance Club Paris",
+          organizerClubId: "club-1",
+        });
+        prisma.club.findMany.mockResolvedValue([{ id: "club-9" }]);
+        prisma.user.findUnique.mockResolvedValue(
+          clubUser({ clubId: null, club: null }),
+        );
+
+        await expect(
+          service.assertCanManageCompetition("comp-1", club),
+        ).rejects.toThrow(ForbiddenException);
+        await expect(
+          service.assertCanManageCheckIn("comp-1", club),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it.each([
+        ["designates no club", [], undefined],
+        [
+          "is shared by homonym clubs",
+          [{ id: "club-1" }, { id: "club-2" }],
+          undefined,
+        ],
+        ["designates a disabled club", [{ id: "club-1" }], null],
+      ])(
+        "refuses a legacy account whose name %s, even with the exact label (#625)",
+        async (_label, clubs, active) => {
+          prisma.competition.findUnique.mockResolvedValue({
+            organizer: "Dance Club Paris",
+            organizerClubId: "club-1",
+          });
+          prisma.club.findMany.mockResolvedValue(clubs);
+          if (active === null) prisma.club.findFirst.mockResolvedValue(null);
+          prisma.user.findUnique.mockResolvedValue(
+            clubUser({ clubId: null, club: null }),
+          );
+
+          await expect(
+            service.assertCanManageCompetition("comp-1", club),
+          ).rejects.toThrow(ForbiddenException);
+        },
+      );
+
+      it("refuses a legacy account on an UNLINKED row with its exact name when the name designates no club (#625)", async () => {
+        prisma.competition.findUnique.mockResolvedValue({
+          organizer: " dance club paris ",
+          organizerClubId: null,
+        });
+        prisma.club.findMany.mockResolvedValue([]);
+        prisma.user.findUnique.mockResolvedValue(
+          clubUser({ clubId: null, club: null }),
+        );
+
+        await expect(
+          service.assertCanManageCompetition("comp-1", club),
+        ).rejects.toThrow(ForbiddenException);
       });
     });
   });
@@ -367,7 +432,7 @@ describe("CompetitionAccessService", () => {
       await expect(
         service.assertCanManageResults("comp-1", club),
       ).rejects.toThrow(ForbiddenException);
-      // The programme editor keeps its legacy rule.
+      // The programme editor accepts it once resolved to the linked club.
       await expect(
         service.assertCanManageCompetition("comp-1", club),
       ).resolves.toBeUndefined();
@@ -468,16 +533,15 @@ describe("CompetitionAccessService", () => {
       });
     });
 
-    it("leaves a legacy account unlinked when its name is ambiguous (#408)", async () => {
+    it("refuses a legacy account whose name is ambiguous (#625)", async () => {
       prisma.user.findUnique.mockResolvedValue(
         clubUser({ clubId: null, club: null }),
       );
       prisma.club.findMany.mockResolvedValue([{ id: "a" }, { id: "b" }]);
 
-      await expect(service.organizerForNewCompetition(club)).resolves.toEqual({
-        organizer: "Dance Club Paris",
-        organizerClubId: null,
-      });
+      await expect(service.organizerForNewCompetition(club)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it.each([

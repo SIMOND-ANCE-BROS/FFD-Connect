@@ -141,7 +141,9 @@ module.exports = {
     "react-native/Libraries/NativeComponent/ViewConfigIgnore":
       "<rootDir>/__mocks__/ViewConfigIgnore.js",
   },
+  // @noble/curves 2 and @noble/hashes 2 are ESM-only (offline entry-QR
+  // Ed25519 check, ADR-0024): babel-jest must transpile them too (#720).
   transformIgnorePatterns: [
-    "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg|@sentry/.*|@shopify/.*|lucide-react-native|until-async|msw|@mswjs/.*|@msw/.*|@open-draft/.*|rettime|headers-polyfill|cookie|tough-cookie|outvariant|is-node-process|strict-event-emitter))",
+    "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg|@sentry/.*|@shopify/.*|lucide-react-native|until-async|msw|@mswjs/.*|@msw/.*|@open-draft/.*|rettime|headers-polyfill|cookie|tough-cookie|outvariant|is-node-process|strict-event-emitter|@noble/.*))",
   ],
 };

@@ -187,7 +187,7 @@ export class UsersController {
           nullable: true,
           deprecated: true,
           description:
-            "Ancien niveau unique, conservé pour les anciennes versions de l'app. Préférer les niveaux par discipline.",
+            "Ancien niveau unique, conservé pour les anciennes versions de l'app : dérivé des niveaux par discipline (le plus élevé). Préférer les niveaux par discipline ; supprimé en phase 2 de #239.",
         },
         licenseNumber: { type: "string", nullable: true },
         license: {
@@ -204,7 +204,7 @@ export class UsersController {
               type: "string",
               nullable: true,
               description:
-                "Contenu du QR de licence signé par le serveur, à afficher tel quel. Null si la signature est désactivée.",
+                "Contenu du QR de licence signé par le serveur, à afficher tel quel. Null si la signature est désactivée, ou pendant un accès support (« se connecter en tant que »).",
             },
             appleWalletAvailable: {
               type: "boolean",
@@ -271,16 +271,19 @@ export class UsersController {
     },
   })
   getProfile(@Request() req: RequestWithUser) {
-    return this.usersService.findOne(req.user.userId);
+    return this.usersService.findOne(req.user.userId, {
+      supportAccess: Boolean(req.user.impersonatedBy),
+    });
   }
 
   @Patch("me")
-  @UseGuards(JwtAuthGuard)
+  // Links or unlinks the WDSF licence for good: never from support (#761).
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard)
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Met à jour le profil (ex. licence WDSF)",
     description:
-      "Permet de lier ou dissocier la licence WDSF (données envoyées après vérification GET /wdsf/athlete/:min). Envoyer wdsf: null pour supprimer le lien.",
+      "Permet de lier ou dissocier la licence WDSF (données envoyées après vérification GET /wdsf/athlete/:min). Envoyer wdsf: null pour supprimer le lien. Refusé (403) pendant un accès support (« se connecter en tant que »).",
   })
   @ApiBody({ type: UpdateWdsfDto })
   @ApiResponse({
@@ -303,7 +306,7 @@ export class UsersController {
   @ApiOperation({
     summary: "Export RGPD des données personnelles (portabilité)",
     description:
-      "Retourne en un seul JSON les données personnelles de l'utilisateur connecté actuellement couvertes par l'export (profil dont date de désactivation, licence, demandes de renouvellement de licence, inscriptions y compris en tant que partenaire, résultats de compétition, partenariats, équipes solo, réservations de places, notifications, appareils, préférences, propositions de correction, musiques proposées, signalements, sessions de connexion en métadonnées, sessions d'impersonation reçues avec le seul rôle de leur auteur) — droit à la portabilité, RGPD art. 20. Ne contient jamais de secrets ni de données de tiers ; le journal d'audit d'administration en est exclu.",
+      "Retourne en un seul JSON les données personnelles de l'utilisateur connecté actuellement couvertes par l'export (profil dont date de désactivation, licence, demandes de renouvellement de licence, inscriptions y compris en tant que partenaire, résultats de compétition, partenariats, équipes solo, réservations de places, notifications, appareils, préférences, propositions de correction, musiques proposées, signalements, sessions de connexion en métadonnées, sessions d'impersonation reçues avec le seul rôle de leur auteur, accès à ses données de santé avec la seule qualité de leur auteur) — droit à la portabilité, RGPD art. 20. Ne contient jamais de secrets ni de données de tiers ; le journal d'audit d'administration en est exclu.",
   })
   @ApiResponse({
     status: 200,

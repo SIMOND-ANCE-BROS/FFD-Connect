@@ -6,19 +6,21 @@
 
 Décision : Gabin, 2026-10-16. Démarrage par la phase 0 sur staging ; résultats dans [Mesures de la phase 0](../exploitation/migrations-adr-0025-phase-0.md).
 
+**Avancement** : phase 0 terminée (2026-10-16). **Phase 1 en cours** sur staging, en **option A** (Gabin, 2026-10-18 ; voir [Phase 1 : option A](#phase-1--option-a-2026-10-18)) ; runbook : [Migrations par job Container Apps](../exploitation/migrations-job-adr-0025.md).
+
 ## Context
 
 Aujourd'hui, `apps/backend/docker-entrypoint.sh` lance `prisma migrate deploy` **à chaque démarrage de conteneur**, avant `node dist/src/main.js`. En cas d'échec, le conteneur sort en code 1. Il en découle trois choses :
 
 - **La CLI Prisma est une dépendance runtime** (`prisma` est dans les `dependencies` du backend). L'image de production embarque donc la CLI, le binaire du schema engine (`@prisma/engines`) et les dépendances de la CLI 7.10 : `@prisma/dev`, `@prisma/studio-core` (React / React DOM), `mysql2`, `postgres` et `typescript` en dépendance optionnelle. Rien de tout cela ne sert à l'application, qui passe par `@prisma/client` et `@prisma/adapter-pg`.
-- **Les migrations tournent à chaque réveil.** Le backend est en `minReplicas = 0` (ADR-0019) : chaque réveil paie un cold start de ~60-120 s (pull de l'image, migrations, boot NestJS). Quand le schéma est à jour, `migrate deploy` ne fait rien, mais il coûte quand même un démarrage de la CLI, le lancement du schema engine, une connexion TLS à PostgreSQL et la prise d'un verrou consultatif (advisory lock).
+- **Les migrations tournent à chaque réveil.** Le backend est en `minReplicas = 0` (ADR-0019) : chaque réveil paie un cold start de ~60-120 s (pull de l'image, migrations, boot NestJS ; estimation initiale, la [phase 0](../exploitation/migrations-adr-0025-phase-0.md) a mesuré ~30 à 57 s). Quand le schéma est à jour, `migrate deploy` ne fait rien, mais il coûte quand même un démarrage de la CLI, le lancement du schema engine, une connexion TLS à PostgreSQL et la prise d'un verrou consultatif (advisory lock).
 - **La disponibilité de l'app dépend de l'état des migrations en base.** Si une migration échoue, elle reste marquée en échec dans `_prisma_migrations`. D'après le comportement documenté de Prisma (P3009), `migrate deploy` refuse alors de s'exécuter tant que la migration n'est pas résolue (`prisma migrate resolve`). Comme chaque réveil passe par `migrate deploy`, **aucune image ne redémarre plus, y compris l'image précédente rappelée par le rollback automatique** (`deploy-backend.yml`). Sur une app scale-to-zero, l'ancienne révision ne tourne pas en permanence pour amortir le problème : au prochain réveil, elle exécute l'entrypoint et bute sur la même erreur.
 
 Ce qui est déjà acquis et que cette décision ne doit pas faire régresser :
 
 - **ADR-0017** et le contrôle CI `scripts/check-migrations.ts` (#494) : les migrations sont **additives**, sauf marqueur d'approbation explicite. C'est ce qui rend le rollback par image sûr, puisque le schéma peut avoir une version d'avance sur le code.
 - **#618 / #486** : la porte Trivy (HIGH/CRITICAL corrigeables) et le retrait de npm, npx, corepack et yarn du stage runtime.
-- **#430** (taille d'image) et **#415** (résolution des migrations Prisma 7 multi-fichiers via `--schema=./prisma/schema`).
+- **#717** (taille d'image) et **#415** (résolution des migrations Prisma 7 multi-fichiers via `--schema=./prisma/schema`).
 - Le déploiement single-revision avec smoke test (`/health` doit renvoyer `version` == SHA déployé) et rollback automatique.
 - Les secrets DB par environnement, en Key Vault et lus par identité managée (`docs/exploitation/isolation-secrets-db.md`).
 - La purge ACR qui recense **toutes** les révisions des apps **et des jobs** avant toute suppression (incident #681).
@@ -48,7 +50,7 @@ L'issue #32, partie (b), demande de trancher entre la migration au boot et la mi
   - `replicaTimeout = 600` s ;
   - 0,5 vCPU / 1 Gi.
 - La chaîne de connexion à la base utilise **la même référence Key Vault et la même identité managée que l'app du même environnement**, si cette identité est assignée par l'utilisateur. Sinon, une attribution RBAC supplémentaire, limitée au même secret. Aucun nouveau secret, aucun secret dans GitHub.
-- Les jobs et le rôle CI sont déclarés en Terraform. Le rôle personnalisé, limité aux deux jobs, autorise le démarrage d'une exécution, la lecture des exécutions et la mise à jour de l'image du job.
+- Les jobs et le rôle CI sont déclarés en Terraform. Le rôle personnalisé, attribué sur chaque job existant (staging seul en phase 1, prod au redémarrage de `backend-prod`), autorise la lecture du job, le démarrage d'une exécution avec surcharge du conteneur (image du déploiement), la lecture des exécutions et de leurs logs, et l'arrêt d'une exécution. Il n'accorde pas `jobs/write` : le modèle du job n'est jamais modifié par la CI (#772, #773).
 
 ### Workflow `deploy-backend.yml`
 
@@ -97,6 +99,20 @@ Détail, méthode et commandes : [Mesures de la phase 0](../exploitation/migrati
 - **P3009 confirmé** sur une base jetable : après l'échec d'une migration, `migrate deploy` sort en code 1 à chaque démarrage, **y compris avec l'image précédente**, qui ne contient pas la migration fautive. `migrate resolve --rolled-back` lancé depuis l'image précédente débloque. **La migration en échec était appliquée à moitié** : la colonne ajoutée par sa première instruction est restée en base. Avec un `BEGIN; … COMMIT;` explicite, rien n'est resté.
 - **Prérequis lockfile** : déjà rempli par #692 (le `Dockerfile` n'utilise plus `pnpm deploy --legacy`). Le point ouvert du contexte et le risque « Résolution non reproductible » sont donc levés.
 - **Identité** : `backend-staging` utilise une identité managée **attribuée par le système**. Le job ne pourra pas la partager : il faudra l'attribution RBAC supplémentaire prévue, limitée au secret Key Vault de la chaîne de connexion staging.
+
+### Phase 1 : option A (2026-10-18)
+
+Décision de Gabin : la phase 1 **réutilise l'image de l'app**, qui contient encore la CLI Prisma, au lieu de produire tout de suite la cible `migrate` et son repository ACR. Ce qui change par rapport au plan ci-dessus, pour la phase 1 seulement :
+
+- **Pas de cible `migrate` ni de repository `ffd-connect-backend-migrate`** : ils arrivent en phase 3, quand la CLI sort de l'image de l'app. Aucun stockage ACR en plus, aucun push de plus par build.
+- **Démarrage par surcharge, sans `job update`** : chaque exécution reçoit l'image `ffd-connect-backend:<sha>`, la commande `prisma migrate deploy --schema=./prisma/schema` et `DATABASE_URL` (via l'API `jobs/start`). Le rôle CI n'a donc pas besoin de `jobs/write`. Le modèle du job porte une image publique d'attente : il n'épingle aucun tag ACR.
+- **Identité propre au job** (attribuée par l'utilisateur), `Key Vault Secrets User` limité au secret `db-url-staging`, plus `AcrPull`, comme prévu pour le cas d'une identité d'app attribuée par le système.
+- **Aucun texte de log dans les journaux Actions** (dépôt public, #774) : le workflow n'affiche qu'un résumé (nombre de lignes, codes Prisma et SQLSTATE) ; le détail se lit en local. L'environnement n'a **pas de Log Analytics** : les logs d'une exécution sont perdus une fois le réplica nettoyé.
+- **Coût** : ≈ 0 € (exécutions dans l'offre gratuite Container Apps, minutes Actions gratuites sur dépôt public, aucun stockage ACR en plus).
+- La purge ACR recense aussi les images des exécutions de jobs non terminées.
+- Lignes de l'entrypoint horodatées (recommandation 2 de la phase 0).
+
+Implémentation : `infra/terraform/migrate-job.tf`, étape « Run DB migrations (job, ADR-0025) » de `deploy-backend.yml` (staging seulement). Le job prod est paramétré (`migrate_jobs`) mais ne sera créé qu'en phase 4.
 
 **Évolution possible, hors périmètre** : séparer les privilèges DB, avec un rôle de migration (DDL) réservé au job et un rôle applicatif réduit au DML. Ce découpage n'est possible qu'une fois les migrations sorties de l'app. Il ajoute un secret par environnement, d'où une décision séparée. De même, les seeds staging pourraient passer dans le job.
 

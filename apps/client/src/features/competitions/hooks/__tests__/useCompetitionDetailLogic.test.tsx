@@ -14,6 +14,7 @@ import { Alert } from "react-native";
 import { ERROR_MESSAGES } from "../../../../constants/errorMessages";
 import { useAuthRepository } from "../../../../features/auth/context/AuthContext";
 import { useClubRepository } from "../../../../features/club/context/ClubContext";
+import { ClubService } from "../../../../features/club/services/ClubService";
 import { createPartialEvent } from "../../../../hooks/__mocks__/types";
 import { useCompetitionRepository } from "../../context/CompetitionContext";
 import { useCompetitionDetailLogic } from "../useCompetitionDetailLogic";
@@ -45,6 +46,13 @@ jest.mock("../../../../features/club/services/ClubService", () => ({
     getMyClubRegistrationMode: jest
       .fn()
       .mockResolvedValue({ registrationMode: "MEMBERS_AUTO_CONFIRM" }),
+  },
+}));
+
+const mockLogEvent = jest.fn();
+jest.mock("../../../../services/analytics", () => ({
+  analytics: {
+    logEvent: (...args: unknown[]) => mockLogEvent(...args),
   },
 }));
 
@@ -324,6 +332,46 @@ describe("useCompetitionDetailLogic", () => {
   });
 
   describe("handleRegister", () => {
+    it.each([
+      ["LICENSEE", "SOLO"],
+      ["LICENSEE", "COUPLE"],
+      ["CLUB", "SOLO"],
+    ])(
+      "logs registration_start once for a %s on a %s event",
+      async (role, eventType) => {
+        mockGetAuthConfig.mockResolvedValue({
+          role,
+          category: "A",
+          ageGroup: "Adulte",
+        });
+        const { result } = await renderHook(
+          () =>
+            useCompetitionDetailLogic(
+              mockCompetitionId,
+              mockNavigation as never,
+            ),
+          { wrapper: createWrapper() },
+        );
+
+        await waitFor(() => expect(result.current.state.loading).toBe(false));
+        await waitFor(() => expect(result.current.state.userRole).toBe(role));
+        expect(mockLogEvent).not.toHaveBeenCalled();
+
+        await act(async () => {
+          // eslint-disable-next-line @typescript-eslint/await-thenable
+          await result.current.actions.handleRegister(
+            createPartialEvent({ id: "evt-1", eventType } as never),
+          );
+        });
+
+        expect(mockLogEvent).toHaveBeenCalledTimes(1);
+        expect(mockLogEvent).toHaveBeenCalledWith("registration_start", {
+          competition_id: "comp-1",
+          event_id: "evt-1",
+        });
+      },
+    );
+
     it("should register for an event", async () => {
       const { result } = await renderHook(
         () =>
@@ -701,6 +749,21 @@ describe("useCompetitionDetailLogic", () => {
 
       expect(mockGetMembers).toHaveBeenCalled();
       expect(result.current.state.clubMembers).toHaveLength(1);
+    });
+
+    it("reads the club's mode from its own route, not the HelloAsso status (#665)", async () => {
+      mockGetAuthConfig.mockResolvedValue({ role: "CLUB" });
+
+      const { result } = await renderHook(
+        () =>
+          useCompetitionDetailLogic(mockCompetitionId, mockNavigation as never),
+        { wrapper: createWrapper() },
+      );
+
+      await waitFor(() => expect(result.current.state.loading).toBe(false));
+
+      expect(ClubService.getMyClubRegistrationMode).toHaveBeenCalled();
+      expect(ClubService.getHelloAssoStatus).not.toHaveBeenCalled();
     });
 
     it("should set selected event for registration for CLUB", async () => {

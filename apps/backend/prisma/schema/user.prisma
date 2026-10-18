@@ -26,6 +26,8 @@ model User {
   updatedAt            DateTime       @updatedAt
   lastLoginAt          DateTime?      // Dernière connexion réussie (back-office : « renvoyer l'invitation » tant que null)
   disabledAt           DateTime?      // Désactivé par un admin (null = actif) : connexion, refresh et requêtes refusés
+  // Dernière version de la politique de confidentialité signalée et lue (#734) ; null = jamais. Information, pas consentement.
+  privacyPolicySeenVersion String?
   isStoreReview        Boolean        @default(false) // Compte de validation App Store / Google Play : écritures simulées, ni supprimable ni désactivable
   ageGroup             String?        // 1 seule classe d'âge par licencié
   category             String?        // discipline(s) : Latin, Standard, Ten Dance
@@ -83,29 +85,56 @@ enum UserRole {
   ADMIN   // Administration plateforme
 }
 
-/// Journal d'audit des impersonations (« se connecter en tant que », #545).
-/// Une ligne par session d'impersonation : qui, cible, quand, pourquoi.
-/// Obligatoire pour la traçabilité RGPD (accès à des données de tiers).
+/// Journal d'audit des accès support (« se connecter en tant que », #545,
+/// réservés aux administrateurs depuis #733). Une ligne par session :
+/// qui, cible, quand, pourquoi. Obligatoire pour la traçabilité RGPD (accès à
+/// des données de tiers) ; chaque requête de la session relit sa ligne
+/// (JwtStrategy) et la session meurt à l'arrêt, au plus tard 15 min après
+/// `startedAt`.
 model ImpersonationLog {
   id             String    @id @default(uuid())
-  /// Auteur de l'impersonation (admin ou staff).
+  /// Auteur de l'accès support (administrateur uniquement).
   actorId        String
-  /// Rôle qui a autorisé l'impersonation (ADMIN ou STAFF), pas le rôle principal.
+  /// Rôle qui a autorisé l'accès : toujours ADMIN depuis #733 (les lignes
+  /// plus anciennes peuvent porter STAFF), pas le rôle principal.
   actorRole      UserRole
-  /// Compte cible dont on prend l'identité.
+  /// Compte cible dont on prend l'identité (jamais un administrateur).
   targetUserId   String
   /// Rôle principal de la cible.
   targetRole     UserRole
-  /// Raison (obligatoire pour le staff ; facultative pour l'admin).
+  /// Motif, facultatif ; sans donnée personnelle de tiers.
   reason         String?
+  /// IP de l'administrateur, réduite à son réseau au bout de 90 jours (#731).
   ip             String?
   startedAt      DateTime  @default(now())
-  /// Renseigné à l'arrêt de l'impersonation.
+  /// Renseigné à l'arrêt de la session par l'administrateur.
   endedAt        DateTime?
 
   @@index([actorId])
   @@index([targetUserId])
   @@index([startedAt])
+
+  /// Écritures faites pendant la session (#761), supprimées avec elle.
+  actions        ImpersonationActionLog[]
+}
+
+/// Journal des écritures faites pendant un accès support (#761) : une ligne
+/// par requête non-GET (méthode, route sans identifiant ni paramètre, statut
+/// HTTP). Jamais de corps, d'identifiant d'URL ni d'identité de l'intervenant
+/// (portée par la session). Supprimée avec sa session (ON DELETE CASCADE), donc
+/// à la même échéance (IMPERSONATION_LOG_RETENTION_DAYS).
+model ImpersonationActionLog {
+  id                 String           @id @default(uuid())
+  impersonationLogId String
+  session            ImpersonationLog @relation(fields: [impersonationLogId], references: [id], onDelete: Cascade)
+  /// POST, PUT, PATCH ou DELETE.
+  method             String
+  /// Modèle de route, ex. « /competitions/:id/unregister ».
+  route              String
+  statusCode         Int
+  at                 DateTime         @default(now())
+
+  @@index([impersonationLogId, at]) // export RGPD : actions d'une session, dans l'ordre
 }
 
 model RefreshToken {

@@ -57,12 +57,10 @@ export function routeTemplate(req: RequestWithUser): string {
  * health data. The trace is written before the response leaves; if it cannot
  * be, the request fails instead of serving untraced health data.
  *
- * Accepted limit: on the POST routes (start, document upload, submit) the
- * handler has already committed its write when the trace is attempted. If the
- * trace insert fails, the impersonator gets a 500 although the write took
- * place — no health data was served, and a retry reads it back (traced).
- * The deletion of a replaced certificate is not concerned: it is journaled in
- * the upload's own transaction.
+ * The POST routes (start, document upload, submit) refuse an impersonated
+ * session outright since #760 (NoImpersonationGuard runs before this
+ * interceptor): only the read route can reach the trace below. The
+ * interceptor stays on the POST routes as defence in depth.
  */
 @Injectable()
 export class ImpersonatedRenewalAccessInterceptor implements NestInterceptor {

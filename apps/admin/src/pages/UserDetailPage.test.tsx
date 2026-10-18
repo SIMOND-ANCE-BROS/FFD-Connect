@@ -207,13 +207,14 @@ describe('UserDetailPage', { timeout: 15_000 }, () => {
     });
   });
 
-  it('shows the legacy single level as a read-only hint when no discipline level is set', async () => {
+  it('never shows the deprecated single level (#239)', async () => {
     vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
       data: { ...detail, competitionLevel: 'Avancé' },
       error: undefined,
     } as never);
     renderPage();
-    expect(await screen.findAllByText('Ancien niveau unique : Avancé')).toHaveLength(2);
+    await screen.findByLabelText('Niveau Latines', { selector: 'input' });
+    expect(screen.queryByText(/Ancien niveau unique/)).not.toBeInTheDocument();
   });
 
   it('blocks the save when a required name is cleared', async () => {

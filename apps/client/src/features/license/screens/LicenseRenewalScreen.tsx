@@ -146,7 +146,10 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
           </AppText>
           {doc && (
             <View
-              style={[styles.badge, { backgroundColor: currentTheme.primary }]}
+              style={[
+                styles.badge,
+                { backgroundColor: currentTheme.primaryFill },
+              ]}
             >
               <CheckCircle2 size={14} color="#fff" />
               <AppText variant="caption" style={styles.badgeText}>
@@ -162,7 +165,7 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
             {
               backgroundColor: doc
                 ? currentTheme.background
-                : currentTheme.primary,
+                : currentTheme.primaryFill,
               borderColor: currentTheme.border,
             },
           ]}
@@ -189,14 +192,18 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
   const submitButtonStyle = [
     styles.primaryButton,
     {
-      backgroundColor: canSubmit ? currentTheme.primary : currentTheme.border,
-      opacity: canSubmit ? 1 : 0.7,
+      backgroundColor: canSubmit
+        ? currentTheme.primaryFill
+        : currentTheme.disabledFill,
     },
   ];
+  const submitLabelStyle = {
+    color: canSubmit ? currentTheme.onPrimary : currentTheme.onDisabled,
+  };
   const retryButtonStyle = [
     styles.primaryButton,
     styles.statusActionButton,
-    { backgroundColor: currentTheme.primary },
+    { backgroundColor: currentTheme.primaryFill },
   ];
 
   return (
@@ -241,7 +248,7 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
             <TouchableOpacity
               style={[
                 styles.primaryButton,
-                { backgroundColor: currentTheme.primary },
+                { backgroundColor: currentTheme.primaryFill },
               ]}
               onPress={() => {
                 startOrGetDraft().catch(() => {});
@@ -271,11 +278,20 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
                 submit().catch(() => {});
               }}
               disabled={!canSubmit || submitting}
+              accessibilityRole="button"
+              accessibilityState={{
+                disabled: !canSubmit || submitting,
+                busy: submitting,
+              }}
+              testID="license-renewal-submit"
             >
               {submitting ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <ActivityIndicator
+                  size="small"
+                  color={submitLabelStyle.color}
+                />
               ) : (
-                <AppText variant="button" style={styles.whiteText}>
+                <AppText variant="button" style={submitLabelStyle}>
                   Soumettre la demande
                 </AppText>
               )}

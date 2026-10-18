@@ -44,6 +44,7 @@ import { SwipeableLicenseCard } from "../components/SwipeableLicenseCard";
 import { WdsfEntryModal } from "../components/WdsfEntryModal";
 
 import { useTheme } from "../../../context/ThemeContext";
+import { useAuthStore } from "../../../stores/auth.store";
 import type { RootStackParamList } from "../../../navigation/types";
 import { isWdsfQrData } from "../../../utils/typeGuards";
 import { useEntryQrBatch } from "../hooks/useEntryQrBatch";
@@ -97,6 +98,9 @@ export const LicenseScreen: React.FC = () => {
   const addWdsfCardRef = useRef<View>(null);
   useRestoreFocusOnClose(state.wdsfModalVisible, addWdsfCardRef);
 
+  // Support access (#759): the server withholds the licence QR and the
+  // Wallet pass, so the screen shows neither.
+  const impersonating = useAuthStore((s) => s.impersonating);
   const ffdUser =
     state.listItems.find((item) => item.type === "FFD")?.data ?? null;
   // Rotating entry QR (#24): fetched while online, served offline at the venue.
@@ -177,12 +181,17 @@ export const LicenseScreen: React.FC = () => {
         type={item.type as LicenseType}
         user={user}
         photoUri={state.photoUri}
-        onShowQr={() =>
-          actions.handleShowQr(
-            // QR signé par le serveur (#168) tel quel, sinon
-            // ancien contenu (backend ancien / snapshot antérieur).
-            buildLicenseQrData(user, item.type),
-          )
+        onShowQr={
+          // No entry QR at all during a support access (#759): the card
+          // shows no QR rather than an unsigned fallback.
+          impersonating
+            ? undefined
+            : () =>
+                actions.handleShowQr(
+                  // QR signé par le serveur (#168) tel quel, sinon
+                  // ancien contenu (backend ancien / snapshot antérieur).
+                  buildLicenseQrData(user, item.type),
+                )
         }
         themeOverride={isDark ? "dark" : "light"}
         testID={`license-card-${item.type}`}
@@ -454,7 +463,7 @@ export const LicenseScreen: React.FC = () => {
         </View>
         {/* Apple Wallet (#163): FFD license only — hidden while the WDSF
             card is the active one of the stack. */}
-        {ffdUser && activeItemType !== "WDSF" ? (
+        {ffdUser && activeItemType !== "WDSF" && !impersonating ? (
           <AddToAppleWalletButton
             license={ffdUser}
             servedFromSnapshot={Boolean(state.offlineSince)}
