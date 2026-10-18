@@ -56,8 +56,23 @@ output "acr_login_server" {
 # ── CI/CD — values for GitHub Actions secrets ──
 
 output "ci_client_id" {
-  description = "Azure AD application (client) ID for GitHub Actions OIDC — set as AZURE_CLIENT_ID secret"
+  description = "LEGACY shared CI identity (#778) — kept for the migration runbook only; the workflows use ci_staging_client_id / ci_prod_client_id"
   value       = azuread_application.ci.client_id
+}
+
+output "ci_image_push_client_id" {
+  description = "Client ID of ci-image-push (#778) — set as repository variable AZURE_IMAGE_PUSH_CLIENT_ID (ci.yml build-image). Not a secret."
+  value       = azuread_application.ci_env["image-push"].client_id
+}
+
+output "ci_staging_client_id" {
+  description = "Client ID of ci-staging (#778) — set as variable AZURE_CLIENT_ID on the `staging` GitHub environment ONLY. Not a secret."
+  value       = azuread_application.ci_env["staging"].client_id
+}
+
+output "ci_prod_client_id" {
+  description = "Client ID of ci-prod (#778) — set as variable AZURE_CLIENT_ID on the `production` GitHub environment ONLY. Not a secret."
+  value       = azuread_application.ci_env["prod"].client_id
 }
 
 output "ci_tenant_id" {
@@ -73,11 +88,13 @@ output "ci_subscription_id" {
 output "github_secrets_to_update" {
   description = "GitHub Actions secrets that need updating after apply"
   value = {
-    AZURE_CLIENT_ID       = azuread_application.ci.client_id
-    AZURE_TENANT_ID       = data.azuread_client_config.current.tenant_id
-    AZURE_SUBSCRIPTION_ID = data.azurerm_subscription.current.subscription_id
-    ACR_REGISTRY          = azurerm_container_registry.backend.login_server
-    NOTE                  = "ACR_REGISTRY is the login server hostname. AZURE_CLIENT_ID is for GitHub OIDC (no secret needed)."
+    AZURE_CLIENT_ID_ENV_STAGING    = azuread_application.ci_env["staging"].client_id
+    AZURE_CLIENT_ID_ENV_PRODUCTION = azuread_application.ci_env["prod"].client_id
+    AZURE_IMAGE_PUSH_CLIENT_ID     = azuread_application.ci_env["image-push"].client_id
+    AZURE_TENANT_ID                = data.azuread_client_config.current.tenant_id
+    AZURE_SUBSCRIPTION_ID          = data.azurerm_subscription.current.subscription_id
+    ACR_REGISTRY                   = azurerm_container_registry.backend.login_server
+    NOTE                           = "Client ids are GitHub VARIABLES (not secrets): AZURE_CLIENT_ID on the staging / production environments, AZURE_IMAGE_PUSH_CLIENT_ID at repository level (#778). ACR_REGISTRY is the login server hostname."
   }
 }
 

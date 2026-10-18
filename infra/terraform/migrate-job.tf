@@ -170,7 +170,8 @@ resource "azurerm_container_app_job" "migrate" {
 # backend_app_deployer role in ci-iam.tf). Starting an execution with an
 # override still amounts to reading db-url-<env> (any command can receive
 # the secret as an env var), the same exposure as containerApps/write on the
-# app of that environment.
+# app of that environment — hence each job's runner is the CI identity of
+# that environment ONLY (#778): ci-staging can never start the prod job.
 resource "azurerm_role_definition" "migrate_job_runner" {
   name        = "${local.name_prefix}-migrate-job-runner"
   scope       = azurerm_resource_group.main.id
@@ -195,8 +196,23 @@ resource "azurerm_role_definition" "migrate_job_runner" {
   assignable_scopes = [azurerm_resource_group.main.id]
 }
 
-resource "azurerm_role_assignment" "ci_migrate_job_runner" {
+# Per-environment CI identity (#778): the migrate_jobs keys (staging, prod)
+# are keys of local.ci_identities (ci-iam.tf), so the staging job's runner is
+# ci-staging and the prod job's is ci-prod.
+resource "azurerm_role_assignment" "ci_env_migrate_job_runner" {
   for_each = var.migrate_jobs
+
+  scope              = azurerm_container_app_job.migrate[each.key].id
+  role_definition_id = azurerm_role_definition.migrate_job_runner.role_definition_resource_id
+  principal_id       = azuread_service_principal.ci_env[each.key].object_id
+  # Fresh SP (same apply): avoid PrincipalNotFound before replication.
+  skip_service_principal_aad_check = true
+}
+
+# LEGACY shared CI identity (#778): staging job only, removed with
+# ci_shared_identity_enabled. Never the prod job.
+resource "azurerm_role_assignment" "ci_migrate_job_runner" {
+  for_each = var.ci_shared_identity_enabled ? { for k, v in var.migrate_jobs : k => v if k == "staging" } : {}
 
   scope              = azurerm_container_app_job.migrate[each.key].id
   role_definition_id = azurerm_role_definition.migrate_job_runner.role_definition_resource_id
