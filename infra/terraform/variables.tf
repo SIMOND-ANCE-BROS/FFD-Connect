@@ -199,3 +199,16 @@ variable "migrate_job_placeholder_image" {
   type        = string
   default     = "mcr.microsoft.com/k8se/quickstart-jobs:latest"
 }
+
+# ── CI deploy targets (#773) ────────────────
+
+variable "ci_deploy_container_apps" {
+  description = "Container Apps (created outside Terraform, in the main resource group) that deploy-backend.yml and backend-warm-hours.yml update. The CI identity gets the backend-app-deployer role on each of them and write access to no other app (ci-iam.tf)."
+  type        = set(string)
+  default     = ["backend-staging", "backend-prod"]
+
+  validation {
+    condition     = alltrue([for n in var.ci_deploy_container_apps : can(regex("^backend-(staging|prod)$", n))])
+    error_message = "ci_deploy_container_apps may only name backend-staging and backend-prod: the CI must never get write access to another app of the group (Redis, ...)."
+  }
+}
