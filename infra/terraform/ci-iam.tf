@@ -179,9 +179,12 @@ resource "azurerm_role_definition" "backend_app_deployer" {
       "Microsoft.App/containerApps/revisions/read",
       "Microsoft.App/containerApps/revisions/replicas/read",
       "Microsoft.App/containerApps/getAuthToken/action",
-      "Microsoft.App/containerApps/logstream/action",
     ]
     not_actions = []
+    # logstream is a data action: Azure rejects it in `actions` (400 InvalidActionOrNotAction).
+    data_actions = [
+      "Microsoft.App/containerApps/logstream/action",
+    ]
   }
 
   assignable_scopes = [azurerm_resource_group.main.id]
