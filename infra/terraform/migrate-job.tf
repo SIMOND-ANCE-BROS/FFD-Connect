@@ -143,6 +143,16 @@ resource "azurerm_container_app_job" "migrate" {
 
   tags = local.common_tags
 
+  lifecycle {
+    # Case-only drift that would force a REPLACEMENT: Azure returns the
+    # environment id with `/resourceGroups/FFD-CONNECT-PRODUCTION-RG/` while
+    # the data source yields `/resourceGroups/ffd-connect-production-rg/`
+    # (seen on the 2026-10-18 apply). Resource ids are case-insensitive in
+    # ARM; the job never moves to another environment, so ignoring the
+    # attribute loses nothing. Moving it on purpose = taint/replace by hand.
+    ignore_changes = [container_app_environment_id]
+  }
+
   # Azure resolves the Key Vault reference when the job is created.
   depends_on = [
     azurerm_role_assignment.migrate_db_url_reader,
@@ -160,7 +170,8 @@ resource "azurerm_container_app_job" "migrate" {
 # backend_app_deployer role in ci-iam.tf). Starting an execution with an
 # override still amounts to reading db-url-<env> (any command can receive
 # the secret as an env var), the same exposure as containerApps/write on the
-# app of that environment.
+# app of that environment — hence each job's runner is the CI identity of
+# that environment ONLY (#778): ci-staging can never start the prod job.
 resource "azurerm_role_definition" "migrate_job_runner" {
   name        = "${local.name_prefix}-migrate-job-runner"
   scope       = azurerm_resource_group.main.id
@@ -174,16 +185,34 @@ resource "azurerm_role_definition" "migrate_job_runner" {
       "Microsoft.App/jobs/executions/read",
       "Microsoft.App/jobs/execution/read",
       "Microsoft.App/jobs/getAuthToken/action",
-      "Microsoft.App/jobs/logstream/action",
     ]
     not_actions = []
+    # logstream is a data action: Azure rejects it in `actions` (400 InvalidActionOrNotAction).
+    data_actions = [
+      "Microsoft.App/jobs/logstream/action",
+    ]
   }
 
   assignable_scopes = [azurerm_resource_group.main.id]
 }
 
-resource "azurerm_role_assignment" "ci_migrate_job_runner" {
+# Per-environment CI identity (#778): the migrate_jobs keys (staging, prod)
+# are keys of local.ci_identities (ci-iam.tf), so the staging job's runner is
+# ci-staging and the prod job's is ci-prod.
+resource "azurerm_role_assignment" "ci_env_migrate_job_runner" {
   for_each = var.migrate_jobs
+
+  scope              = azurerm_container_app_job.migrate[each.key].id
+  role_definition_id = azurerm_role_definition.migrate_job_runner.role_definition_resource_id
+  principal_id       = azuread_service_principal.ci_env[each.key].object_id
+  # Fresh SP (same apply): avoid PrincipalNotFound before replication.
+  skip_service_principal_aad_check = true
+}
+
+# LEGACY shared CI identity (#778): staging job only, removed with
+# ci_shared_identity_enabled. Never the prod job.
+resource "azurerm_role_assignment" "ci_migrate_job_runner" {
+  for_each = var.ci_shared_identity_enabled ? { for k, v in var.migrate_jobs : k => v if k == "staging" } : {}
 
   scope              = azurerm_container_app_job.migrate[each.key].id
   role_definition_id = azurerm_role_definition.migrate_job_runner.role_definition_resource_id

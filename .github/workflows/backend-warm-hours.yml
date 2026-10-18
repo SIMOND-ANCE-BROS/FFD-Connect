@@ -27,8 +27,12 @@
 #   a warm run IS a boot: it pulls the image currently set on the app. If that
 #   tag was purged from ACR the revision sits in ImagePullBackOff while still
 #   being billed (what happened from 2026-09-10) — check the image exists first.
-# - The OIDC subject for a manual run is the branch it is dispatched from; the
-#   federated credentials cover develop/staging/master (ci-iam.tf).
+# - The job is bound to the `production` GitHub environment (#778): a run
+#   waits for its required reviewer, then logs in as ci-prod, the only CI
+#   identity allowed to write backend-prod (its sole trusted OIDC subject is
+#   `environment:production`, ci-iam.tf). Dispatch it from develop or master
+#   (the environment's deployment-branch policy). Side effect: each run is
+#   recorded as a deployment of `production`.
 # - Leaving the app parked: run with mode=sleep (min 0). The last value set
 #   sticks — nothing resets it automatically any more.
 #
@@ -58,6 +62,10 @@ jobs:
   set-min-replicas:
     name: Set backend-prod min replicas
     runs-on: ubuntu-24.04
+    # Required reviewer + the ci-prod identity (#778). Without it the job had
+    # to use an identity that a staging job could also obtain.
+    environment:
+      name: production
 
     env:
       CONTAINER_APP: backend-prod
@@ -91,7 +99,7 @@ jobs:
       - name: Azure login (OIDC)
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 

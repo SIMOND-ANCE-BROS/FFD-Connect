@@ -200,15 +200,10 @@ variable "migrate_job_placeholder_image" {
   default     = "mcr.microsoft.com/k8se/quickstart-jobs:latest"
 }
 
-# ── CI deploy targets (#773) ────────────────
+# ── CI identities (#773, #778) ──────────────
 
-variable "ci_deploy_container_apps" {
-  description = "Container Apps (created outside Terraform, in the main resource group) that deploy-backend.yml and backend-warm-hours.yml update. The CI identity gets the backend-app-deployer role on each of them and write access to no other app (ci-iam.tf)."
-  type        = set(string)
-  default     = ["backend-staging", "backend-prod"]
-
-  validation {
-    condition     = alltrue([for n in var.ci_deploy_container_apps : can(regex("^backend-(staging|prod)$", n))])
-    error_message = "ci_deploy_container_apps may only name backend-staging and backend-prod: the CI must never get write access to another app of the group (Redis, ...)."
-  }
+variable "ci_shared_identity_enabled" {
+  description = "Keep the LEGACY shared CI identity (ffd-connect-production-ci) for STAGING only (its prod subjects and rights are already gone, #778): rollback path while the workflows switch to ci-image-push / ci-staging / ci-prod. Set false once a staging deploy has succeeded with ci-staging, then apply to delete its remaining federated credentials and role assignments (runbook deploiement-azure.md, \"Droits des identités CI\")."
+  type        = bool
+  default     = true
 }

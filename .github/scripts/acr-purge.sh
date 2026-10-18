@@ -34,7 +34,7 @@
 #         PARALLEL               concurrent az calls, default 8
 #         DRY_RUN=1              print the plan, delete nothing
 # Needs:  az (containerapp extension), jq. Roles: Reader on the Container Apps
-#         RG, AcrPush (read manifests) + AcrDelete on the registry (ci-iam.tf).
+#         RG, AcrPull (read manifests) + AcrDelete on the registry (ci-iam.tf).
 # =============================================================================
 set -eu
 export LC_ALL=C # stable sort order for comm

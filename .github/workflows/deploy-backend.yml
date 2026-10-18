@@ -8,9 +8,17 @@
 # (in single-revision mode) replaces the active revision and shifts 100% traffic
 # to it. On smoke-test failure we roll back by re-deploying the previous image.
 #
+# Required GitHub variables (environment level, not secrets — #778):
+#
+#   AZURE_CLIENT_ID        — on the `staging` environment: client ID of
+#                            ci-staging; on the `production` environment:
+#                            client ID of ci-prod. Each identity trusts only
+#                            its own environment's OIDC subject and can write
+#                            only its own backend app (infra/terraform/ci-iam.tf),
+#                            so a staging job cannot touch backend-prod.
+#
 # Required GitHub secrets:
 #
-#   AZURE_CLIENT_ID        — Service principal client ID (OIDC federated)
 #   AZURE_TENANT_ID        — Azure AD tenant ID
 #   AZURE_SUBSCRIPTION_ID  — Azure subscription ID
 #   ACR_NAME               — Azure Container Registry name (ffdconnectproductionacr)
@@ -19,7 +27,8 @@
 #   SLACK_WEBHOOK_URL      — Slack incoming webhook for deploy failure alerts
 #
 # Fixed infrastructure (provisioned out-of-band, not created here):
-#   ACR image repo         — ffd-connect-backend (tagged by commit SHA)
+#   ACR image repo         — ffd-connect-backend (tagged by commit SHA,
+#                            deployed by the digest ci.yml recorded, #778)
 #   Container Apps env      — ffd-connect-cae
 #   Container apps          — backend-prod (production), backend-staging (staging)
 #   Public URLs             — https://api.ffd.gabin-simond.fr (prod)
@@ -76,6 +85,7 @@ jobs:
     outputs:
       backend_changed: ${{ steps.check.outputs.backend_changed }}
       environment: ${{ steps.env.outputs.environment }}
+      image_digest: ${{ steps.digest.outputs.digest }}
     steps:
       # The decision "does this push change the backend?" is made ONCE, in
       # ci.yml (`changes` job, output `backend_image`): for a merge commit it
@@ -113,10 +123,43 @@ jobs:
               echo "backend_changed=false" >> "$GITHUB_OUTPUT" ;;
             *)
               # Not found or any other state: keep the historic behaviour
-              # (deploy). A missing tag fails the smoke test and rolls back.
+              # (try to deploy). Without the build job's digest artifact the
+              # next step stops the deploy before any Azure call (#778).
               echo "::warning::Unexpected backend image job state '$RESULT' - deploying (fail-safe)"
               echo "backend_changed=true" >> "$GITHUB_OUTPUT" ;;
           esac
+
+      # Deploy by IMMUTABLE digest (#778): the digest ci.yml's build-image
+      # recorded for the image IT pushed in the triggering run (artifact
+      # `backend-image`). Never the <sha> tag: the registry is shared and tags
+      # are mutable, so an identity that can push (the image-push identity, or
+      # a staging job) could otherwise swap the image a reviewed prod deploy
+      # pulls. Fails CLOSED: no valid digest for this exact commit = no deploy
+      # (the app keeps serving its current revision).
+      - name: Resolve the image digest pushed by the CI run
+        id: digest
+        if: steps.check.outputs.backend_changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          D="$RUNNER_TEMP/backend-image"
+          if ! gh run download "$RUN_ID" -R "$REPO" -n backend-image -D "$D"; then
+            echo "::error::No backend-image artifact in CI run $RUN_ID - refusing to deploy a mutable tag"
+            exit 1
+          fi
+          SHA="" DIGEST="" REST=""
+          read -r SHA DIGEST REST < "$D/digest.txt" || true
+          if [ "$SHA" != "$DEPLOY_SHA" ] || [ -n "$REST" ] \
+            || ! printf '%s' "$DIGEST" | grep -Eqx 'sha256:[0-9a-f]{64}'; then
+            echo "::error::Invalid digest record for $DEPLOY_SHA in CI run $RUN_ID - refusing to deploy"
+            exit 1
+          fi
+          echo "Image to deploy: ffd-connect-backend@$DIGEST (commit $SHA)"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Determine environment
         id: env
@@ -152,12 +195,37 @@ jobs:
       HEALTH_URL: https://api-staging.ffd.gabin-simond.fr/health
 
     steps:
+      # ci-staging (#778): the `staging` environment's variable. Cannot write
+      # backend-prod nor start the prod migration job.
       - name: Azure login (OIDC)
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Cross-check (#778): the <sha> tag build-image pushed must still point
+      # at the digest it recorded. A mismatch means the tag was re-pushed
+      # after the build (another identity, or a re-run): stop before any
+      # write. Reads manifest metadata only: AcrPull on the registry (the
+      # same read acr-purge.sh relies on), Reader on the RG inherited too.
+      - name: Verify the recorded digest matches the pushed tag
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          IMAGE_DIGEST: ${{ needs.gate.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+          if ! TAG_DIGEST=$(az acr manifest show-metadata -r "$ACR_NAME" \
+            -n "ffd-connect-backend:${DEPLOY_SHA}" --query digest -o tsv 2>/dev/null); then
+            echo "::error::Cannot read the pushed tag's digest - deploy stopped before any change"
+            exit 1
+          fi
+          if [ "$TAG_DIGEST" != "$IMAGE_DIGEST" ]; then
+            echo "::error::Pushed tag does not match the digest recorded by build-image - deploy stopped before any change"
+            exit 1
+          fi
+          echo "Tag ${DEPLOY_SHA} -> ${IMAGE_DIGEST} (matches the build record)"
 
       # Deploy helper scripts (ACR purge, log summary), sparse and without
       # credentials. Taken first so every later step, including a failure
@@ -197,7 +265,9 @@ jobs:
               --output tsv 2>/dev/null || echo ""
           )
           # Fallback: images are tagged by commit SHA, so the tag is the version.
-          if [ -z "$PREV_VERSION" ] || [ "$PREV_VERSION" = "None" ]; then
+          # Not for a by-digest reference (#778): its suffix is the digest.
+          if { [ -z "$PREV_VERSION" ] || [ "$PREV_VERSION" = "None" ]; } \
+            && [ "${PREV_IMAGE#*@}" = "$PREV_IMAGE" ]; then
             PREV_VERSION="${PREV_IMAGE##*:}"
           fi
           echo "Previous image: ${PREV_IMAGE:-<none>} (version: ${PREV_VERSION:-<none>})"
@@ -261,6 +331,7 @@ jobs:
         env:
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
           ACR_NAME: ${{ secrets.ACR_NAME }}
+          IMAGE_DIGEST: ${{ needs.gate.outputs.image_digest }}
           MIGRATE_JOB: backend-migrate-staging
           # Above the job's replica timeout (600 s) to leave room for
           # scheduling and the image pull.
@@ -273,7 +344,7 @@ jobs:
           set -m
           LOG_FILE="$RUNNER_TEMP/migrate.log"
           : > "$LOG_FILE"
-          IMAGE="${ACR_NAME}.azurecr.io/ffd-connect-backend:${DEPLOY_SHA}"
+          IMAGE="${ACR_NAME}.azurecr.io/ffd-connect-backend@${IMAGE_DIGEST}"
 
           if ! JOB_ID=$(az containerapp job show -n "$MIGRATE_JOB" -g "$RESOURCE_GROUP" \
             --query id -o tsv 2>"$RUNNER_TEMP/job.err"); then
@@ -375,10 +446,13 @@ jobs:
       - name: Deploy to Container Apps
         env:
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          IMAGE_DIGEST: ${{ needs.gate.outputs.image_digest }}
           ACR_NAME: ${{ secrets.ACR_NAME }}
         run: |
           set -euo pipefail
-          IMAGE="${ACR_NAME}.azurecr.io/ffd-connect-backend:${DEPLOY_SHA}"
+          # By digest (#778): immutable, see the gate's "Resolve the image
+          # digest" step. APP_VERSION still carries the commit SHA.
+          IMAGE="${ACR_NAME}.azurecr.io/ffd-connect-backend@${IMAGE_DIGEST}"
           echo "Deploying image: $IMAGE"
           # Also stamp APP_VERSION so /health reports the deployed SHA — the
           # smoke test below verifies version == DEPLOY_SHA.
@@ -508,10 +582,11 @@ jobs:
         env:
           ACR_NAME: ${{ secrets.ACR_NAME }}
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          IMAGE_DIGEST: ${{ needs.gate.outputs.image_digest }}
         run: |
           set -eu
           LOGIN_SERVER=$(printf '%s.azurecr.io' "$ACR_NAME" | tr '[:upper:]' '[:lower:]')
-          REQUIRE_IMAGE="${LOGIN_SERVER}/ffd-connect-backend:${DEPLOY_SHA}" \
+          REQUIRE_IMAGE="${LOGIN_SERVER}/ffd-connect-backend@${IMAGE_DIGEST}" \
           KEEP_TAGS="$DEPLOY_SHA" \
             sh .github/scripts/acr-purge.sh "$ACR_NAME" 15 ffd-connect-backend
 
@@ -585,12 +660,38 @@ jobs:
       HEALTH_URL: https://api.ffd.gabin-simond.fr/health
 
     steps:
+      # ci-prod (#778): the `production` environment's variable. Its only
+      # trusted subject is `environment:production`, so this login succeeds
+      # only after the environment's required reviewer approved.
       - name: Azure login (OIDC)
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Cross-check (#778): the <sha> tag build-image pushed must still point
+      # at the digest it recorded. A mismatch means the tag was re-pushed
+      # after the build (another identity, or a re-run): stop before any
+      # write. Reads manifest metadata only: AcrPull on the registry (the
+      # same read acr-purge.sh relies on), Reader on the RG inherited too.
+      - name: Verify the recorded digest matches the pushed tag
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          IMAGE_DIGEST: ${{ needs.gate.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+          if ! TAG_DIGEST=$(az acr manifest show-metadata -r "$ACR_NAME" \
+            -n "ffd-connect-backend:${DEPLOY_SHA}" --query digest -o tsv 2>/dev/null); then
+            echo "::error::Cannot read the pushed tag's digest - deploy stopped before any change"
+            exit 1
+          fi
+          if [ "$TAG_DIGEST" != "$IMAGE_DIGEST" ]; then
+            echo "::error::Pushed tag does not match the digest recorded by build-image - deploy stopped before any change"
+            exit 1
+          fi
+          echo "Tag ${DEPLOY_SHA} -> ${IMAGE_DIGEST} (matches the build record)"
 
       # Deploy helper scripts (ACR purge, log summary), sparse and without
       # credentials. Taken first so every later step, including a failure
@@ -630,7 +731,9 @@ jobs:
               --output tsv 2>/dev/null || echo ""
           )
           # Fallback: images are tagged by commit SHA, so the tag is the version.
-          if [ -z "$PREV_VERSION" ] || [ "$PREV_VERSION" = "None" ]; then
+          # Not for a by-digest reference (#778): its suffix is the digest.
+          if { [ -z "$PREV_VERSION" ] || [ "$PREV_VERSION" = "None" ]; } \
+            && [ "${PREV_IMAGE#*@}" = "$PREV_IMAGE" ]; then
             PREV_VERSION="${PREV_IMAGE##*:}"
           fi
           echo "Previous image: ${PREV_IMAGE:-<none>} (version: ${PREV_VERSION:-<none>})"
@@ -673,10 +776,13 @@ jobs:
       - name: Deploy to Container Apps
         env:
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          IMAGE_DIGEST: ${{ needs.gate.outputs.image_digest }}
           ACR_NAME: ${{ secrets.ACR_NAME }}
         run: |
           set -euo pipefail
-          IMAGE="${ACR_NAME}.azurecr.io/ffd-connect-backend:${DEPLOY_SHA}"
+          # By digest (#778): immutable, see the gate's "Resolve the image
+          # digest" step. APP_VERSION still carries the commit SHA.
+          IMAGE="${ACR_NAME}.azurecr.io/ffd-connect-backend@${IMAGE_DIGEST}"
           echo "Deploying image: $IMAGE"
           # Also stamp APP_VERSION so /health reports the deployed SHA — the
           # smoke test below verifies version == DEPLOY_SHA.
@@ -809,10 +915,11 @@ jobs:
         env:
           ACR_NAME: ${{ secrets.ACR_NAME }}
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          IMAGE_DIGEST: ${{ needs.gate.outputs.image_digest }}
         run: |
           set -eu
           LOGIN_SERVER=$(printf '%s.azurecr.io' "$ACR_NAME" | tr '[:upper:]' '[:lower:]')
-          REQUIRE_IMAGE="${LOGIN_SERVER}/ffd-connect-backend:${DEPLOY_SHA}" \
+          REQUIRE_IMAGE="${LOGIN_SERVER}/ffd-connect-backend@${IMAGE_DIGEST}" \
           KEEP_TAGS="$DEPLOY_SHA" \
             sh .github/scripts/acr-purge.sh "$ACR_NAME" 15 ffd-connect-backend
 
