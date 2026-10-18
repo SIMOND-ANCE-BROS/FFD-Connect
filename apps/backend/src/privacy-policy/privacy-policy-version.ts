@@ -15,9 +15,11 @@
  *
  * Format: the policy's "last updated" date (YYYY-MM-DD) of the announced
  * version. 2026-10-17: export contents and support access (#387, #733,
- * #759, #760, #761).
+ * #759, #760, #761). 2026-10-18: competition results imported from a
+ * TopTurnier export, uploaded or temporarily read from its public results
+ * page, and linked by bib number (#786, #787).
  */
-export const PRIVACY_POLICY_VERSION = "2026-10-17";
+export const PRIVACY_POLICY_VERSION = "2026-10-18";
 
 /** Shape accepted for a version in an acknowledgement. */
 export const PRIVACY_POLICY_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}$/;

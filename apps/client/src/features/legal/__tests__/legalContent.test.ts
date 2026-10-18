@@ -20,6 +20,25 @@ describe("privacy policy in the app", () => {
     expect(section?.body).toContain("ne sont pas conservés");
   });
 
+  it("names the TopTurnier sources, the temporary public-page read and the bib-number link (#786, #787)", () => {
+    const section = LEGAL_DOCUMENTS.privacy.sections.find(
+      (s) => s.heading === "Résultats de compétition",
+    );
+    expect(section?.body).toContain("article 14 du RGPD");
+    expect(section?.body).toContain("fichier CSV");
+    expect(section?.body).toContain(
+      "export HTML du logiciel de compétition TopTurnier",
+    );
+    expect(section?.body).toContain("y compris des mineurs");
+    expect(section?.body).toContain("Temporairement");
+    expect(section?.body).toContain("page publique des résultats");
+    expect(section?.body).toContain(
+      "accès officiel aux données de résultats de la FFD",
+    );
+    expect(section?.body).toContain("sinon par votre dossard");
+    expect(LEGAL_DOCUMENTS.privacy.updatedAt).toBe("18 octobre 2026");
+  });
+
   it("explains how substantial changes are notified (#734)", () => {
     const section = LEGAL_DOCUMENTS.privacy.sections.find(
       (s) => s.heading === "Modifications de cette politique",
