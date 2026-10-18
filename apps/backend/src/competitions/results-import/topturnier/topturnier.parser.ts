@@ -1,4 +1,9 @@
-import { attributeValue, htmlText, pageTitle } from "./topturnier-html";
+import {
+  TextCollector,
+  attributeValue,
+  htmlTokens,
+  pageTitle,
+} from "./topturnier-html";
 
 /**
  * Parser of a TopTurnier HTML export (#786): the results of a competition as
@@ -90,12 +95,30 @@ export function eventFolderOf(href: string): string | null {
 export function parseTopTurnierIndex(html: string): TopTurnierIndex {
   const events: TopTurnierEventLink[] = [];
   const seen = new Set<string>();
-  const anchors = html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi);
-  for (const anchor of anchors) {
-    const href = attributeValue(`<a ${anchor[1]}>`, "href");
+  let anchor: { href: string | null; text: TextCollector } | null = null;
+  for (const token of htmlTokens(html)) {
+    if (token.kind === "text") {
+      anchor?.text.add(token.text);
+      continue;
+    }
+    if (token.name !== "a") {
+      anchor?.text.add(" ");
+      continue;
+    }
+    if (!token.closing) {
+      // A link left open is dropped, like the `<a>…</a>` pair it lacks.
+      anchor = {
+        href: attributeValue(token.raw, "href"),
+        text: new TextCollector(),
+      };
+      continue;
+    }
+    if (!anchor) continue;
+    const { href, text } = anchor;
+    anchor = null;
     const folder = href === null ? null : eventFolderOf(href);
     if (!folder || seen.has(folder)) continue;
-    const label = htmlText(anchor[2]);
+    const label = text.text();
     if (!label) continue;
     seen.add(folder);
     if (events.length >= TOPTURNIER_MAX_EVENTS) {
@@ -142,18 +165,51 @@ function headerColumn(cell: string): RankingColumn | null {
   return null;
 }
 
-/** Cells of every `<tr>` of the page, as visible text. */
-function tableRows(html: string): string[][] {
-  const rows: string[][] = [];
-  for (const tr of html.matchAll(
-    /<tr\b[^>]*>([\s\S]*?)(?=<tr\b|<\/table\s*>)/gi,
-  )) {
-    const cells = [
-      ...tr[1].matchAll(/<t[dh]\b[^>]*>([\s\S]*?)(?=<t[dh]\b|<\/tr\s*>|$)/gi),
-    ].map((cell) => htmlText(cell[1]));
-    if (cells.length > 0) rows.push(cells);
+/** Max cells read in one table row (a ranking has four). */
+const MAX_CELLS_PER_ROW = 32;
+
+/**
+ * Cells of every `<tr>` of the page, as visible text, one row at a time. A
+ * row ends at the next `<tr>`, `</tr>` or `</table>`; a cell at the next
+ * cell or its closing tag. Linear: one pass over the tokens.
+ */
+function* tableRows(html: string): Generator<string[]> {
+  let row: string[] | null = null;
+  let cell: TextCollector | null = null;
+  const closeCell = () => {
+    if (row && cell) row.push(cell.text());
+    cell = null;
+  };
+  const closeRow = function* (): Generator<string[]> {
+    closeCell();
+    if (row && row.length > 0) yield row;
+    row = null;
+  };
+  for (const token of htmlTokens(html)) {
+    if (token.kind === "text") {
+      cell?.add(token.text);
+      continue;
+    }
+    switch (token.name) {
+      case "tr":
+        yield* closeRow();
+        if (!token.closing) row = [];
+        break;
+      case "table":
+        yield* closeRow();
+        break;
+      case "td":
+      case "th":
+        closeCell();
+        if (!token.closing && row && row.length < MAX_CELLS_PER_ROW) {
+          cell = new TextCollector();
+        }
+        break;
+      default:
+        cell?.add(" ");
+    }
   }
-  return rows;
+  yield* closeRow();
 }
 
 const POSITIONAL: Record<RankingColumn, number> = {
@@ -199,7 +255,11 @@ export function parseTopTurnierRanking(html: string): TopTurnierRanking {
     }
     const cell = (column: RankingColumn): string =>
       columns[column] < 0 ? "" : (cells[columns[column]] ?? "").trim();
-    const participant = cell("participant").replace(/\s*\/\s*/g, " / ");
+    // Split, not a `\s*\/\s*` regex: no backtracking on long space runs.
+    const participant = cell("participant")
+      .split("/")
+      .map((name) => name.trim())
+      .join(" / ");
     const bib = cell("bib") || null;
     const club = cell("club") || null;
     const problems: string[] = [];
