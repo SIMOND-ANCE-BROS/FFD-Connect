@@ -28,6 +28,10 @@ export interface AppTheme {
   primaryFill: string;
   /** Text and icon colour on a `primaryFill` background. */
   onPrimary: string;
+  /** Fill of a disabled button (paired with `onDisabled`). */
+  disabledFill: string;
+  /** Label and icon colour on a `disabledFill` background (≥ 4.5:1). */
+  onDisabled: string;
   secondary: string;
   accent: string;
   border: string;

@@ -451,7 +451,7 @@ export const TrackCorrectionModal = ({
                   {
                     backgroundColor: canSubmit
                       ? currentTheme.primaryFill
-                      : currentTheme.border,
+                      : currentTheme.disabledFill,
                   },
                 ]}
                 onPress={() => {
@@ -460,7 +460,14 @@ export const TrackCorrectionModal = ({
                 testID="correction-submit-button"
               >
                 <Text
-                  style={[styles.buttonText, { color: currentTheme.onPrimary }]}
+                  style={[
+                    styles.buttonText,
+                    {
+                      color: canSubmit
+                        ? currentTheme.onPrimary
+                        : currentTheme.onDisabled,
+                    },
+                  ]}
                 >
                   Envoyer la proposition
                 </Text>

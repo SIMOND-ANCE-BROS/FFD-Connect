@@ -1,5 +1,6 @@
 import { render } from "@testing-library/react-native";
 import React, { PropsWithChildren } from "react";
+import { StyleSheet, TextStyle, ViewStyle } from "react-native";
 import { useTheme } from "../../../../context/ThemeContext";
 import { isSensitiveScreenShown } from "../../../../utils/sentryPrivacy";
 import { createMockScreenProps } from "../../../../utils/testUtils";
@@ -233,5 +234,72 @@ describe("LicenseRenewalScreen — decision shown to the licensee (#268)", () =>
     ).toBeTruthy();
     expect(queryByText("Non apte")).toBeNull();
     expect(queryByText("Apte à la pratique")).toBeNull();
+  });
+});
+
+describe("LicenseRenewalScreen — submit button contrast (#22)", () => {
+  beforeEach(() => {
+    (useTheme as jest.Mock).mockReturnValue({
+      theme: {
+        background: "#fff",
+        surface: "#f2f2f2",
+        text: "#111",
+        textSecondary: "#666",
+        primary: "#3b82f6",
+        primaryFill: "#1d4ed8",
+        onPrimary: "#ffffff",
+        disabledFill: "#e2e8f0",
+        onDisabled: "#475569",
+        border: "#e5e7eb",
+        danger: "#ef4444",
+      },
+      isDark: false,
+    });
+  });
+
+  const renderWith = async (canSubmit: boolean) => {
+    (useLicenseRenewalLogic as jest.Mock).mockReturnValue({
+      request: { id: "req-1", status: "DRAFT", documents: [] },
+      loading: false,
+      uploadingType: null,
+      submitting: false,
+      canSubmit,
+      step: "documents",
+      getDoc: jest.fn(),
+      loadRenewal: jest.fn().mockResolvedValue(undefined),
+      startOrGetDraft: jest.fn(),
+      pickAndUploadDocument: jest.fn(),
+      submit: jest.fn().mockResolvedValue(undefined),
+    });
+    const utils = await render(
+      <LicenseRenewalScreen
+        {...createMockScreenProps("LicenseRenewal", undefined)}
+      />,
+    );
+    const button = utils.getByTestId("license-renewal-submit");
+    return {
+      state: button.props.accessibilityState,
+      fill: (StyleSheet.flatten(button.props.style) as ViewStyle)
+        .backgroundColor,
+      label: (
+        StyleSheet.flatten(
+          utils.getByText("Soumettre la demande").props.style,
+        ) as TextStyle
+      ).color,
+    };
+  };
+
+  it("uses the disabled token pair while documents are missing", async () => {
+    const { state, fill, label } = await renderWith(false);
+    expect(state).toMatchObject({ disabled: true });
+    expect(fill).toBe("#e2e8f0");
+    expect(label).toBe("#475569");
+  });
+
+  it("uses the primary pair once the request can be submitted", async () => {
+    const { state, fill, label } = await renderWith(true);
+    expect(state).toMatchObject({ disabled: false });
+    expect(fill).toBe("#1d4ed8");
+    expect(label).toBe("#ffffff");
   });
 });

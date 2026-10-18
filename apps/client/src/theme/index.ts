@@ -64,6 +64,11 @@ export const theme = {
     // (onPrimary): primary itself, white on ffdBlue is 9.8:1.
     primaryFill: palette.ffdBlue,
     onPrimary: palette.white,
+    // Disabled buttons: muted fill + dark slate label, 6.15:1 (white on
+    // slate200 was 1.23:1, issue #22). WCAG exempts disabled controls, the
+    // label stays readable anyway.
+    disabledFill: palette.slate200,
+    onDisabled: palette.slate600,
     secondary: palette.ffdCyanDeep,
     accent: palette.ffdRed,
     border: palette.slate200,
@@ -93,6 +98,10 @@ export const theme = {
     // the bright cyan for text, icons and borders on the dark surfaces.
     primaryFill: palette.ffdCyanDeep,
     onPrimary: palette.white,
+    // Disabled buttons: slate700 stays visible on the slate900 surface, the
+    // slate300 label reaches 6.97:1 on it (issue #22).
+    disabledFill: palette.slate700,
+    onDisabled: palette.slate300,
     secondary: palette.ffdBlue,
     accent: palette.ffdRed,
     border: palette.slate800,

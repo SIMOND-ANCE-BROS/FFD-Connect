@@ -110,12 +110,12 @@ const AppButtonComponent = React.forwardRef<View, AppButtonProps>(
 
       switch (variant) {
         case "primary":
-          bgColor = disabled ? palette.slate200 : "transparent";
-          txtColor = disabled ? currentTheme.textSecondary : palette.white;
+          bgColor = disabled ? currentTheme.disabledFill : "transparent";
+          txtColor = disabled ? currentTheme.onDisabled : palette.white;
           break;
         case "secondary":
-          bgColor = disabled ? palette.slate200 : currentTheme.accent;
-          txtColor = palette.white;
+          bgColor = disabled ? currentTheme.disabledFill : currentTheme.accent;
+          txtColor = disabled ? currentTheme.onDisabled : palette.white;
           break;
         case "outline":
           bgColor = "transparent";
@@ -134,8 +134,8 @@ const AppButtonComponent = React.forwardRef<View, AppButtonProps>(
             : currentTheme.primary;
           break;
         case "danger":
-          bgColor = palette.error;
-          txtColor = palette.white;
+          bgColor = disabled ? currentTheme.disabledFill : palette.error;
+          txtColor = disabled ? currentTheme.onDisabled : palette.white;
           break;
         default:
           bgColor = currentTheme.primaryFill;

@@ -194,10 +194,12 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
     {
       backgroundColor: canSubmit
         ? currentTheme.primaryFill
-        : currentTheme.border,
-      opacity: canSubmit ? 1 : 0.7,
+        : currentTheme.disabledFill,
     },
   ];
+  const submitLabelStyle = {
+    color: canSubmit ? currentTheme.onPrimary : currentTheme.onDisabled,
+  };
   const retryButtonStyle = [
     styles.primaryButton,
     styles.statusActionButton,
@@ -276,11 +278,20 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
                 submit().catch(() => {});
               }}
               disabled={!canSubmit || submitting}
+              accessibilityRole="button"
+              accessibilityState={{
+                disabled: !canSubmit || submitting,
+                busy: submitting,
+              }}
+              testID="license-renewal-submit"
             >
               {submitting ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <ActivityIndicator
+                  size="small"
+                  color={submitLabelStyle.color}
+                />
               ) : (
-                <AppText variant="button" style={styles.whiteText}>
+                <AppText variant="button" style={submitLabelStyle}>
                   Soumettre la demande
                 </AppText>
               )}
