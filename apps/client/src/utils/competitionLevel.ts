@@ -4,8 +4,8 @@
  *
  * The FFD competition level (Débutant, Intermédiaire, Avancé, International)
  * is held separately for Latin and Standard. It has nothing to do with the
- * Passeport Danse colours. The single `competitionLevel` field is deprecated
- * and only read as a fallback (older accounts, older backends).
+ * Passeport Danse colours. The deprecated single `competitionLevel` API field
+ * is never read (#239): the backend serves the per-discipline levels.
  *
  * Ten Dance (10 danses) events have no level: they are open to dancers who
  * practise both disciplines.
@@ -28,8 +28,6 @@ export type CompetitionLevel = (typeof COMPETITION_LEVEL_ORDER)[number];
 export interface CompetitionLevelProfile {
   competitionLevelLatin?: string | null;
   competitionLevelStandard?: string | null;
-  /** @deprecated single legacy level, read only as a fallback. */
-  competitionLevel?: string | null;
   /** Declared discipline (User.category): Latin, Standard or Ten Dance. */
   category?: string | null;
 }
@@ -67,29 +65,7 @@ export function competitionLevelRank(value: string | null | undefined): number {
   return level ? COMPETITION_LEVEL_ORDER.indexOf(level) : -1;
 }
 
-/**
- * Level of a dancer for an event discipline: the discipline level, falling
- * back to the legacy single level. Ten Dance has no level (null).
- */
-export function getCompetitionLevelForCategory(
-  profile: CompetitionLevelProfile | null | undefined,
-  category: string | null | undefined,
-): CompetitionLevel | null {
-  if (!profile) return null;
-  const legacy = toCompetitionLevel(profile.competitionLevel);
-  switch (normalizeDiscipline(category)) {
-    case "Latin":
-      return toCompetitionLevel(profile.competitionLevelLatin) ?? legacy;
-    case "Standard":
-      return toCompetitionLevel(profile.competitionLevelStandard) ?? legacy;
-    case "Ten Dance":
-      return null;
-    default:
-      return legacy;
-  }
-}
-
-/** Highest level held in any discipline (legacy level as fallback). */
+/** Highest level held in any discipline. */
 export function getHighestCompetitionLevel(
   profile: CompetitionLevelProfile | null | undefined,
 ): CompetitionLevel | null {
@@ -98,7 +74,6 @@ export function getHighestCompetitionLevel(
   for (const candidate of [
     profile.competitionLevelLatin,
     profile.competitionLevelStandard,
-    profile.competitionLevel,
   ]) {
     const level = toCompetitionLevel(candidate);
     if (level && competitionLevelRank(level) > competitionLevelRank(best)) {
@@ -106,6 +81,27 @@ export function getHighestCompetitionLevel(
     }
   }
   return best;
+}
+
+/**
+ * Level of a dancer for an event discipline. Ten Dance has no level (null);
+ * an unknown discipline gets the highest level (best effort, as the backend).
+ */
+export function getCompetitionLevelForCategory(
+  profile: CompetitionLevelProfile | null | undefined,
+  category: string | null | undefined,
+): CompetitionLevel | null {
+  if (!profile) return null;
+  switch (normalizeDiscipline(category)) {
+    case "Latin":
+      return toCompetitionLevel(profile.competitionLevelLatin);
+    case "Standard":
+      return toCompetitionLevel(profile.competitionLevelStandard);
+    case "Ten Dance":
+      return null;
+    default:
+      return getHighestCompetitionLevel(profile);
+  }
 }
 
 /**
@@ -143,9 +139,7 @@ export function practisesDiscipline(
 
 /**
  * User-facing summary of the levels: « Latines : Avancé · Standards :
- * Débutant » (only the disciplines that have a level). Falls back to the
- * legacy single level when no discipline level is set; null when nothing is
- * known.
+ * Débutant » (only the disciplines that have a level); null when none is set.
  */
 export function formatCompetitionLevels(
   profile: CompetitionLevelProfile | null | undefined,
@@ -156,10 +150,7 @@ export function formatCompetitionLevels(
   const standard = profile.competitionLevelStandard?.trim();
   if (latin) parts.push(`${DISCIPLINE_LABELS.latin} : ${latin}`);
   if (standard) parts.push(`${DISCIPLINE_LABELS.standard} : ${standard}`);
-  if (parts.length > 0) return parts.join(" · ");
-  const legacy = profile.competitionLevel?.trim();
-  if (legacy) return legacy;
-  return null;
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 /**
@@ -176,7 +167,7 @@ export function formatSuggestedCoupleLevels(suggestion: {
     formatCompetitionLevels({
       competitionLevelLatin: suggestion.suggestedLevelLatin,
       competitionLevelStandard: suggestion.suggestedLevelStandard,
-      competitionLevel: suggestion.suggestedLevel,
-    }) ?? "—"
+    }) ??
+    (suggestion.suggestedLevel?.trim() || "—")
   );
 }

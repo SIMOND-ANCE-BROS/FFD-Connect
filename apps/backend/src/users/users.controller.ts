@@ -187,7 +187,7 @@ export class UsersController {
           nullable: true,
           deprecated: true,
           description:
-            "Ancien niveau unique, conservé pour les anciennes versions de l'app. Préférer les niveaux par discipline.",
+            "Ancien niveau unique, conservé pour les anciennes versions de l'app : dérivé des niveaux par discipline (le plus élevé). Préférer les niveaux par discipline ; supprimé en phase 2 de #239.",
         },
         licenseNumber: { type: "string", nullable: true },
         license: {

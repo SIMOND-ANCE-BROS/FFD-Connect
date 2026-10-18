@@ -96,7 +96,12 @@ describe("AdminUsersService.update", () => {
     expect(prisma.user.update.mock.calls[0][0].data).toEqual({
       competitionLevelLatin: "International",
       competitionLevelStandard: "Débutant",
+      // Rollback mirror (#239): derived, never audited.
+      competitionLevel: "International",
     });
+    expect(audit.record.mock.calls[0][1].after).not.toHaveProperty(
+      "competitionLevel",
+    );
   });
 
   it("mirrors a legacy single level (older back-office) to both disciplines", async () => {

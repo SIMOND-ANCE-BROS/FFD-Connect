@@ -7044,7 +7044,7 @@
                       "type": "string",
                       "nullable": true,
                       "deprecated": true,
-                      "description": "Ancien niveau unique, conservé pour les anciennes versions de l'app. Préférer les niveaux par discipline."
+                      "description": "Ancien niveau unique, conservé pour les anciennes versions de l'app : dérivé des niveaux par discipline (le plus élevé). Préférer les niveaux par discipline ; supprimé en phase 2 de #239."
                     },
                     "licenseNumber": {
                       "type": "string",
@@ -28536,7 +28536,7 @@
             "type": "string",
             "nullable": true,
             "deprecated": true,
-            "description": "Ancien niveau unique (repli) — préférer les niveaux par discipline"
+            "description": "Ancien niveau unique, dérivé des niveaux par discipline (le plus élevé) — préférer les niveaux par discipline"
           },
           "competitionLevelLatin": {
             "type": "string",
@@ -28671,7 +28671,7 @@
             "nullable": true,
             "enum": ["International", "Avancé", "Intermédiaire", "Débutant", null],
             "deprecated": true,
-            "description": "Ancien niveau unique. Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard."
+            "description": "Ancien niveau unique (anciens back-offices). Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard ; sinon il est ignoré."
           },
           "competitionLevelLatin": {
             "type": "string",
@@ -28799,7 +28799,7 @@
             "nullable": true,
             "enum": ["International", "Avancé", "Intermédiaire", "Débutant", null],
             "deprecated": true,
-            "description": "Ancien niveau unique. Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard."
+            "description": "Ancien niveau unique (anciens back-offices). Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard ; sinon il est ignoré."
           },
           "competitionLevelLatin": {
             "type": "string",

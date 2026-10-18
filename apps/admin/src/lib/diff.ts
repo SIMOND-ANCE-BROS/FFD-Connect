@@ -44,18 +44,3 @@ export function withLegacy(
   }
   return list;
 }
-
-/**
- * Read-only hint for the deprecated single competition level: shown only
- * while neither per-discipline level is set (the backend backfilled them, so
- * this is a leftover from an older write).
- */
-export function legacyCompetitionLevelHint(user: {
-  competitionLevel?: string | null;
-  competitionLevelLatin?: string | null;
-  competitionLevelStandard?: string | null;
-}): string | undefined {
-  if (user.competitionLevelLatin || user.competitionLevelStandard) return undefined;
-  const legacy = user.competitionLevel?.trim();
-  return legacy ? `Ancien niveau unique : ${legacy}` : undefined;
-}

@@ -10,7 +10,10 @@ import { AuthTokenService } from "../auth/auth-token.service";
 import { normalizeEmail } from "../auth/email-identity";
 import { normalizeExtraRoles, rolesOf } from "../auth/roles";
 import { assertUserNotStoreReview } from "../auth/store-review/store-review-protection";
-import { mirrorLegacyCompetitionLevel } from "../common/competition-level";
+import {
+  legacyCompetitionLevelMirror,
+  mirrorLegacyCompetitionLevel,
+} from "../common/competition-level";
 import { PrismaService } from "../prisma/prisma.service";
 import { AccountDeletionService } from "../users/account-deletion.service";
 import {
@@ -116,9 +119,15 @@ export class AdminUsersService {
       const diff = diffFields(current, requested);
       if (!diff) return;
 
+      // Rollback mirror of the deprecated single level (#239): written next
+      // to the audited change, never audited itself (derived value).
+      const legacyLevel = legacyCompetitionLevelMirror(diff.after, current);
       await tx.user.update({
         where: { id: userId },
-        data: diff.after,
+        data: {
+          ...diff.after,
+          ...(legacyLevel !== undefined && { competitionLevel: legacyLevel }),
+        },
         select: { id: true },
       });
       roleChanged = "role" in diff.after;

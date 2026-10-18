@@ -12,6 +12,7 @@ const LABELS: Record<string, string> = {
   ageGroup: "Classe d'âge",
   passportLevelLatin: 'Passeport Latine',
   passportLevelStandard: 'Passeport Standard',
+  // Deprecated single level (#239): only in audit rows written before phase 1.
   competitionLevel: 'Niveau compétition (ancien)',
   competitionLevelLatin: 'Niveau Latines',
   competitionLevelStandard: 'Niveau Standards',

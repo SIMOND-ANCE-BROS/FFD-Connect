@@ -48,6 +48,29 @@ describe("SoloTeamService", () => {
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe("team-1");
     });
+
+    it("serves each member's single level derived from the per-discipline ones (#239)", async () => {
+      prisma.soloTeam.findMany.mockResolvedValue([
+        {
+          id: "team-1",
+          members: [
+            {
+              id: "m1",
+              user: {
+                id: "u1",
+                competitionLevelLatin: "Débutant",
+                competitionLevelStandard: null,
+                competitionLevel: "Avancé",
+              },
+            },
+          ],
+        },
+      ] as never);
+
+      const [team] = await service.getSoloTeams("organizer-1");
+
+      expect(team.members[0].user.competitionLevel).toBe("Débutant");
+    });
   });
 
   describe("createSoloTeam", () => {
@@ -157,7 +180,7 @@ describe("SoloTeamService", () => {
 
     it("bounds the member read", async () => {
       prisma.soloTeamMember.findMany.mockResolvedValue([]);
-      prisma.soloTeam.update.mockResolvedValue({} as never);
+      prisma.soloTeam.update.mockResolvedValue({ members: [] } as never);
 
       await service.recalculateSoloTeamLevel("team-1");
       expect(prisma.soloTeamMember.findMany).toHaveBeenCalledWith(

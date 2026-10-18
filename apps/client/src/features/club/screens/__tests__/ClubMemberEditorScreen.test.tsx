@@ -67,7 +67,6 @@ describe("ClubMemberEditorScreen", () => {
                 ...member,
                 competitionLevelLatin: "Avancé",
                 competitionLevelStandard: "Débutant",
-                competitionLevel: "Intermédiaire",
               },
             },
           } as never
@@ -79,8 +78,8 @@ describe("ClubMemberEditorScreen", () => {
     expect(getByText("Latines : Avancé · Standards : Débutant")).toBeTruthy();
   });
 
-  it("falls back to the legacy single level", async () => {
-    const { getByText } = await render(
+  it("ignores the deprecated single level (#239)", async () => {
+    const { getByText, queryByText } = await render(
       <ClubMemberEditorScreen
         navigation={navigation as never}
         route={
@@ -91,6 +90,7 @@ describe("ClubMemberEditorScreen", () => {
       />,
     );
 
-    expect(getByText("Avancé")).toBeTruthy();
+    expect(getByText("Niveau de compétition")).toBeTruthy();
+    expect(queryByText("Avancé")).toBeNull();
   });
 });

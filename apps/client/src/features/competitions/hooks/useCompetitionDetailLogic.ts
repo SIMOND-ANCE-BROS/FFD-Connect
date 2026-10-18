@@ -195,7 +195,6 @@ export const useCompetitionDetailLogic = (
               ageGroup: profile.ageGroup ?? config.ageGroup,
               competitionLevelLatin: profile.competitionLevelLatin,
               competitionLevelStandard: profile.competitionLevelStandard,
-              competitionLevel: profile.competitionLevel,
             });
           } catch {
             setUserProfile(config);

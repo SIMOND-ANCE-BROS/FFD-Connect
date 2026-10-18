@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { PartnershipStatus, Prisma, UserRole } from "@prisma/client";
 import { hasRole, withActiveRole } from "../auth/roles";
+import { withDerivedCompetitionLevel } from "../common/competition-level";
 import {
   competitionLevelsSelect,
   userRolesClubSelect,
@@ -136,6 +137,9 @@ export class PartnershipQueryService {
       busyIds.add(p.user2Id);
     }
 
-    return valid.filter((m) => !busyIds.has(m.id));
+    // Deprecated single level derived for older app versions (#239).
+    return valid
+      .filter((m) => !busyIds.has(m.id))
+      .map((m) => withDerivedCompetitionLevel(m));
   }
 }

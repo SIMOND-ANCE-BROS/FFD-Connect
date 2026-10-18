@@ -16,6 +16,7 @@ import { userRolesClubSelect } from "../utils/prisma-selects";
 import { clubMembersScopeOf } from "../competitions/competition-organizer";
 import * as bcrypt from "bcrypt";
 import { computeSoloAgeGroup, getReferenceYear } from "../common/age-group";
+import { withDerivedCompetitionLevel } from "../common/competition-level";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { LicenseQrService } from "../licenses/qr/license-qr.service";
@@ -57,7 +58,8 @@ const USER_BASE_SELECT = {
   role: true,
   category: true,
   ageGroup: true,
-  // Per-discipline levels + deprecated single level (kept for older clients).
+  // Per-discipline levels + deprecated single level (read fallback; served
+  // derived from the per-discipline levels for older clients, #239).
   ...competitionLevelsSelect,
   clubName: true,
   createdAt: true,
@@ -245,7 +247,8 @@ export class UsersService {
       }
       const { registrations: _, ...rest } = member;
       return {
-        ...rest,
+        // Deprecated single level derived for older app versions (#239).
+        ...withDerivedCompetitionLevel(rest),
         partnerName,
         wdsf: buildWdsfFromUser(member),
       };
@@ -320,7 +323,8 @@ export class UsersService {
         }
       : null;
     return {
-      ...profile,
+      // Deprecated single level derived for older app versions (#239).
+      ...withDerivedCompetitionLevel(profile),
       license,
       roles: rolesOf({ ...profile, club }),
       wdsf,

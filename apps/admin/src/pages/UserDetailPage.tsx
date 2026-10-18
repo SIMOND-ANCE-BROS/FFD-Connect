@@ -45,12 +45,7 @@ import { UserIdentifiers } from '../components/UserIdentifiers';
 import { apiErrorMessage } from '../lib/apiError';
 import { ACTION_LABELS } from '../lib/auditLabels';
 import { ROLE_LABELS } from '../lib/labels';
-import {
-  changedFields,
-  type EditableFields,
-  legacyCompetitionLevelHint,
-  withLegacy,
-} from '../lib/diff';
+import { changedFields, type EditableFields, withLegacy } from '../lib/diff';
 import { formatDiscipline } from '../lib/discipline';
 import { protectedActionError, type ProtectedAction } from '../lib/storeReview';
 import { useSession } from '../session/sessionStore';
@@ -219,9 +214,6 @@ export function UserDetailPage() {
     u.lastLoginAt === null &&
     !disabled &&
     !(u.role === 'CLUB' && u.clubDisabledAt !== null);
-  // Before the per-discipline levels, a single level was stored: show it as a
-  // read-only hint while neither discipline level is set.
-  const legacyLevelHint = legacyCompetitionLevelHint(u);
   const emailMatches = typedEmail.trim().toLowerCase() === u.email.toLowerCase();
   const closeDelete = () => {
     setDeleteOpen(false);
@@ -320,14 +312,12 @@ export function UserDetailPage() {
                 label="Niveau Latines"
                 clearable
                 data={withLegacy(ref.data.competitionLevels, initial.competitionLevelLatin)}
-                description={legacyLevelHint}
                 {...form.getInputProps('competitionLevelLatin')}
               />
               <Select
                 label="Niveau Standards"
                 clearable
                 data={withLegacy(ref.data.competitionLevels, initial.competitionLevelStandard)}
-                description={legacyLevelHint}
                 {...form.getInputProps('competitionLevelStandard')}
               />
               <Select

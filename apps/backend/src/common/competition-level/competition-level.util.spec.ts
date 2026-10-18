@@ -1,14 +1,18 @@
 import {
   COMPETITION_LEVEL_ORDER,
   competitionLevelRank,
+  deriveLegacyCompetitionLevel,
   disciplineLabel,
   getCompetitionLevelForCategory,
   getHighestCompetitionLevel,
+  hasDisciplineLevel,
+  legacyCompetitionLevelMirror,
   mirrorLegacyCompetitionLevel,
   normalizeDiscipline,
   practisedDiscipline,
   practisesDiscipline,
   toCompetitionLevel,
+  withDerivedCompetitionLevel,
 } from "./index";
 
 describe("practisedDiscipline (#552)", () => {
@@ -176,6 +180,26 @@ describe("getCompetitionLevelForCategory", () => {
     expect(getCompetitionLevelForCategory(legacy, "Ten Dance")).toBeNull();
   });
 
+  it("ignores the legacy level once any discipline level is set (#239)", () => {
+    // Latin cleared, Standard set: a stale legacy level must not resurface.
+    const latinCleared = {
+      competitionLevelLatin: null,
+      competitionLevelStandard: "Débutant",
+      competitionLevel: "Avancé",
+    };
+    expect(getCompetitionLevelForCategory(latinCleared, "Latin")).toBeNull();
+    expect(getCompetitionLevelForCategory(latinCleared, "Standard")).toBe(
+      "Débutant",
+    );
+  });
+
+  it("uses the highest level for an unknown discipline", () => {
+    expect(getCompetitionLevelForCategory(dancer, null)).toBe("International");
+    expect(getCompetitionLevelForCategory(dancer, "Salsa")).toBe(
+      "International",
+    );
+  });
+
   it("ignores invalid stored values", () => {
     expect(
       getCompetitionLevelForCategory(
@@ -203,6 +227,15 @@ describe("getHighestCompetitionLevel", () => {
     expect(getHighestCompetitionLevel({ competitionLevel: "Débutant" })).toBe(
       "Débutant",
     );
+  });
+
+  it("ignores the legacy level once a discipline level is set (#239)", () => {
+    expect(
+      getHighestCompetitionLevel({
+        competitionLevelLatin: "Débutant",
+        competitionLevel: "International",
+      }),
+    ).toBe("Débutant");
   });
 
   it("returns null when no level is known", () => {
@@ -266,34 +299,134 @@ describe("practisesDiscipline", () => {
   });
 });
 
+describe("hasDisciplineLevel", () => {
+  it("is true only with a valid per-discipline level", () => {
+    expect(hasDisciplineLevel({ competitionLevelLatin: "Avancé" })).toBe(true);
+    expect(hasDisciplineLevel({ competitionLevelStandard: " Débutant " })).toBe(
+      true,
+    );
+    expect(hasDisciplineLevel({ competitionLevelLatin: "Expert" })).toBe(false);
+    expect(hasDisciplineLevel({ competitionLevel: "Avancé" })).toBe(false);
+    expect(hasDisciplineLevel(null)).toBe(false);
+  });
+});
+
+describe("deriveLegacyCompetitionLevel / withDerivedCompetitionLevel (#239)", () => {
+  it("derives the served single level from the per-discipline ones", () => {
+    expect(
+      deriveLegacyCompetitionLevel({
+        competitionLevelLatin: "Avancé",
+        competitionLevelStandard: "Débutant",
+        competitionLevel: "Débutant",
+      }),
+    ).toBe("Avancé");
+  });
+
+  it("keeps the legacy value for a profile without discipline levels", () => {
+    expect(deriveLegacyCompetitionLevel({ competitionLevel: "Avancé" })).toBe(
+      "Avancé",
+    );
+    expect(deriveLegacyCompetitionLevel({})).toBeNull();
+  });
+
+  it("replaces the stale column value in a response record", () => {
+    const record = {
+      id: "u1",
+      competitionLevelLatin: null,
+      competitionLevelStandard: "Intermédiaire",
+      competitionLevel: "International",
+    };
+    expect(withDerivedCompetitionLevel(record)).toEqual({
+      ...record,
+      competitionLevel: "Intermédiaire",
+    });
+    // The input is not mutated.
+    expect(record.competitionLevel).toBe("International");
+  });
+
+  it("sets the field even when the record did not carry it", () => {
+    expect(
+      withDerivedCompetitionLevel({ competitionLevelLatin: "Débutant" }),
+    ).toEqual({
+      competitionLevelLatin: "Débutant",
+      competitionLevel: "Débutant",
+    });
+  });
+});
+
 describe("mirrorLegacyCompetitionLevel", () => {
-  it("copies a legacy-only write to both disciplines", () => {
+  it("copies a legacy-only write to both disciplines, without the legacy key", () => {
     expect(
       mirrorLegacyCompetitionLevel({ competitionLevel: "Avancé" }),
     ).toEqual({
-      competitionLevel: "Avancé",
       competitionLevelLatin: "Avancé",
       competitionLevelStandard: "Avancé",
     });
     expect(mirrorLegacyCompetitionLevel({ competitionLevel: null })).toEqual({
-      competitionLevel: null,
       competitionLevelLatin: null,
       competitionLevelStandard: null,
     });
   });
 
-  it("leaves per-discipline writes and absent fields untouched", () => {
-    const perDiscipline = {
-      competitionLevel: "Avancé",
-      competitionLevelLatin: "Débutant",
+  it("drops the legacy key next to per-discipline writes", () => {
+    expect(
+      mirrorLegacyCompetitionLevel({
+        competitionLevel: "Avancé",
+        competitionLevelLatin: "Débutant",
+      }),
+    ).toEqual({ competitionLevelLatin: "Débutant" });
+    expect(
+      mirrorLegacyCompetitionLevel({
+        competitionLevel: "Avancé",
+        competitionLevelStandard: null,
+      }),
+    ).toEqual({ competitionLevelStandard: null });
+  });
+
+  it("leaves a write without any level untouched", () => {
+    const none = { firstName: "A" } as {
+      firstName: string;
+      competitionLevel?: string | null;
     };
-    expect(mirrorLegacyCompetitionLevel(perDiscipline)).toBe(perDiscipline);
-    const standardOnly = {
-      competitionLevel: "Avancé",
-      competitionLevelStandard: null,
-    };
-    expect(mirrorLegacyCompetitionLevel(standardOnly)).toBe(standardOnly);
-    const none = { firstName: "A" } as { competitionLevel?: string | null };
-    expect(mirrorLegacyCompetitionLevel(none)).toBe(none);
+    expect(mirrorLegacyCompetitionLevel(none)).toEqual({ firstName: "A" });
+  });
+});
+
+describe("legacyCompetitionLevelMirror (#239 rollback mirror)", () => {
+  it("is undefined when the write touches no discipline level", () => {
+    expect(legacyCompetitionLevelMirror({})).toBeUndefined();
+  });
+
+  it("derives the highest level of the resulting profile", () => {
+    expect(
+      legacyCompetitionLevelMirror({
+        competitionLevelLatin: "International",
+        competitionLevelStandard: "Débutant",
+      }),
+    ).toBe("International");
+  });
+
+  it("completes a partial write with the stored levels", () => {
+    expect(
+      legacyCompetitionLevelMirror(
+        { competitionLevelLatin: "Débutant" },
+        { competitionLevelLatin: "Avancé", competitionLevelStandard: "Avancé" },
+      ),
+    ).toBe("Avancé");
+    expect(
+      legacyCompetitionLevelMirror(
+        { competitionLevelStandard: null },
+        { competitionLevelLatin: null, competitionLevelStandard: "Avancé" },
+      ),
+    ).toBeNull();
+  });
+
+  it("is null when both levels end up cleared (no stale fallback)", () => {
+    expect(
+      legacyCompetitionLevelMirror({
+        competitionLevelLatin: null,
+        competitionLevelStandard: null,
+      }),
+    ).toBeNull();
   });
 });

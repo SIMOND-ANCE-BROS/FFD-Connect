@@ -7,6 +7,7 @@ import {
 import {
   competitionLevelRank,
   getHighestCompetitionLevel,
+  withDerivedCompetitionLevel,
   type CompetitionLevelProfile,
 } from "../common/competition-level";
 import { PrismaService } from "../prisma/prisma.service";
@@ -36,6 +37,23 @@ export function computeSoloTeamLevel(
     : "Débutant";
 }
 
+/**
+ * Serves each member's deprecated `competitionLevel` derived from the
+ * per-discipline levels (older app versions only read it, #239).
+ */
+function withDerivedMemberLevels<
+  M extends { user: CompetitionLevelProfile },
+  T extends { members: M[] },
+>(team: T): T {
+  return {
+    ...team,
+    members: team.members.map((m) => ({
+      ...m,
+      user: withDerivedCompetitionLevel(m.user),
+    })),
+  };
+}
+
 @Injectable()
 export class SoloTeamService {
   constructor(
@@ -46,7 +64,7 @@ export class SoloTeamService {
   async getSoloTeams(organizerUserId: string) {
     const clubId =
       await this.clubsService.getClubIdForOrganizer(organizerUserId);
-    return this.prisma.soloTeam.findMany({
+    const teams = await this.prisma.soloTeam.findMany({
       where: { clubId },
       include: {
         members: {
@@ -58,6 +76,7 @@ export class SoloTeamService {
       orderBy: { name: "asc" },
       take: 100,
     });
+    return teams.map((team) => withDerivedMemberLevels(team));
   }
 
   async createSoloTeam(organizerUserId: string, dto: CreateSoloTeamDto) {
@@ -88,7 +107,7 @@ export class SoloTeamService {
       },
     });
     if (!team) throw new NotFoundException("Solo team not found");
-    return team;
+    return withDerivedMemberLevels(team);
   }
 
   async addSoloTeamMember(
@@ -150,7 +169,7 @@ export class SoloTeamService {
       take: 200,
     });
     const level = computeSoloTeamLevel(members.map((m) => m.user));
-    return this.prisma.soloTeam.update({
+    const team = await this.prisma.soloTeam.update({
       where: { id: teamId },
       data: { level },
       include: {
@@ -161,5 +180,6 @@ export class SoloTeamService {
         },
       },
     });
+    return withDerivedMemberLevels(team);
   }
 }

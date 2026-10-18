@@ -112,7 +112,7 @@ describe("ClubService", () => {
       role: "LICENSEE" as const,
       category: "Latin",
       ageGroup: "Adult",
-      competitionLevel: "Avancé",
+      competitionLevelLatin: "Avancé",
     };
 
     it("returns true when no filter is applied", () => {
