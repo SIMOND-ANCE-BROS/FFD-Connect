@@ -158,7 +158,8 @@ resource "azurerm_role_assignment" "ci_reader" {
 #
 # Deliberately NOT granted: delete, listSecrets, exec, debug, start/stop,
 # revisions activate/deactivate/restart, any jobs/* or managedEnvironments/*
-# write. Residual risk, inherent to deploying: containerApps/write on an app
+# write. (containerApps/write can still change the revision mode and traffic
+# split, i.e. effectively reactivate an old revision.) Residual risk, inherent to deploying: containerApps/write on an app
 # can change its image, so it can run code with that app's secrets and
 # managed identity. Hence the assignment on the two backend apps ONLY.
 #
@@ -187,8 +188,11 @@ resource "azurerm_role_definition" "backend_app_deployer" {
 }
 
 # The apps are created outside Terraform: the scope is built from the RG id
-# instead of an azurerm_container_app data source, which would need
-# listSecrets and copy the apps' secret values into the remote state.
+# rather than from an azurerm_container_app data source, so this file adds no
+# dependency on reading the apps. Note that monitoring-containerapps.tf
+# already declares such data sources (backend_prod, backend_staging); whether
+# they put the apps' secret values in the remote state is to be verified in
+# a follow-up issue.
 resource "azurerm_role_assignment" "ci_backend_app_deployer" {
   for_each = var.ci_deploy_container_apps
 

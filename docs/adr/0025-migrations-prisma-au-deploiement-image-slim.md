@@ -50,7 +50,7 @@ L'issue #32, partie (b), demande de trancher entre la migration au boot et la mi
   - `replicaTimeout = 600` s ;
   - 0,5 vCPU / 1 Gi.
 - La chaîne de connexion à la base utilise **la même référence Key Vault et la même identité managée que l'app du même environnement**, si cette identité est assignée par l'utilisateur. Sinon, une attribution RBAC supplémentaire, limitée au même secret. Aucun nouveau secret, aucun secret dans GitHub.
-- Les jobs et le rôle CI sont déclarés en Terraform. Le rôle personnalisé, limité aux deux jobs, autorise le démarrage d'une exécution, la lecture des exécutions et la mise à jour de l'image du job.
+- Les jobs et le rôle CI sont déclarés en Terraform. Le rôle personnalisé, attribué sur chaque job existant (staging seul en phase 1, prod au redémarrage de `backend-prod`), autorise la lecture du job, le démarrage d'une exécution avec surcharge du conteneur (image du déploiement), la lecture des exécutions et de leurs logs, et l'arrêt d'une exécution. Il n'accorde pas `jobs/write` : le modèle du job n'est jamais modifié par la CI (#772, #773).
 
 ### Workflow `deploy-backend.yml`
 

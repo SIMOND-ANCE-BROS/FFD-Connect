@@ -461,13 +461,25 @@ jobs:
         if: success()
         run: |
           # Container Apps system + console logs for the current revision.
+          # stderr is kept apart and never printed: a failed read (e.g. a
+          # right missing from the CI role, #773) must show up as a fixed
+          # warning instead of passing for "clean logs".
+          AZ_RC=0
           LOGS=$(
             az containerapp logs show \
               --name "$CONTAINER_APP" \
               --resource-group "$RESOURCE_GROUP" \
               --tail 30 \
-              --format text 2>&1 || true
-          )
+              --format text 2>"$RUNNER_TEMP/logs.err"
+          ) || AZ_RC=$?
+          if [ "$AZ_RC" -ne 0 ] \
+            || grep -qiE "AuthorizationFailed|does not have authorization|Forbidden" "$RUNNER_TEMP/logs.err"; then
+            echo "::warning::Lecture des journaux refusée (droit manquant ?) — voir runbook docs/exploitation/deploiement-azure.md, section Droits de l'identité CI"
+            rm -f "$RUNNER_TEMP/logs.err"
+            # Nothing was read: no summary, and never "logs look clean".
+            exit 0
+          fi
+          rm -f "$RUNNER_TEMP/logs.err"
           # Public repo: Actions logs are world-readable for 90 days. NO log
           # text is printed (#774): only counts and error codes in a fixed
           # shape. The pattern check below reads the raw text and prints a
@@ -750,13 +762,25 @@ jobs:
         if: success()
         run: |
           # Container Apps system + console logs for the current revision.
+          # stderr is kept apart and never printed: a failed read (e.g. a
+          # right missing from the CI role, #773) must show up as a fixed
+          # warning instead of passing for "clean logs".
+          AZ_RC=0
           LOGS=$(
             az containerapp logs show \
               --name "$CONTAINER_APP" \
               --resource-group "$RESOURCE_GROUP" \
               --tail 30 \
-              --format text 2>&1 || true
-          )
+              --format text 2>"$RUNNER_TEMP/logs.err"
+          ) || AZ_RC=$?
+          if [ "$AZ_RC" -ne 0 ] \
+            || grep -qiE "AuthorizationFailed|does not have authorization|Forbidden" "$RUNNER_TEMP/logs.err"; then
+            echo "::warning::Lecture des journaux refusée (droit manquant ?) — voir runbook docs/exploitation/deploiement-azure.md, section Droits de l'identité CI"
+            rm -f "$RUNNER_TEMP/logs.err"
+            # Nothing was read: no summary, and never "logs look clean".
+            exit 0
+          fi
+          rm -f "$RUNNER_TEMP/logs.err"
           # Public repo: Actions logs are world-readable for 90 days. NO log
           # text is printed (#774): only counts and error codes in a fixed
           # shape. The pattern check below reads the raw text and prints a
