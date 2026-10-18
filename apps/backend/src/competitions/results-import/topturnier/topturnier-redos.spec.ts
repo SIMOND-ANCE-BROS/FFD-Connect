@@ -17,7 +17,10 @@ import {
  * the terminator was missing: seconds to minutes of CPU per page.
  */
 
-const BUDGET_MS = 200;
+// Generous on purpose: a backtracking regex costs seconds to minutes here,
+// a linear parse a few ms to ~100 ms — 200 ms tripped on a loaded machine
+// running the whole suite in parallel.
+const BUDGET_MS = 1000;
 const SIZE = 200 * 1024;
 
 function timed(run: () => unknown): number {
