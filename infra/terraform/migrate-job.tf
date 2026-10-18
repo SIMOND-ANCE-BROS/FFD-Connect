@@ -174,9 +174,12 @@ resource "azurerm_role_definition" "migrate_job_runner" {
       "Microsoft.App/jobs/executions/read",
       "Microsoft.App/jobs/execution/read",
       "Microsoft.App/jobs/getAuthToken/action",
-      "Microsoft.App/jobs/logstream/action",
     ]
     not_actions = []
+    # logstream is a data action: Azure rejects it in `actions` (400 InvalidActionOrNotAction).
+    data_actions = [
+      "Microsoft.App/jobs/logstream/action",
+    ]
   }
 
   assignable_scopes = [azurerm_resource_group.main.id]
