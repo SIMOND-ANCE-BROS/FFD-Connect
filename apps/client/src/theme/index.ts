@@ -69,6 +69,10 @@ export const theme = {
     // label stays readable anyway.
     disabledFill: palette.slate200,
     onDisabled: palette.slate600,
+    // Neutral solid fill under white text/icons: locked seats of the seating
+    // plan, « Inactif » status badge. White on slate550 is 5.44:1.
+    mutedFill: palette.slate550,
+    onMuted: palette.white,
     secondary: palette.ffdCyanDeep,
     accent: palette.ffdRed,
     border: palette.slate200,
@@ -102,6 +106,11 @@ export const theme = {
     // slate300 label reaches 6.97:1 on it (issue #22).
     disabledFill: palette.slate700,
     onDisabled: palette.slate300,
+    // Neutral solid fill under white text/icons (locked seats, « Inactif »
+    // badge): white on textSecondary (slate400) was 2.56:1, on slate600 it is
+    // 7.58:1 (issue #22).
+    mutedFill: palette.slate600,
+    onMuted: palette.white,
     secondary: palette.ffdBlue,
     accent: palette.ffdRed,
     border: palette.slate800,

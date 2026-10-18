@@ -159,6 +159,20 @@ describe("theme contrast (WCAG AA)", () => {
     expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
   });
 
+  // Locked seats of the seating plan (DraggableLayoutItem, ItemPopupModal)
+  // and the « Inactif » badge (ClubMemberEditorScreen) used white on
+  // textSecondary: 2.56:1 in dark mode (slate400) before issue #22.
+  it.each([
+    ["light", light.onMuted, light.mutedFill],
+    ["dark", dark.onMuted, dark.mutedFill],
+  ])("%s: onMuted on mutedFill meets AA (#22)", (_name, fg, bg) => {
+    expect(meetsWcagAA(fg, bg)).toBe(true);
+  });
+
+  it("dark: white on textSecondary stays below AA (use mutedFill)", () => {
+    expect(meetsWcagAA(colors.white, dark.textSecondary)).toBe(false);
+  });
+
   it("keeps the bright brand cyan for text and icons on dark surfaces", () => {
     expect(dark.primary).toBe(colors.ffdCyan);
     expect(dark.primaryFill).not.toBe(dark.primary);

@@ -181,7 +181,7 @@ export function ItemPopupModal({
                                       styles.popupSeat,
                                       {
                                         backgroundColor: locked
-                                          ? theme.textSecondary
+                                          ? theme.mutedFill
                                           : theme.primaryFill,
                                         borderColor: locked
                                           ? theme.border
@@ -193,7 +193,7 @@ export function ItemPopupModal({
                                     }
                                   >
                                     {locked ? (
-                                      <Lock size={14} color={theme.surface} />
+                                      <Lock size={14} color={theme.onMuted} />
                                     ) : (
                                       <AppText
                                         variant="caption"
@@ -229,7 +229,7 @@ export function ItemPopupModal({
                                 styles.popupSeat,
                                 {
                                   backgroundColor: locked
-                                    ? theme.textSecondary
+                                    ? theme.mutedFill
                                     : theme.primaryFill,
                                   borderColor: locked
                                     ? theme.border
@@ -239,7 +239,7 @@ export function ItemPopupModal({
                               onPress={() => onToggleSeatLock(item.id, idx)}
                             >
                               {locked ? (
-                                <Lock size={14} color={theme.surface} />
+                                <Lock size={14} color={theme.onMuted} />
                               ) : (
                                 <AppText
                                   variant="caption"

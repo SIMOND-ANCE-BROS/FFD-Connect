@@ -11,6 +11,8 @@ export const mockTheme = {
   onPrimary: "#ffffff",
   disabledFill: "#e2e8f0",
   onDisabled: "#475569",
+  mutedFill: "#5b6b80",
+  onMuted: "#ffffff",
   secondary: "#22c55e",
   border: "#e5e7eb",
   success: "#10b981",
