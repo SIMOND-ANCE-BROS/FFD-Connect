@@ -136,8 +136,9 @@ jobs:
     needs: [gate]
     if: needs.gate.outputs.backend_changed == 'true' && needs.gate.outputs.environment == 'staging'
     runs-on: ubuntu-24.04
-    # update + up to 180 s of smoke test + log check + ACR purge + rollback.
-    timeout-minutes: 15
+    # migration job (bounded at 12 min, ADR-0025) + update + up to 180 s of
+    # smoke test + log check + ACR purge + rollback.
+    timeout-minutes: 30
     # Binds the job to the GitHub Environment: records a deployment, surfaces
     # what is live in the Environments panel, and scopes this job's secrets.
     # No reviewer here on purpose — staging is the beta path and must stay fluid.
@@ -235,6 +236,141 @@ jobs:
             --resource-group "$RESOURCE_GROUP" \
             --max-inactive-revisions "$MAX_INACTIVE_REVISIONS" \
             --output none
+
+      # ADR-0025 phase 1 (option A): migrate the DB with a Container Apps Job
+      # BEFORE switching the app (infra/terraform/migrate-job.tf). The job
+      # runs `prisma migrate deploy` from the image being deployed (the app
+      # image still ships the Prisma CLI). On failure the deploy STOPS here:
+      # no revision switch, the app keeps serving its current image, and the
+      # rollback step does not apply. The entrypoint still migrates at boot in
+      # phase 1 (belt and braces), so a missing job (Terraform not applied
+      # yet) only warns. Runbook: docs/exploitation/migrations-job-adr-0025.md.
+      #
+      # The execution is started with a FULL container override (az rest, not
+      # `az containerapp job start --args`, whose parser takes the
+      # `--schema=...` value for one of its own flags).
+      #
+      # Logs: the repo is PUBLIC, so the job's log TEXT is never printed
+      # (#774). It is captured live into a runner temp file (the Container
+      # Apps environment has no Log Analytics: once the replica is gone, its
+      # logs are gone too) and only summarised by log-summary.sh: line counts
+      # and error codes (P30xx, SQLSTATE). While it runs, a heartbeat with the
+      # Azure execution status only. Full logs: runbook, read locally.
+      - name: Run DB migrations (job, ADR-0025)
+        id: migrate
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+          MIGRATE_JOB: backend-migrate-staging
+          # Above the job's replica timeout (600 s) to leave room for
+          # scheduling and the image pull.
+          MIGRATE_TIMEOUT_S: '720'
+          JOBS_API: '2024-03-01'
+        run: |
+          set -uo pipefail
+          # Job control: the background log capture runs in its own process
+          # group, so `kill -- -PID` stops it together with its az child.
+          set -m
+          LOG_FILE="$RUNNER_TEMP/migrate.log"
+          : > "$LOG_FILE"
+          IMAGE="${ACR_NAME}.azurecr.io/ffd-connect-backend:${DEPLOY_SHA}"
+
+          if ! JOB_ID=$(az containerapp job show -n "$MIGRATE_JOB" -g "$RESOURCE_GROUP" \
+            --query id -o tsv 2>"$RUNNER_TEMP/job.err"); then
+            if grep -q "ResourceNotFound" "$RUNNER_TEMP/job.err"; then
+              echo "::warning::Migration job $MIGRATE_JOB not found (terraform apply pending?) - skipped. The entrypoint still migrates at boot (ADR-0025 phase 1)."
+              echo "Migration job skipped: $MIGRATE_JOB does not exist yet." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            cat "$RUNNER_TEMP/job.err"
+            echo "::error::Cannot read migration job $MIGRATE_JOB - deploy stopped before the revision switch"
+            exit 1
+          fi
+
+          jq -n --arg image "$IMAGE" '{containers: [{
+              name: "migrate",
+              image: $image,
+              command: ["/app/apps/backend/node_modules/.bin/prisma"],
+              args: ["migrate", "deploy", "--schema=./prisma/schema"],
+              env: [{name: "DATABASE_URL", secretRef: "db-url"}],
+              resources: {cpu: 0.5, memory: "1Gi"}
+            }]}' > "$RUNNER_TEMP/migrate-start.json"
+
+          echo "Starting $MIGRATE_JOB with $IMAGE"
+          if ! EXEC=$(az rest --method post \
+            --uri "https://management.azure.com${JOB_ID}/start?api-version=${JOBS_API}" \
+            --headers "Content-Type=application/json" \
+            --body "@$RUNNER_TEMP/migrate-start.json" \
+            --query name -o tsv) || [ -z "$EXEC" ]; then
+            echo "::error::Could not start $MIGRATE_JOB - deploy stopped before the revision switch"
+            exit 1
+          fi
+          echo "Execution: $EXEC"
+
+          # Follow until a terminal state, polling with a growing delay
+          # (5 s, 10 s, ... capped at 20 s), bounded by MIGRATE_TIMEOUT_S.
+          START=$(date +%s)
+          DELAY=5
+          STATUS=""
+          LOG_PID=""
+          LOG_TRIES=0
+          while :; do
+            STATUS=$(az containerapp job execution show -n "$MIGRATE_JOB" -g "$RESOURCE_GROUP" \
+              --job-execution-name "$EXEC" --query properties.status -o tsv 2>/dev/null || echo "Unknown")
+            case "$STATUS" in
+              Succeeded|Failed|Stopped|Degraded) break ;;
+            esac
+            ELAPSED=$(( $(date +%s) - START ))
+            # Capture the logs (NOT printed) once the replica runs; retry if
+            # the stream dropped before the replica was ready (at most 3
+            # attempts; each one re-reads the last 300 lines, hence `>`).
+            if [ "$STATUS" = "Running" ] && [ "$LOG_TRIES" -lt 3 ] \
+              && { [ -z "$LOG_PID" ] || ! kill -0 "$LOG_PID" 2>/dev/null; }; then
+              LOG_TRIES=$((LOG_TRIES + 1))
+              (
+                timeout $(( MIGRATE_TIMEOUT_S - ELAPSED + 30 )) \
+                  az containerapp job logs show -n "$MIGRATE_JOB" -g "$RESOURCE_GROUP" \
+                    --container migrate --execution "$EXEC" \
+                    --follow true --tail 300 --format text > "$LOG_FILE" 2>/dev/null
+              ) &
+              LOG_PID=$!
+            fi
+            if [ "$ELAPSED" -ge "$MIGRATE_TIMEOUT_S" ]; then
+              echo "::error::Migration still '$STATUS' after ${ELAPSED}s - stopping $EXEC; deploy stopped before the revision switch"
+              az containerapp job stop -n "$MIGRATE_JOB" -g "$RESOURCE_GROUP" \
+                --job-execution-name "$EXEC" -o none || true
+              [ -n "$LOG_PID" ] && kill -- "-$LOG_PID" 2>/dev/null
+              sh .github/scripts/log-summary.sh docs/exploitation/migrations-job-adr-0025.md < "$LOG_FILE"
+              exit 1
+            fi
+            # Heartbeat: Azure execution status only, never log text.
+            echo "  migration en cours… (${STATUS:-<pending>}, ${ELAPSED}s)"
+            sleep "$DELAY"
+            DELAY=$(( DELAY < 20 ? DELAY + 5 : 20 ))
+          done
+
+          # Let the capture flush the last lines, then make sure it is gone.
+          if [ -n "$LOG_PID" ]; then
+            sleep 5
+            kill -- "-$LOG_PID" 2>/dev/null || true
+            wait "$LOG_PID" 2>/dev/null || true
+          fi
+          # Nothing captured (very short run): read the replica once, if it
+          # still exists.
+          if [ ! -s "$LOG_FILE" ]; then
+            az containerapp job logs show -n "$MIGRATE_JOB" -g "$RESOURCE_GROUP" \
+              --container migrate --execution "$EXEC" --tail 300 --format text \
+              > "$LOG_FILE" 2>/dev/null || true
+          fi
+
+          ELAPSED=$(( $(date +%s) - START ))
+          echo "Migration job $EXEC: $STATUS after ${ELAPSED}s" | tee -a "$GITHUB_STEP_SUMMARY"
+          # Counts and error codes only (public repo, #774).
+          sh .github/scripts/log-summary.sh docs/exploitation/migrations-job-adr-0025.md < "$LOG_FILE"
+          if [ "$STATUS" != "Succeeded" ]; then
+            echo "::error::DB migration $STATUS - app NOT switched to $DEPLOY_SHA. A failed migration may be half-applied and blocks every boot (P3009). Read the full logs locally and follow docs/exploitation/migrations-job-adr-0025.md"
+            exit 1
+          fi
 
       - name: Deploy to Container Apps
         env:
@@ -398,11 +534,17 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MIGRATE_OUTCOME: ${{ steps.migrate.outcome }}
         run: |
+          if [ "$MIGRATE_OUTCOME" = "failure" ]; then
+            WHAT="DB migration failed: app NOT switched, P3009 runbook may apply."
+          else
+            WHAT="Auto-rollback attempted."
+          fi
           if [ -n "$SLACK_WEBHOOK_URL" ]; then
             curl -sf -X POST "$SLACK_WEBHOOK_URL" \
               -H 'Content-Type: application/json' \
-              -d "{\"text\":\":rotating_light: *Deploy failed* on \`staging\`\nSHA: \`${DEPLOY_SHA:0:7}\`\nRun: <${RUN_URL}|View logs>\nAuto-rollback attempted.\"}" \
+              -d "{\"text\":\":rotating_light: *Deploy failed* on \`staging\`\nSHA: \`${DEPLOY_SHA:0:7}\`\nRun: <${RUN_URL}|View logs>\n${WHAT}\"}" \
               || echo "Slack notification failed (non-blocking)"
           fi
 

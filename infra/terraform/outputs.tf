@@ -114,3 +114,15 @@ output "release_keys_audit_workspace_id" {
   description = "Workspace (customer) ID receiving the release-keys vault AuditEvent logs — null while release_keys_audit_enabled = false. Query: AzureDiagnostics | where OperationName == \"SecretGet\""
   value       = var.release_keys_audit_enabled ? azurerm_log_analytics_workspace.release_keys_audit[0].workspace_id : null
 }
+
+# ── DB migration jobs (ADR-0025) ────────────
+
+output "migrate_job_names" {
+  description = "DB migration Container Apps jobs, by environment (deploy-backend.yml uses backend-migrate-staging)."
+  value       = { for k, j in azurerm_container_app_job.migrate : k => j.name }
+}
+
+output "migrate_job_identity_principal_ids" {
+  description = "Principal IDs of the migration jobs' user-assigned identities (Key Vault Secrets User on one secret + AcrPull)."
+  value       = { for k, i in azurerm_user_assigned_identity.migrate : k => i.principal_id }
+}

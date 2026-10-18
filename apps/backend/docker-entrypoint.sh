@@ -1,7 +1,11 @@
 #!/bin/sh
 set -e
 
-echo "Running Prisma migrations..."
+# UTC timestamps around `migrate deploy` (ADR-0025 phase 0 recommendation):
+# they give its exact duration at each wake, which the 300-line log window
+# could only bracket. Phase 1: the migration job applies first, so at boot
+# this is normally a no-op; it stays as a safety net until phase 2.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Running Prisma migrations..."
 # Call the Prisma CLI binary directly (no pnpm/npm in the slim runtime image).
 # Explicit --schema for Prisma 7 multi-file schema. prisma.config.ts is not
 # auto-loaded by all CLI versions, so we point at the schema folder directly.
@@ -12,7 +16,7 @@ if ! "$PRISMA" migrate deploy --schema=./prisma/schema; then
   echo "To debug: docker exec -it <container> ./node_modules/.bin/prisma migrate status --schema=./prisma/schema"
   exit 1
 fi
-echo "Migrations applied successfully."
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Migrations applied successfully."
 
 # Seeds staging/beta (jamais en prod : gated sur SEED_TEST_TRACKS=true).
 # Lancés en ARRIÈRE-PLAN pour ne pas retarder le démarrage de l'app : sur un

@@ -164,3 +164,38 @@ variable "release_keys_audit_enabled" {
   type        = bool
   default     = false
 }
+
+# ── DB migration jobs (ADR-0025) ────────────
+
+variable "container_app_environment_name" {
+  description = "Name of the Container Apps environment (created outside Terraform) hosting the backend apps and the migration jobs."
+  type        = string
+  default     = "ffd-connect-cae"
+}
+
+variable "runtime_key_vault_name" {
+  description = "Name of the runtime Key Vault (created outside Terraform) holding the per-environment DB URLs (db-url-staging, db-url-prod)."
+  type        = string
+  default     = "ffd-connect-kv"
+}
+
+variable "migrate_jobs" {
+  description = "Environments that get a DB migration job (ADR-0025), keyed by short env name (job = backend-migrate-<key>), with the Key Vault secret holding that environment's DATABASE_URL. Staging only until backend-prod restarts (#215): then add prod = { db_url_secret_name = \"db-url-prod\" }."
+  type = map(object({
+    db_url_secret_name = string
+  }))
+  default = {
+    staging = { db_url_secret_name = "db-url-staging" }
+  }
+
+  validation {
+    condition     = alltrue([for k in keys(var.migrate_jobs) : contains(["staging", "prod"], k)])
+    error_message = "migrate_jobs keys must be 'staging' or 'prod' (they name the job backend-migrate-<key>)."
+  }
+}
+
+variable "migrate_job_placeholder_image" {
+  description = "Image of the migration job TEMPLATE. Never used for a migration: deploy-backend.yml starts every execution with the backend image of the SHA being deployed. A public placeholder keeps the template from pinning an ACR tag (acr-purge.sh keeps every image a job references)."
+  type        = string
+  default     = "mcr.microsoft.com/k8se/quickstart-jobs:latest"
+}

@@ -13,8 +13,8 @@
 #
 # Rules, in order:
 #   1. Inventory every image referenced by ANY Container App (current template
-#      + ALL revisions, active or not) and Container Apps job visible to the
-#      identity. If any query fails -> skip the purge entirely (never delete
+#      + ALL revisions, active or not) and Container Apps job (template +
+#      unfinished executions) visible to the identity. If any query fails -> skip the purge entirely (never delete
 #      blind). If REQUIRE_IMAGE is set and missing from the inventory -> skip
 #      (the inventory is incomplete).
 #   2. Keep: every non-SHA tag (latest, buildcache, manual tags), the KEEP
@@ -87,6 +87,25 @@ done <"$W/apps.tsv"
 az containerapp job list -o json >"$W/jobs.json" 2>"$W/err" ||
   skip_all "cannot list Container Apps jobs: $(tail -n 1 "$W/err")"
 images_of "$W/jobs.json" >>"$W/images.txt" || skip_all "cannot parse Container Apps jobs"
+
+# Job executions can run another image than the job template: the DB migration
+# job (ADR-0025, infra/terraform/migrate-job.tf) is always started with a
+# container override carrying the backend image of the deploy. Keep the images
+# of executions that have not finished yet (a manual recovery run, a migration
+# started by a concurrent deploy). Finished executions are ignored on purpose:
+# Azure keeps up to 100 of them, and pinning their images would bring back the
+# registry bloat of #768.
+jq -r '.[] | [.name, (.resourceGroup // (.id | split("/")[4]))] | @tsv' "$W/jobs.json" >"$W/jobs.tsv" ||
+  skip_all "cannot parse Container Apps jobs"
+while IFS=$TAB read -r JOB RG; do
+  az containerapp job execution list -n "$JOB" -g "$RG" -o json \
+    >"$W/exec.json" 2>"$W/err" </dev/null ||
+    skip_all "cannot list executions of job $JOB: $(tail -n 1 "$W/err")"
+  jq '[.[] | select((.properties.status // "") | test("^(Succeeded|Failed|Stopped)$") | not)]' \
+    "$W/exec.json" >"$W/exec_live.json" || skip_all "cannot parse executions of job $JOB"
+  images_of "$W/exec_live.json" >>"$W/images.txt" || skip_all "cannot parse executions of job $JOB"
+  echo "job $JOB: $(jq length "$W/exec_live.json") unfinished execution(s)"
+done <"$W/jobs.tsv"
 
 sort -u "$W/images.txt" -o "$W/images.txt"
 echo "Distinct referenced images:"

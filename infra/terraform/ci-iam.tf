@@ -134,10 +134,12 @@ resource "azurerm_role_assignment" "ci_reader" {
 }
 
 # NOTE: ci_vm_contributor (Virtual Machine Contributor for `az vm run-command`)
-# was removed with the single-VM stack (2026-07). Container Apps deploys rely on
-# ACR push + `az containerapp update`; AcrPush + Reader above cover CI's needs.
-# If CI must update Container Apps directly, add a scoped Contributor/custom role
-# assignment here.
+# was removed with the single-VM stack (2026-07). `az containerapp update`
+# (deploy-backend.yml) is allowed by a "Container Apps Contributor" assignment
+# on the resource group that was granted OUTSIDE Terraform (seen 2026-10-18).
+# The DB migration job step has its own declared, job-scoped custom role
+# (migrate-job.tf, ci_migrate_job_runner), so narrowing that RG-wide role later
+# does not break migrations.
 
 # ============================================
 # Admin back-office deploy identity (deploy-admin.yml)
