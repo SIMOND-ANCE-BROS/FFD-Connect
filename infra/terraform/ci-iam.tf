@@ -28,8 +28,11 @@
 # overwriting a tag therefore cannot change what a deploy runs.
 #
 # The former shared identity (`azuread_application.ci` below) keeps, until the
-# split is proven, ONLY its staging rights (rollback path); its prod subjects
-# and prod rights are removed by the first apply of this file. Then
+# split is proven, only its Terraform-managed staging rights (rollback path):
+# the first apply of this file deletes its prod subjects and its Terraform
+# prod assignment. It does NOT remove the "Container Apps Contributor" on the
+# whole RG granted to it OUTSIDE Terraform (#773), which still reaches prod:
+# the runbook removes it right after that apply. Then
 # `ci_shared_identity_enabled = false` removes the rest (runbook
 # deploiement-azure.md, "Bascule vers les identités par environnement").
 
@@ -171,6 +174,9 @@ resource "azurerm_role_assignment" "ci_env_acr" {
   scope                = azurerm_container_registry.backend.id
   role_definition_name = each.value.role
   principal_id         = azuread_service_principal.ci_env[each.value.id].object_id
+  # The SP is created in the same apply: skip the Entra lookup that can fail
+  # with PrincipalNotFound before replication.
+  skip_service_principal_aad_check = true
 }
 
 # Reader. On the RG (staging, prod): `az containerapp show/list`,
@@ -186,6 +192,8 @@ resource "azurerm_role_assignment" "ci_env_reader" {
   scope                = each.value.reader_scope == "rg" ? azurerm_resource_group.main.id : azurerm_container_registry.backend.id
   role_definition_name = "Reader"
   principal_id         = azuread_service_principal.ci_env[each.key].object_id
+  # Fresh SP (same apply): avoid PrincipalNotFound before replication.
+  skip_service_principal_aad_check = true
 }
 
 # Update THIS environment's backend app only (role definition below). The
@@ -197,6 +205,8 @@ resource "azurerm_role_assignment" "ci_env_backend_app_deployer" {
   scope              = "${azurerm_resource_group.main.id}/providers/Microsoft.App/containerApps/${each.value.container_app}"
   role_definition_id = azurerm_role_definition.backend_app_deployer.role_definition_resource_id
   principal_id       = azuread_service_principal.ci_env[each.key].object_id
+  # Fresh SP (same apply): avoid PrincipalNotFound before replication.
+  skip_service_principal_aad_check = true
 }
 
 # ── Backend Container Apps: update only (#773) ──
@@ -256,9 +266,14 @@ resource "azurerm_role_definition" "backend_app_deployer" {
 # LEGACY shared CI identity — to be removed (#778)
 # ============================================
 # The identity both environments used until #778. The first apply of this
-# file already strips everything that reaches prod: its `master`, `develop`
-# and `environment:production` credentials and its backend-prod assignment
-# are deleted. What remains is the staging path only (staging ref +
+# file deletes its `master`, `develop` and `environment:production`
+# credentials and its Terraform backend-prod assignment. Terraform cannot
+# remove the RG-wide "Container Apps Contributor" granted to it out of band
+# (#773): until the runbook's guarded `az role assignment delete` right after
+# that apply, a staging-subject token of this identity can still write
+# backend-prod. Safer variant: apply with `ci_shared_identity_enabled = false`
+# directly (no token at all, but no rollback path). Otherwise what remains is
+# the staging path only (staging ref +
 # `environment:staging` credentials, registry and RG reads, backend-staging,
 # the staging migration job), kept as a rollback while the workflows switch
 # to the new client ids. Once a staging deploy has succeeded with ci-staging,

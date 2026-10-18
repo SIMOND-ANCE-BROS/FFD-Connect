@@ -195,6 +195,8 @@ resource "azurerm_role_assignment" "ci_env_migrate_job_runner" {
   scope              = azurerm_container_app_job.migrate[each.key].id
   role_definition_id = azurerm_role_definition.migrate_job_runner.role_definition_resource_id
   principal_id       = azuread_service_principal.ci_env[each.key].object_id
+  # Fresh SP (same apply): avoid PrincipalNotFound before replication.
+  skip_service_principal_aad_check = true
 }
 
 # LEGACY shared CI identity (#778): staging job only, removed with

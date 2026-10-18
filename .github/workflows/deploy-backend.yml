@@ -204,6 +204,29 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # Cross-check (#778): the <sha> tag build-image pushed must still point
+      # at the digest it recorded. A mismatch means the tag was re-pushed
+      # after the build (another identity, or a re-run): stop before any
+      # write. Reads manifest metadata only: AcrPull on the registry (the
+      # same read acr-purge.sh relies on), Reader on the RG inherited too.
+      - name: Verify the recorded digest matches the pushed tag
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          IMAGE_DIGEST: ${{ needs.gate.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+          if ! TAG_DIGEST=$(az acr manifest show-metadata -r "$ACR_NAME" \
+            -n "ffd-connect-backend:${DEPLOY_SHA}" --query digest -o tsv 2>/dev/null); then
+            echo "::error::Cannot read the pushed tag's digest - deploy stopped before any change"
+            exit 1
+          fi
+          if [ "$TAG_DIGEST" != "$IMAGE_DIGEST" ]; then
+            echo "::error::Pushed tag does not match the digest recorded by build-image - deploy stopped before any change"
+            exit 1
+          fi
+          echo "Tag ${DEPLOY_SHA} -> ${IMAGE_DIGEST} (matches the build record)"
+
       # Deploy helper scripts (ACR purge, log summary), sparse and without
       # credentials. Taken first so every later step, including a failure
       # path, can use them.
@@ -646,6 +669,29 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Cross-check (#778): the <sha> tag build-image pushed must still point
+      # at the digest it recorded. A mismatch means the tag was re-pushed
+      # after the build (another identity, or a re-run): stop before any
+      # write. Reads manifest metadata only: AcrPull on the registry (the
+      # same read acr-purge.sh relies on), Reader on the RG inherited too.
+      - name: Verify the recorded digest matches the pushed tag
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          IMAGE_DIGEST: ${{ needs.gate.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+          if ! TAG_DIGEST=$(az acr manifest show-metadata -r "$ACR_NAME" \
+            -n "ffd-connect-backend:${DEPLOY_SHA}" --query digest -o tsv 2>/dev/null); then
+            echo "::error::Cannot read the pushed tag's digest - deploy stopped before any change"
+            exit 1
+          fi
+          if [ "$TAG_DIGEST" != "$IMAGE_DIGEST" ]; then
+            echo "::error::Pushed tag does not match the digest recorded by build-image - deploy stopped before any change"
+            exit 1
+          fi
+          echo "Tag ${DEPLOY_SHA} -> ${IMAGE_DIGEST} (matches the build record)"
 
       # Deploy helper scripts (ACR purge, log summary), sparse and without
       # credentials. Taken first so every later step, including a failure
