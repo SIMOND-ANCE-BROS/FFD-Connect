@@ -30,6 +30,7 @@ import { BackToList } from '../components/BackToList';
 import { ListSkeleton } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
 import { TopTurnierImport } from '../components/TopTurnierImport';
+import { TopTurnierUrlImport } from '../components/TopTurnierUrlImport';
 import { apiErrorMessage } from '../lib/apiError';
 import { COMPETITION_STATUS_BADGES, competitionDates, eventLabel } from '../lib/competitions';
 import { readText } from '../lib/files';
@@ -86,7 +87,7 @@ function ImportError({ error, fallback }: { error: unknown; fallback: string }) 
   );
 }
 
-type ImportMode = 'csv' | 'topturnier';
+type ImportMode = 'csv' | 'topturnier' | 'url';
 
 function ResultsImport({ competitionId }: { competitionId: string }) {
   const [mode, setMode] = useState<ImportMode>('csv');
@@ -101,12 +102,20 @@ function ResultsImport({ competitionId }: { competitionId: string }) {
           data={[
             { value: 'csv', label: 'Fichier CSV' },
             { value: 'topturnier', label: 'Export TopTurnier' },
+            // TEMPORARY (#787), until the FFD gives access to its data (#651).
+            { value: 'url', label: 'Adresse (temporaire)' },
           ]}
-          maw={420}
+          maw={560}
         />
-        {mode === 'csv' ? (
-          <CsvResultsImport competitionId={competitionId} />
-        ) : (
+        {mode === 'csv' && <CsvResultsImport competitionId={competitionId} />}
+        {mode === 'url' && (
+          <TopTurnierUrlImport
+            competitionId={competitionId}
+            renderReport={(report, title) => <ReportTable report={report} title={title} />}
+            renderError={(error, fallback) => <ImportError error={error} fallback={fallback} />}
+          />
+        )}
+        {mode === 'topturnier' && (
           <TopTurnierImport
             competitionId={competitionId}
             renderReport={(report, title) => <ReportTable report={report} title={title} />}

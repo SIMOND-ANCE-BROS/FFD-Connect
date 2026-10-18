@@ -19,6 +19,7 @@ import { CompetitionRegistrationService } from "./services/competition-registrat
 import { CompetitionResultsService } from "./services/competition-results.service";
 import { CompetitionResultsImportService } from "./services/competition-results-import.service";
 import { CompetitionTopTurnierImportService } from "./services/competition-topturnier-import.service";
+import { CompetitionTopTurnierUrlImportService } from "./services/competition-topturnier-url-import.service";
 import { RegistrationNotificationService } from "./services/registration-notification.service";
 import { CompetitionEventNotificationService } from "./services/competition-event-notification.service";
 import { ResultsNotificationScheduler } from "./services/results-notification.scheduler";
@@ -53,6 +54,7 @@ import { SyncProcessor } from "./sync.processor";
     CompetitionResultsService,
     CompetitionResultsImportService,
     CompetitionTopTurnierImportService,
+    CompetitionTopTurnierUrlImportService,
     RegistrationNotificationService,
     CompetitionEventNotificationService,
     ResultsNotificationScheduler,

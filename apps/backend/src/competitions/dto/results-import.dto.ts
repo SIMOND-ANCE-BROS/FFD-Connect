@@ -5,6 +5,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUrl,
   MaxLength,
 } from "class-validator";
 
@@ -52,6 +53,29 @@ export class ImportResultsQueryDto {
   @Transform(toFlag)
   @IsBoolean()
   dryRun?: boolean;
+}
+
+/**
+ * TEMPORARY (#787): public URL of a TopTurnier export. Shape only here; the
+ * allowlist, port and address checks are made by the service.
+ */
+export class ImportTopTurnierUrlDto {
+  @ApiProperty({
+    description:
+      "Adresse publique de la page de la compétition de l'export TopTurnier (…/index.htm), sur un site autorisé (TOPTURNIER_ALLOWED_HOSTS)",
+    example: "https://chairperson.ddsbagnols.com/2026/exempleville/index.htm",
+    maxLength: 2048,
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2048)
+  @IsUrl({
+    protocols: ["http", "https"],
+    require_protocol: true,
+    require_tld: true,
+    allow_underscores: false,
+  })
+  url!: string;
 }
 
 /** `?eventId=`: the event whose imported results are removed (#690). */

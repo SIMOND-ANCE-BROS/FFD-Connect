@@ -12,7 +12,7 @@ import {
   type TopTurnierEventMapping,
 } from '../lib/topturnierImport';
 
-function MappingTable({ events }: { events: readonly TopTurnierEventMapping[] }) {
+export function MappingTable({ events }: { events: readonly TopTurnierEventMapping[] }) {
   if (events.length === 0) return null;
   return (
     <Stack gap={4}>
