@@ -4,8 +4,9 @@
 # Keyless authentication: GitHub Actions authenticates via OIDC
 # using a federated identity credential on an Azure AD app.
 # No static client secrets stored in GitHub secrets.
-# The CI identity can push images to ACR, read the resource
-# group, and run commands on the VM via Run Command.
+# The CI identity can push (and purge) images in ACR, read the
+# resource group, update the two backend Container Apps and start
+# the DB migration job (migrate-job.tf). Nothing else (#773).
 
 # azuread provider requirement is declared in main.tf (a module may have only
 # one required_providers block).
@@ -107,8 +108,8 @@ resource "azuread_application_federated_identity_credential" "env_production" {
 }
 
 # ── Role Assignments ───────────────────────
-# Principle of least privilege: CI can push images,
-# read resource metadata, and invoke Run Command on the VM.
+# Principle of least privilege: each role is scoped to the resource it is
+# used on (registry, backend apps, migration job); only Reader spans the RG.
 
 # AcrPush — push (and pull) images to the container registry
 resource "azurerm_role_assignment" "ci_acr_push" {
@@ -134,12 +135,67 @@ resource "azurerm_role_assignment" "ci_reader" {
 }
 
 # NOTE: ci_vm_contributor (Virtual Machine Contributor for `az vm run-command`)
-# was removed with the single-VM stack (2026-07). `az containerapp update`
-# (deploy-backend.yml) is allowed by a "Container Apps Contributor" assignment
-# on the resource group that was granted OUTSIDE Terraform (seen 2026-10-18).
-# The DB migration job step has its own declared, job-scoped custom role
-# (migrate-job.tf, ci_migrate_job_runner), so narrowing that RG-wide role later
-# does not break migrations.
+# was removed with the single-VM stack (2026-07).
+
+# ── Backend Container Apps: update only (#773) ──
+# Replaces the built-in "Container Apps Contributor" that was granted on the
+# WHOLE resource group outside Terraform (seen 2026-10-18), which let the CI
+# create, modify or delete every app, job and environment of the group,
+# Redis included. Removing that RG-wide assignment is a manual step, done
+# only after a staging deploy succeeds with this role (runbook
+# deploiement-azure.md, "Droits de l'identité CI").
+#
+# Every Container Apps call of the workflows, and what covers it:
+#   az containerapp show / list, revision list, job list / execution list
+#     (deploy-backend.yml, acr-purge.sh)            -> Reader on the RG (above)
+#   az containerapp update --image --set-env-vars    (deploy, rollback)
+#   az containerapp update --max-inactive-revisions  (cap step, #768)
+#   az containerapp update --min-replicas            (backend-warm-hours.yml)
+#     = GET + PATCH of the app, no secret listing, no environmentId in the
+#       body (so no managedEnvironments/join)      -> containerApps/write
+#   az containerapp logs show (post-deploy check)   -> getAuthToken + logstream
+#   migration job start / executions / logs / stop  -> migrate-job.tf role
+#
+# Deliberately NOT granted: delete, listSecrets, exec, debug, start/stop,
+# revisions activate/deactivate/restart, any jobs/* or managedEnvironments/*
+# write. Residual risk, inherent to deploying: containerApps/write on an app
+# can change its image, so it can run code with that app's secrets and
+# managed identity. Hence the assignment on the two backend apps ONLY.
+#
+# The read actions duplicate the RG Reader on purpose: the role stays
+# sufficient for the deploy steps if that Reader is ever narrowed.
+# Assignable at the RG (resource-level assignable scopes may be rejected by
+# ARM); the ASSIGNMENTS below are scoped to each app.
+resource "azurerm_role_definition" "backend_app_deployer" {
+  name        = "${local.name_prefix}-backend-app-deployer"
+  scope       = azurerm_resource_group.main.id
+  description = "Update the backend Container App (image, env vars, scale, maxInactiveRevisions) and read its logs (deploy-backend.yml, backend-warm-hours.yml, #773)."
+
+  permissions {
+    actions = [
+      "Microsoft.App/containerApps/read",
+      "Microsoft.App/containerApps/write",
+      "Microsoft.App/containerApps/revisions/read",
+      "Microsoft.App/containerApps/revisions/replicas/read",
+      "Microsoft.App/containerApps/getAuthToken/action",
+      "Microsoft.App/containerApps/logstream/action",
+    ]
+    not_actions = []
+  }
+
+  assignable_scopes = [azurerm_resource_group.main.id]
+}
+
+# The apps are created outside Terraform: the scope is built from the RG id
+# instead of an azurerm_container_app data source, which would need
+# listSecrets and copy the apps' secret values into the remote state.
+resource "azurerm_role_assignment" "ci_backend_app_deployer" {
+  for_each = var.ci_deploy_container_apps
+
+  scope              = "${azurerm_resource_group.main.id}/providers/Microsoft.App/containerApps/${each.key}"
+  role_definition_id = azurerm_role_definition.backend_app_deployer.role_definition_resource_id
+  principal_id       = azuread_service_principal.ci.object_id
+}
 
 # ============================================
 # Admin back-office deploy identity (deploy-admin.yml)

@@ -155,11 +155,12 @@ resource "azurerm_container_app_job" "migrate" {
 # execution (with a container override, so no jobs/write), read executions,
 # stream their logs, and stop one that overruns. No secret listing, no exec.
 #
-# Note: the CI identity also holds "Container Apps Contributor" on the whole
-# resource group, granted outside Terraform for `az containerapp update`.
-# That role already covers these actions; this one declares the job's real
-# need so that RG-wide role can be narrowed later without breaking the
-# migration step.
+# This is the CI's ONLY right on the job (#773: the RG-wide "Container Apps
+# Contributor" it used to hold is replaced by the app-scoped
+# backend_app_deployer role in ci-iam.tf). Starting an execution with an
+# override still amounts to reading db-url-<env> (any command can receive
+# the secret as an env var), the same exposure as containerApps/write on the
+# app of that environment.
 resource "azurerm_role_definition" "migrate_job_runner" {
   name        = "${local.name_prefix}-migrate-job-runner"
   scope       = azurerm_resource_group.main.id
