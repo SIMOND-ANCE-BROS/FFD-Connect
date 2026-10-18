@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
+import { StyleSheet, TextStyle, ViewStyle } from "react-native";
 import { TrackCorrectionModal } from "../TrackCorrectionModal";
 import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
@@ -21,6 +22,10 @@ jest.mock("../../../../context/ThemeContext", () => ({
       textSecondary: "#666",
       border: "#ddd",
       primary: "#00f",
+      primaryFill: "#00a",
+      onPrimary: "#fff",
+      disabledFill: "#e2e8f0",
+      onDisabled: "#475569",
     },
     isDark: false,
   }),
@@ -71,6 +76,26 @@ describe("TrackCorrectionModal accessibility", () => {
       getByRole("button", { name: "Envoyer la proposition" }).props
         .accessibilityState,
     ).toMatchObject({ disabled: false });
+  });
+
+  it("switches the submit button from the disabled pair to the primary pair", async () => {
+    const { getByTestId, getByText } = await renderModal();
+    const colors = () => ({
+      fill: (
+        StyleSheet.flatten(
+          getByTestId("correction-submit-button").props.style,
+        ) as ViewStyle
+      ).backgroundColor,
+      label: (
+        StyleSheet.flatten(
+          getByText("Envoyer la proposition").props.style,
+        ) as TextStyle
+      ).color,
+    });
+    expect(colors()).toEqual({ fill: "#e2e8f0", label: "#475569" });
+
+    await fireEvent.press(getByTestId("correction-reason-MPM"));
+    expect(colors()).toEqual({ fill: "#00a", label: "#fff" });
   });
 
   it("names the MPM field once and gives the current value in the hint", async () => {

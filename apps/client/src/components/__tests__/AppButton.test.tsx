@@ -6,6 +6,8 @@ import {
   AuthProvider,
   AuthRepository,
 } from "../../features/auth/context/AuthContext";
+import { StyleSheet, TextStyle, ViewStyle } from "react-native";
+import { theme } from "../../theme";
 import { AppButton } from "../AppButton";
 
 const mockAuth = {
@@ -85,6 +87,29 @@ describe("AppButton", () => {
       expect(button.props.accessibilityState.disabled).toBe(true);
     });
   });
+
+  // Disabled fills carry a readable label (issue #22): never white on slate200.
+  it.each(["primary", "secondary", "danger"] as const)(
+    "uses the disabled token pair for a disabled %s button",
+    async (variant) => {
+      const { getByTestId, getByText } = await renderWithTheme(
+        <AppButton
+          title="Off"
+          onPress={jest.fn()}
+          variant={variant}
+          disabled
+        />,
+      );
+      const buttonStyle = StyleSheet.flatten(
+        getByTestId(`button-${variant}`).props.style,
+      ) as ViewStyle;
+      const labelStyle = StyleSheet.flatten(
+        getByText("Off").props.style,
+      ) as TextStyle;
+      expect(buttonStyle.backgroundColor).toBe(theme.light.disabledFill);
+      expect(labelStyle.color).toBe(theme.light.onDisabled);
+    },
+  );
 
   it("does not trigger on press when disabled", async () => {
     const mockPress = jest.fn();

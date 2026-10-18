@@ -149,6 +149,16 @@ describe("theme contrast (WCAG AA)", () => {
     expect(meetsWcagAA(fg, bg)).toBe(true);
   });
 
+  // Disabled buttons (TrackCorrectionModal, LicenseRenewalScreen, AppButton).
+  // WCAG exempts disabled controls, the label stays AA anyway: white on
+  // slate200 was 1.23:1 before issue #22.
+  it.each([
+    ["light", light.onDisabled, light.disabledFill],
+    ["dark", dark.onDisabled, dark.disabledFill],
+  ])("%s: onDisabled on disabledFill meets AA (#22)", (_name, fg, bg) => {
+    expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
+  });
+
   it("keeps the bright brand cyan for text and icons on dark surfaces", () => {
     expect(dark.primary).toBe(colors.ffdCyan);
     expect(dark.primaryFill).not.toBe(dark.primary);

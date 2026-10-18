@@ -9,6 +9,8 @@ export const mockTheme = {
   primary: "#3b82f6",
   primaryFill: "#1d4ed8",
   onPrimary: "#ffffff",
+  disabledFill: "#e2e8f0",
+  onDisabled: "#475569",
   secondary: "#22c55e",
   border: "#e5e7eb",
   success: "#10b981",
