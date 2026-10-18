@@ -24,7 +24,7 @@ describe("privacy policy notice (#734)", () => {
 
     // The #387 update must reach every existing account once.
     it("announces the #387 update", () => {
-      expect(PRIVACY_POLICY_VERSION).toBe("2026-10-17");
+      expect(PRIVACY_POLICY_VERSION).toBe("2026-10-18");
     });
   });
 
