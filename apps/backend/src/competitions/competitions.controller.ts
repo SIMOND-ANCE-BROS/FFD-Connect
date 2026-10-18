@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -11,11 +12,15 @@ import {
   Put,
   Query,
   Request,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -62,8 +67,14 @@ import {
   ImportResultsDto,
   ImportResultsQueryDto,
   ImportResultsReportDto,
+  TopTurnierImportReportDto,
 } from "./dto/results-import.dto";
 import { CompetitionResultsImportService } from "./services/competition-results-import.service";
+import {
+  CompetitionTopTurnierImportService,
+  TOPTURNIER_MAX_ARCHIVE_BYTES,
+} from "./services/competition-topturnier-import.service";
+import { createMemoryUploadStorage } from "../utils/upload-storage.util";
 import { RegisterMemberDto } from "./dto/register-member.dto";
 import { UnregisterEventDto } from "./dto/unregister-event.dto";
 import { UnregisterMemberDto } from "./dto/unregister-member.dto";
@@ -96,6 +107,7 @@ export class CompetitionsController {
     private readonly programQueryService: CompetitionProgramQueryService,
     private readonly programService: CompetitionProgramService,
     private readonly resultsImportService: CompetitionResultsImportService,
+    private readonly topTurnierImportService: CompetitionTopTurnierImportService,
   ) {}
 
   @StoreReviewReadable()
@@ -748,6 +760,76 @@ export class CompetitionsController {
     return this.resultsImportService.importCsv(id, body.csv, req.user, {
       dryRun: query.dryRun === true,
     });
+  }
+
+  @Post(":id/results/import/topturnier")
+  @HttpCode(HttpStatus.OK)
+  // Same rights and guards as the CSV import (#786).
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, RolesGuard, ThrottlerUserGuard)
+  @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: createMemoryUploadStorage(),
+      limits: { fileSize: TOPTURNIER_MAX_ARCHIVE_BYTES, files: 1, fields: 0 },
+    }),
+  )
+  @ApiBearerAuth("JWT-auth")
+  @ApiConsumes("multipart/form-data")
+  @ApiOperation({
+    summary:
+      "Importe les résultats d'une compétition depuis son export TopTurnier (archive zip)",
+    description:
+      "Mêmes droits, garde-fous et règles que l'import CSV (#786) : STAFF et ADMIN, ou le club organisateur ; jamais en « connecté en tant que » ; essai à blanc avec `?dryRun=true` ; tout ou rien ; pseudonymisation, audit (source TOPTURNIER_UPLOAD) et notification différée identiques. L'archive zip contient l'export HTML de TopTurnier (index.htm de la compétition et un dossier par épreuve avec son classement final erg.htm), à la racine ou dans un dossier. Chaque épreuve TopTurnier (« Nat, Adults Avancé Latin », « OC, Sen.I/II Standard »…) est rapprochée d'une épreuve du programme (spécialité, solo/couple, classes d'âge, niveau, classificatrice/open) ; une épreuve non reconnue ou ambiguë n'est jamais devinée : elle est signalée dans `events` et ignorée. Limites : archive de 10 Mo, 300 épreuves, 500 lignes par classement, 2 Mo par page, 20 Mo décompressés. Aucun numéro de licence dans l'export : les couples sont rattachés par dossard aux inscriptions de l'épreuve.",
+  })
+  @ApiParam({ name: "id", description: "ID de la compétition" })
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["file"],
+      properties: {
+        file: {
+          type: "string",
+          format: "binary",
+          description: "Archive zip de l'export TopTurnier",
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, type: TopTurnierImportReportDto })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Archive ou export invalide, aucune épreuve reconnue, ou classement illisible : message, lignes en erreur et correspondance des épreuves",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Rôle insuffisant, compétition organisée par un autre club ou session « connecté en tant que »",
+  })
+  @ApiResponse({ status: 404, description: "Compétition non trouvée" })
+  @ApiResponse({ status: 413, description: "Archive trop volumineuse" })
+  @ApiResponse({
+    status: 503,
+    description: "Clé de pseudonymisation des résultats non configurée",
+  })
+  async importTopTurnierResults(
+    @Param("id") id: string,
+    @Query() query: ImportResultsQueryDto,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Request() req: RequestWithUser,
+  ): Promise<TopTurnierImportReportDto> {
+    // Organising club resolved from the path id only, never from the body.
+    await this.accessService.assertCanManageResults(id, req.user);
+    if (!file?.buffer || file.buffer.length === 0) {
+      throw new BadRequestException("Archive zip de l'export requise");
+    }
+    return this.topTurnierImportService.importArchive(
+      id,
+      file.buffer,
+      req.user,
+      { dryRun: query.dryRun === true },
+    );
   }
 
   @Delete(":id/results")

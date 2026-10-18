@@ -22,6 +22,7 @@ import { CompetitionQueryService } from "./services/competition-query.service";
 import { CompetitionRegistrationService } from "./services/competition-registration.service";
 import { CompetitionResultsService } from "./services/competition-results.service";
 import { CompetitionResultsImportService } from "./services/competition-results-import.service";
+import { CompetitionTopTurnierImportService } from "./services/competition-topturnier-import.service";
 
 describe("CompetitionsController", () => {
   let controller: CompetitionsController;
@@ -77,6 +78,7 @@ describe("CompetitionsController", () => {
     importCsv: jest.fn(),
     deleteEventResults: jest.fn(),
   };
+  const mockTopTurnierImportService = { importArchive: jest.fn() };
 
   const req = (userId: string, role = "LICENSEE") =>
     ({ user: { userId, role } }) as any as RequestWithUser;
@@ -105,6 +107,10 @@ describe("CompetitionsController", () => {
         {
           provide: CompetitionResultsImportService,
           useValue: mockResultsImportService,
+        },
+        {
+          provide: CompetitionTopTurnierImportService,
+          useValue: mockTopTurnierImportService,
         },
       ],
     })
@@ -336,6 +342,83 @@ describe("CompetitionsController", () => {
         ),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(mockResultsImportService.importCsv).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("importTopTurnierResults (#786)", () => {
+    const file = (buffer: Buffer) => ({ buffer }) as Express.Multer.File;
+
+    it("has the same actors and guards as the CSV import", () => {
+      const handler = CompetitionsController.prototype.importTopTurnierResults;
+      expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([
+        UserRole.CLUB,
+        UserRole.STAFF,
+        UserRole.ADMIN,
+      ]);
+      const guards = Reflect.getMetadata("__guards__", handler);
+      expect(guards).toContain(RolesGuard);
+      expect(guards).toContain(NoImpersonationGuard);
+    });
+
+    it("checks the organiser rule, then forwards the archive and the dry-run flag", async () => {
+      const report = { dryRun: true, created: 1, events: [] };
+      mockTopTurnierImportService.importArchive.mockResolvedValue(report);
+      const request = req("club-1", "CLUB");
+      const archive = Buffer.from("PK");
+
+      const result = await controller.importTopTurnierResults(
+        "comp1",
+        { dryRun: true },
+        file(archive),
+        request,
+      );
+
+      expect(mockAccessService.assertCanManageResults).toHaveBeenCalledWith(
+        "comp1",
+        request.user,
+      );
+      expect(mockTopTurnierImportService.importArchive).toHaveBeenCalledWith(
+        "comp1",
+        archive,
+        request.user,
+        { dryRun: true },
+      );
+      expect(result).toBe(report);
+    });
+
+    it("requires an archive", async () => {
+      await expect(
+        controller.importTopTurnierResults(
+          "comp1",
+          {},
+          undefined,
+          req("staff-1", "STAFF"),
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        controller.importTopTurnierResults(
+          "comp1",
+          {},
+          file(Buffer.alloc(0)),
+          req("staff-1", "STAFF"),
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(mockTopTurnierImportService.importArchive).not.toHaveBeenCalled();
+    });
+
+    it("does not import when the caller is not the organiser", async () => {
+      mockAccessService.assertCanManageResults.mockRejectedValueOnce(
+        new ForbiddenException(),
+      );
+      await expect(
+        controller.importTopTurnierResults(
+          "comp1",
+          {},
+          file(Buffer.from("PK")),
+          req("club-2", "CLUB"),
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockTopTurnierImportService.importArchive).not.toHaveBeenCalled();
     });
   });
 

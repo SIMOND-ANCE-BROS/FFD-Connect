@@ -20620,6 +20620,181 @@
         "tags": ["competitions"]
       }
     },
+    "/competitions/{id}/results/import/topturnier": {
+      "post": {
+        "description": "Mêmes droits, garde-fous et règles que l'import CSV (#786) : STAFF et ADMIN, ou le club organisateur ; jamais en « connecté en tant que » ; essai à blanc avec `?dryRun=true` ; tout ou rien ; pseudonymisation, audit (source TOPTURNIER_UPLOAD) et notification différée identiques. L'archive zip contient l'export HTML de TopTurnier (index.htm de la compétition et un dossier par épreuve avec son classement final erg.htm), à la racine ou dans un dossier. Chaque épreuve TopTurnier (« Nat, Adults Avancé Latin », « OC, Sen.I/II Standard »…) est rapprochée d'une épreuve du programme (spécialité, solo/couple, classes d'âge, niveau, classificatrice/open) ; une épreuve non reconnue ou ambiguë n'est jamais devinée : elle est signalée dans `events` et ignorée. Limites : archive de 10 Mo, 300 épreuves, 500 lignes par classement, 2 Mo par page, 20 Mo décompressés. Aucun numéro de licence dans l'export : les couples sont rattachés par dossard aux inscriptions de l'épreuve.",
+        "operationId": "CompetitionsController_importTopTurnierResults",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID de la compétition",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dryRun",
+            "required": false,
+            "in": "query",
+            "description": "true : valide le fichier et calcule les compteurs sans rien écrire (aperçu), sans journal d'audit ni notification",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["file"],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Archive zip de l'export TopTurnier"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopTurnierImportReportDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Archive ou export invalide, aucune épreuve reconnue, ou classement illisible : message, lignes en erreur et correspondance des épreuves"
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant, compétition organisée par un autre club ou session « connecté en tant que »"
+          },
+          "404": {
+            "description": "Compétition non trouvée"
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Archive trop volumineuse"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Clé de pseudonymisation des résultats non configurée"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Importe les résultats d'une compétition depuis son export TopTurnier (archive zip)",
+        "tags": ["competitions"]
+      }
+    },
     "/competitions/{id}/unregister": {
       "post": {
         "description": "Permet à un utilisateur de se désinscrire d'un événement auquel il était inscrit. Refusé (403) pendant un accès support (« se connecter en tant que »).",
@@ -31966,6 +32141,130 @@
           "anonymisedKept",
           "linked",
           "unlinked"
+        ]
+      },
+      "TopTurnierEventMappingDto": {
+        "type": "object",
+        "properties": {
+          "folder": {
+            "type": "string",
+            "description": "Dossier de l'épreuve dans l'export",
+            "example": "3-nat_adultsavancelat"
+          },
+          "label": {
+            "type": "string",
+            "description": "Libellé TopTurnier de l'épreuve",
+            "example": "Nat, Adults Avancé Latin"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["MATCHED", "UNMATCHED", "AMBIGUOUS", "CONFLICT", "NO_RESULTS", "INVALID"],
+            "description": "MATCHED : importée ; UNMATCHED : aucune épreuve du programme ; AMBIGUOUS : plusieurs épreuves possibles (rien n'est deviné) ; CONFLICT : plusieurs épreuves TopTurnier pour la même épreuve du programme ; NO_RESULTS : pas de classement final dans l'export ; INVALID : classement illisible (l'import est refusé)",
+            "example": "MATCHED"
+          },
+          "eventId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Épreuve du programme correspondante"
+          },
+          "eventName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Nom de l'épreuve du programme correspondante (spécialité, classes d'âge, niveau)",
+            "example": "Latines Adulte Avancé"
+          },
+          "exact": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "false : épreuve TopTurnier qui réunit plusieurs classes d'âge, rattachée à la seule épreuve du programme qui en fait partie (à vérifier dans l'aperçu)"
+          },
+          "rows": {
+            "type": "number",
+            "description": "Lignes du classement final",
+            "example": 6
+          },
+          "message": {
+            "type": "string",
+            "nullable": true,
+            "description": "Pourquoi l'épreuve n'est pas importée"
+          }
+        },
+        "required": [
+          "folder",
+          "label",
+          "status",
+          "eventId",
+          "eventName",
+          "exact",
+          "rows",
+          "message"
+        ]
+      },
+      "TopTurnierImportReportDto": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "type": "boolean",
+            "description": "true : aperçu (dryRun), rien n'a été écrit",
+            "example": false
+          },
+          "created": {
+            "type": "number",
+            "description": "Lignes de résultat créées",
+            "example": 12
+          },
+          "updated": {
+            "type": "number",
+            "description": "Lignes déjà importées et corrigées (compte club : contenu publié seulement — rang, libellé, dossard…)",
+            "example": 0
+          },
+          "unchanged": {
+            "type": "number",
+            "description": "Lignes déjà importées, identiques (import rejoué)",
+            "example": 0
+          },
+          "relinked": {
+            "type": "number",
+            "nullable": true,
+            "description": "Null pour un compte club (non communiqué : dépend des numéros de licence). Lignes déjà importées dont le rattachement à un compte a changé (sous-ensemble de « updated »)",
+            "example": 0
+          },
+          "anonymisedKept": {
+            "type": "number",
+            "nullable": true,
+            "description": "Null pour un compte club (non communiqué : dépend des numéros de licence). Lignes laissées ou écrites anonymisées : un compte du couple a été supprimé",
+            "example": 0
+          },
+          "linked": {
+            "type": "number",
+            "nullable": true,
+            "description": "Null pour un compte club (non communiqué : dépend des numéros de licence). Couples rattachés à un compte (licence ou dossard)",
+            "example": 4
+          },
+          "unlinked": {
+            "type": "number",
+            "nullable": true,
+            "description": "Null pour un compte club (non communiqué : dépend des numéros de licence). Couples sans compte rattaché",
+            "example": 8
+          },
+          "events": {
+            "description": "Correspondance de chaque épreuve de l'export avec le programme ; seules les MATCHED sont importées",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TopTurnierEventMappingDto"
+            }
+          }
+        },
+        "required": [
+          "dryRun",
+          "created",
+          "updated",
+          "unchanged",
+          "relinked",
+          "anonymisedKept",
+          "linked",
+          "unlinked",
+          "events"
         ]
       },
       "DeleteEventResultsReportDto": {

@@ -9,6 +9,7 @@ import {
   List,
   Modal,
   Paper,
+  SegmentedControl,
   SimpleGrid,
   Stack,
   Table,
@@ -28,6 +29,7 @@ import { competitionProgramQuery, competitionQuery, unwrap } from '../api/querie
 import { BackToList } from '../components/BackToList';
 import { ListSkeleton } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
+import { TopTurnierImport } from '../components/TopTurnierImport';
 import { apiErrorMessage } from '../lib/apiError';
 import { COMPETITION_STATUS_BADGES, competitionDates, eventLabel } from '../lib/competitions';
 import { readText } from '../lib/files';
@@ -84,7 +86,39 @@ function ImportError({ error, fallback }: { error: unknown; fallback: string }) 
   );
 }
 
+type ImportMode = 'csv' | 'topturnier';
+
 function ResultsImport({ competitionId }: { competitionId: string }) {
+  const [mode, setMode] = useState<ImportMode>('csv');
+  return (
+    <Card withBorder>
+      <Stack>
+        <Title order={4}>Résultats</Title>
+        <SegmentedControl
+          aria-label="Source des résultats"
+          value={mode}
+          onChange={(value) => setMode(value as ImportMode)}
+          data={[
+            { value: 'csv', label: 'Fichier CSV' },
+            { value: 'topturnier', label: 'Export TopTurnier' },
+          ]}
+          maw={420}
+        />
+        {mode === 'csv' ? (
+          <CsvResultsImport competitionId={competitionId} />
+        ) : (
+          <TopTurnierImport
+            competitionId={competitionId}
+            renderReport={(report, title) => <ReportTable report={report} title={title} />}
+            renderError={(error, fallback) => <ImportError error={error} fallback={fallback} />}
+          />
+        )}
+      </Stack>
+    </Card>
+  );
+}
+
+function CsvResultsImport({ competitionId }: { competitionId: string }) {
   const qc = useQueryClient();
   const [csv, setCsv] = useState('');
   const [fileError, setFileError] = useState<string | null>(null);
@@ -135,81 +169,78 @@ function ResultsImport({ competitionId }: { competitionId: string }) {
   const imported = save.isSuccess && save.variables === csv;
 
   return (
-    <Card withBorder>
-      <Stack>
-        <Title order={4}>Résultats</Title>
-        <Text size="sm">
-          Collez le classement publié par l'organisateur (CSV, séparateur « ; » ou « , », ligne
-          d'en-tête obligatoire) ou choisissez le fichier, vérifiez-le, puis importez-le. Un fichier
-          invalide n'importe rien ; réimporter un fichier corrigé met les lignes à jour.
-        </Text>
-        <List size="sm" spacing={2}>
-          {RESULTS_CSV_COLUMNS.map((c) => (
-            <List.Item key={c.name}>
-              <Code>{c.name}</Code>
-              {c.required ? '' : ' (facultative)'} : {c.help}
-            </List.Item>
-          ))}
-        </List>
-        <Textarea
-          label="Contenu CSV"
-          placeholder={
-            'epreuve;tour;classement;couple\nLatines Adultes Avancé;Finale;1;Martin / Durand'
-          }
-          autosize
-          minRows={6}
-          maxRows={16}
-          styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)' } }}
-          value={csv}
-          onChange={(e) => changeCsv(e.currentTarget.value)}
-          error={lengthError ?? fileError}
-        />
-        <Group>
-          <FileButton onChange={(f) => void pickFile(f)} accept=".csv,text/csv">
-            {(props) => (
-              <Button variant="default" {...props}>
-                Choisir un fichier .csv
-              </Button>
-            )}
-          </FileButton>
-          <Button
-            variant="light"
-            disabled={empty || lengthError !== null}
-            loading={check.isPending}
-            onClick={() => {
-              save.reset();
-              check.mutate(csv);
-            }}
-          >
-            Vérifier
-          </Button>
-          <Button
-            disabled={!verified || imported}
-            loading={save.isPending}
-            onClick={() => save.mutate(csv)}
-          >
-            Importer
-          </Button>
-        </Group>
-        {check.isError && check.variables === csv && (
-          <ImportError error={check.error} fallback="Vérification impossible." />
-        )}
-        {verified && !imported && !save.isError && (
-          <Alert color="blue" title="Fichier valide : rien n'a encore été importé">
-            <Text size="sm" mb="xs">
-              Aperçu de l'import :
-            </Text>
-            <ReportTable report={check.data} title="Aperçu de l'import" />
-          </Alert>
-        )}
-        {save.isError && <ImportError error={save.error} fallback="Import impossible." />}
-        {imported && (
-          <Alert color="green" title="Résultats importés">
-            <ReportTable report={save.data} title="Bilan de l'import" />
-          </Alert>
-        )}
-      </Stack>
-    </Card>
+    <Stack>
+      <Text size="sm">
+        Collez le classement publié par l'organisateur (CSV, séparateur « ; » ou « , », ligne
+        d'en-tête obligatoire) ou choisissez le fichier, vérifiez-le, puis importez-le. Un fichier
+        invalide n'importe rien ; réimporter un fichier corrigé met les lignes à jour.
+      </Text>
+      <List size="sm" spacing={2}>
+        {RESULTS_CSV_COLUMNS.map((c) => (
+          <List.Item key={c.name}>
+            <Code>{c.name}</Code>
+            {c.required ? '' : ' (facultative)'} : {c.help}
+          </List.Item>
+        ))}
+      </List>
+      <Textarea
+        label="Contenu CSV"
+        placeholder={
+          'epreuve;tour;classement;couple\nLatines Adultes Avancé;Finale;1;Martin / Durand'
+        }
+        autosize
+        minRows={6}
+        maxRows={16}
+        styles={{ input: { fontFamily: 'var(--mantine-font-family-monospace)' } }}
+        value={csv}
+        onChange={(e) => changeCsv(e.currentTarget.value)}
+        error={lengthError ?? fileError}
+      />
+      <Group>
+        <FileButton onChange={(f) => void pickFile(f)} accept=".csv,text/csv">
+          {(props) => (
+            <Button variant="default" {...props}>
+              Choisir un fichier .csv
+            </Button>
+          )}
+        </FileButton>
+        <Button
+          variant="light"
+          disabled={empty || lengthError !== null}
+          loading={check.isPending}
+          onClick={() => {
+            save.reset();
+            check.mutate(csv);
+          }}
+        >
+          Vérifier
+        </Button>
+        <Button
+          disabled={!verified || imported}
+          loading={save.isPending}
+          onClick={() => save.mutate(csv)}
+        >
+          Importer
+        </Button>
+      </Group>
+      {check.isError && check.variables === csv && (
+        <ImportError error={check.error} fallback="Vérification impossible." />
+      )}
+      {verified && !imported && !save.isError && (
+        <Alert color="blue" title="Fichier valide : rien n'a encore été importé">
+          <Text size="sm" mb="xs">
+            Aperçu de l'import :
+          </Text>
+          <ReportTable report={check.data} title="Aperçu de l'import" />
+        </Alert>
+      )}
+      {save.isError && <ImportError error={save.error} fallback="Import impossible." />}
+      {imported && (
+        <Alert color="green" title="Résultats importés">
+          <ReportTable report={save.data} title="Bilan de l'import" />
+        </Alert>
+      )}
+    </Stack>
   );
 }
 

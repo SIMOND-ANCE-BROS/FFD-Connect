@@ -117,6 +117,16 @@ export interface ImportResultsOptions {
   dryRun?: boolean;
 }
 
+/** Options of a source other than the CSV (TopTurnier export, #786). */
+export interface ImportRowsOptions extends ImportResultsOptions {
+  /** Added to the audit row: the source, never a name. */
+  auditDetails?: Record<string, string | number>;
+  /** Where a line comes from, prefixed to its error message. */
+  lineLabel?: (line: number) => string | undefined;
+  /** Added to the body of a refused import (e.g. the event mapping). */
+  errorExtras?: Record<string, unknown>;
+}
+
 /** Keys of `details` that name the couple (kept when already scrubbed). */
 const IDENTIFYING_DETAIL_KEYS = ["participant", "bib", "club"] as const;
 
@@ -274,6 +284,26 @@ export class CompetitionResultsImportService {
     actor: CompetitionActor,
     options: ImportResultsOptions = {},
   ): Promise<ImportResultsReportDto> {
+    return this.importRows(
+      competitionId,
+      () => parseResultsCsv(csv),
+      actor,
+      options,
+    );
+  }
+
+  /**
+   * The import pipeline shared by every source (CSV #652, TopTurnier export
+   * #786/#787): `parse` runs once the key and the competition are checked;
+   * its rows may name their event by id or by name. Same validation, RGPD
+   * rules, linking, dry run and audit whatever the source.
+   */
+  async importRows(
+    competitionId: string,
+    parse: () => { rows: ParsedResultRow[]; errors: ResultParseError[] },
+    actor: CompetitionActor,
+    options: ImportRowsOptions = {},
+  ): Promise<ImportResultsReportDto> {
     const dryRun = options.dryRun === true;
     const key = resultsPseudonymisationKey(this.config);
     if (!key) {
@@ -289,7 +319,7 @@ export class CompetitionResultsImportService {
       throw new NotFoundException("Compétition non trouvée");
     }
 
-    const parsed = parseResultsCsv(csv);
+    const parsed = parse();
     const errors = parsed.errors;
     let rows = parsed.rows;
     if (errors.length === 0) {
@@ -300,9 +330,17 @@ export class CompetitionResultsImportService {
       errors.push(...this.duplicateErrors(key, rows));
     }
     if (errors.length > 0) {
+      const label = options.lineLabel;
       throw new BadRequestException({
         message: "Fichier de résultats invalide : rien n'a été importé",
-        errors: errors.sort((a, b) => a.line - b.line).slice(0, 100),
+        errors: errors
+          .sort((a, b) => a.line - b.line)
+          .slice(0, 100)
+          .map((e) => {
+            const where = label?.(e.line);
+            return where ? { ...e, message: `${where} : ${e.message}` } : e;
+          }),
+        ...options.errorExtras,
       });
     }
 
@@ -467,7 +505,11 @@ export class CompetitionResultsImportService {
         action: "COMPETITION_RESULTS_IMPORT",
         targetType: "COMPETITION",
         targetId: competitionId,
-        after: { ...report, actorRole: resultsActorRole(actor) },
+        after: {
+          ...report,
+          actorRole: resultsActorRole(actor),
+          ...options.auditDetails,
+        },
       }),
     ]);
     if (creates.length > 0 || updates.length > 0) {

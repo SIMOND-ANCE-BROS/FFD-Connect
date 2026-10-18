@@ -263,4 +263,154 @@ describe('CompetitionDetailPage', () => {
     const dialog = screen.getByRole('dialog');
     expect(await within(dialog).findByText('Accès refusé')).toBeInTheDocument();
   });
+
+  describe('TopTurnier export (#786)', () => {
+    const mapping = [
+      {
+        folder: '3-nat_adultsavancelat',
+        label: 'Nat, Adults Avancé Latin',
+        status: 'MATCHED',
+        eventId: 'ev-lat',
+        eventName: 'Latines Adulte Avancé',
+        exact: true,
+        rows: 3,
+        message: null,
+      },
+      {
+        folder: '19-nat_youthadultsdebutantlat',
+        label: 'Nat, Youth/Adults Débutant Latin',
+        status: 'NO_RESULTS',
+        eventId: 'ev-x',
+        eventName: 'Latines Youth Débutant',
+        exact: false,
+        rows: 0,
+        message: 'pas de classement final (erg.htm) dans l’export',
+      },
+      {
+        folder: '60-x',
+        label: 'Gala, Formation Show',
+        status: 'UNMATCHED',
+        eventId: null,
+        eventName: null,
+        exact: null,
+        rows: 1,
+        message: 'type d’épreuve non reconnu',
+      },
+    ];
+    const zip = () => new File(['PK'], 'export.zip', { type: 'application/zip' });
+
+    async function openTopTurnier() {
+      renderPage();
+      await screen.findByRole('heading', { name: 'Open de Lyon' });
+      await user.click(screen.getByRole('radio', { name: 'Export TopTurnier' }));
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+      expect(input).not.toBeNull();
+      return input!;
+    }
+
+    it('checks the archive, shows the event mapping, then imports it', async () => {
+      const input = await openTopTurnier();
+      const send = vi
+        .spyOn(sdk, 'competitionsControllerImportTopTurnierResults')
+        .mockResolvedValueOnce(ok({ ...report(), events: mapping }) as never)
+        .mockResolvedValueOnce(ok({ ...report({ dryRun: false }), events: mapping }) as never);
+      const verify = screen.getByRole('button', { name: 'Vérifier l’export' });
+      const save = screen.getByRole('button', { name: 'Importer l’export' });
+      expect(verify).toBeDisabled();
+      const file = zip();
+      await user.upload(input, file);
+      expect(screen.getByText('export.zip')).toBeInTheDocument();
+      expect(save).toBeDisabled();
+      await user.click(verify);
+
+      const table = await screen.findByRole('table', { name: 'Correspondance des épreuves' });
+      expect(screen.getByText('1 épreuve importée sur 3')).toBeInTheDocument();
+      expect(
+        within(table).getByRole('row', {
+          name: 'Nat, Adults Avancé Latin Importée Latines Adulte Avancé 3 —',
+        }),
+      ).toBeInTheDocument();
+      expect(
+        within(table).getByText(
+          'classes d’âge réunies : vérifier l’épreuve ; pas de classement final (erg.htm) dans l’export',
+        ),
+      ).toBeInTheDocument();
+      expect(within(table).getByText('Non reconnue')).toBeInTheDocument();
+      expect(
+        screen.getByRole('table', { name: 'Aperçu de l’import TopTurnier' }),
+      ).toBeInTheDocument();
+      expect(send).toHaveBeenLastCalledWith({
+        path: { id: 'comp-1' },
+        query: { dryRun: true },
+        body: { file },
+      });
+
+      await user.click(save);
+      expect(
+        await screen.findByRole('table', { name: 'Bilan de l’import TopTurnier' }),
+      ).toBeInTheDocument();
+      expect(send).toHaveBeenLastCalledWith({
+        path: { id: 'comp-1' },
+        query: { dryRun: false },
+        body: { file },
+      });
+      expect(save).toBeDisabled();
+    });
+
+    it('shows the refusal, its line errors and the mapping', async () => {
+      const input = await openTopTurnier();
+      vi.spyOn(sdk, 'competitionsControllerImportTopTurnierResults').mockResolvedValue({
+        data: undefined,
+        error: {
+          statusCode: 400,
+          message: "Fichier de résultats invalide : rien n'a été importé",
+          errors: [{ line: 4, message: '« OC, Sen.I/II Standard », ligne 2 : couple manquant' }],
+          events: [{ ...mapping[0], status: 'INVALID', message: 'ligne 2 : couple manquant' }],
+        },
+      } as never);
+      await user.upload(input, zip());
+      await user.click(screen.getByRole('button', { name: 'Vérifier l’export' }));
+      expect(
+        await screen.findByText("Fichier de résultats invalide : rien n'a été importé"),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('table', { name: 'Lignes en erreur' })).toBeInTheDocument();
+      expect(screen.getByText('Illisible')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Importer l’export' })).toBeDisabled();
+    });
+
+    it('shows a failed import with its mapping', async () => {
+      const input = await openTopTurnier();
+      vi.spyOn(sdk, 'competitionsControllerImportTopTurnierResults')
+        .mockResolvedValueOnce(ok({ ...report(), events: mapping }) as never)
+        .mockResolvedValueOnce({
+          data: undefined,
+          error: { statusCode: 503, message: 'Import indisponible', events: mapping },
+        } as never);
+      await user.upload(input, zip());
+      await user.click(screen.getByRole('button', { name: 'Vérifier l’export' }));
+      await screen.findByRole('table', { name: 'Correspondance des épreuves' });
+      await user.click(screen.getByRole('button', { name: 'Importer l’export' }));
+      expect(await screen.findByText('Import indisponible')).toBeInTheDocument();
+      expect(
+        screen.getByRole('table', { name: 'Correspondance des épreuves' }),
+      ).toBeInTheDocument();
+    });
+
+    it('refuses an archive over 10 MB without sending it', async () => {
+      const input = await openTopTurnier();
+      const send = vi.spyOn(sdk, 'competitionsControllerImportTopTurnierResults');
+      const big = new File(['x'], 'gros.zip', { type: 'application/zip' });
+      Object.defineProperty(big, 'size', { value: 10 * 1024 * 1024 + 1 });
+      await user.upload(input, big);
+      expect(await screen.findByRole('alert')).toHaveTextContent(/Archive trop volumineuse/);
+      expect(screen.getByRole('button', { name: 'Vérifier l’export' })).toBeDisabled();
+      expect(send).not.toHaveBeenCalled();
+    });
+
+    it('goes back to the CSV import', async () => {
+      await openTopTurnier();
+      await user.click(screen.getByRole('radio', { name: 'Fichier CSV' }));
+      expect(screen.getByRole('textbox', { name: 'Contenu CSV' })).toBeInTheDocument();
+    });
+  });
 });
