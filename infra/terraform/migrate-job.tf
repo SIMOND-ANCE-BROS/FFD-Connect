@@ -143,6 +143,16 @@ resource "azurerm_container_app_job" "migrate" {
 
   tags = local.common_tags
 
+  lifecycle {
+    # Case-only drift that would force a REPLACEMENT: Azure returns the
+    # environment id with `/resourceGroups/FFD-CONNECT-PRODUCTION-RG/` while
+    # the data source yields `/resourceGroups/ffd-connect-production-rg/`
+    # (seen on the 2026-10-18 apply). Resource ids are case-insensitive in
+    # ARM; the job never moves to another environment, so ignoring the
+    # attribute loses nothing. Moving it on purpose = taint/replace by hand.
+    ignore_changes = [container_app_environment_id]
+  }
+
   # Azure resolves the Key Vault reference when the job is created.
   depends_on = [
     azurerm_role_assignment.migrate_db_url_reader,

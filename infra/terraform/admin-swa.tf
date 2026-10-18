@@ -25,6 +25,15 @@ resource "azurerm_static_web_app" "admin" {
   sku_size            = "Free"
 
   tags = azurerm_resource_group.main.tags
+
+  lifecycle {
+    # Perpetual in-place diff (`repository_branch = "staging" -> null`,
+    # `repository_url = ... -> null`): Azure keeps the repository link it
+    # recorded, while this site is not GitHub-integrated in Terraform —
+    # deploy-admin.yml pushes the build with the deployment token. Terraform
+    # does not own these two fields.
+    ignore_changes = [repository_branch, repository_url]
+  }
 }
 
 resource "azurerm_static_web_app_custom_domain" "admin" {
