@@ -353,6 +353,20 @@ export const eventResultImportLabelSelect = {
 } as const;
 
 /**
+ * Import d'un export TopTurnier (#786) : de quoi faire correspondre une
+ * épreuve TopTurnier (« OC, Sen.I/II Standard ») à une épreuve du programme.
+ */
+export const eventTopTurnierMatchSelect = {
+  id: true,
+  category: true,
+  ageGroup: true,
+  ageGroups: true,
+  eventType: true,
+  level: true,
+  eventKind: true,
+} as const;
+
+/**
  * Suppression des résultats importés d'une épreuve (#690) : `userId` et
  * `details` disent si la ligne porte un effacement RGPD (gardée).
  */

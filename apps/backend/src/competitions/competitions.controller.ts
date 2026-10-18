@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -11,11 +12,15 @@ import {
   Put,
   Query,
   Request,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -62,8 +67,16 @@ import {
   ImportResultsDto,
   ImportResultsQueryDto,
   ImportResultsReportDto,
+  ImportTopTurnierUrlDto,
+  TopTurnierImportReportDto,
 } from "./dto/results-import.dto";
 import { CompetitionResultsImportService } from "./services/competition-results-import.service";
+import {
+  CompetitionTopTurnierImportService,
+  TOPTURNIER_MAX_ARCHIVE_BYTES,
+} from "./services/competition-topturnier-import.service";
+import { CompetitionTopTurnierUrlImportService } from "./services/competition-topturnier-url-import.service";
+import { createMemoryUploadStorage } from "../utils/upload-storage.util";
 import { RegisterMemberDto } from "./dto/register-member.dto";
 import { UnregisterEventDto } from "./dto/unregister-event.dto";
 import { UnregisterMemberDto } from "./dto/unregister-member.dto";
@@ -96,6 +109,8 @@ export class CompetitionsController {
     private readonly programQueryService: CompetitionProgramQueryService,
     private readonly programService: CompetitionProgramService,
     private readonly resultsImportService: CompetitionResultsImportService,
+    private readonly topTurnierImportService: CompetitionTopTurnierImportService,
+    private readonly topTurnierUrlImportService: CompetitionTopTurnierUrlImportService,
   ) {}
 
   @StoreReviewReadable()
@@ -746,6 +761,132 @@ export class CompetitionsController {
     // Organising club resolved from the path id only, never from the body.
     await this.accessService.assertCanManageResults(id, req.user);
     return this.resultsImportService.importCsv(id, body.csv, req.user, {
+      dryRun: query.dryRun === true,
+    });
+  }
+
+  @Post(":id/results/import/topturnier")
+  @HttpCode(HttpStatus.OK)
+  // Same rights and guards as the CSV import (#786).
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, RolesGuard, ThrottlerUserGuard)
+  @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: createMemoryUploadStorage(),
+      limits: { fileSize: TOPTURNIER_MAX_ARCHIVE_BYTES, files: 1, fields: 0 },
+    }),
+  )
+  @ApiBearerAuth("JWT-auth")
+  @ApiConsumes("multipart/form-data")
+  @ApiOperation({
+    summary:
+      "Importe les résultats d'une compétition depuis son export TopTurnier (archive zip)",
+    description:
+      "Mêmes droits, garde-fous et règles que l'import CSV (#786) : STAFF et ADMIN, ou le club organisateur ; jamais en « connecté en tant que » ; essai à blanc avec `?dryRun=true` ; tout ou rien ; pseudonymisation, audit (source TOPTURNIER_UPLOAD) et notification différée identiques. L'archive zip contient l'export HTML de TopTurnier (index.htm de la compétition et un dossier par épreuve avec son classement final erg.htm), à la racine ou dans un dossier. Chaque épreuve TopTurnier (« Nat, Adults Avancé Latin », « OC, Sen.I/II Standard »…) est rapprochée d'une épreuve du programme (spécialité, solo/couple, classes d'âge, niveau, classificatrice/open) ; une épreuve non reconnue ou ambiguë n'est jamais devinée : elle est signalée dans `events` et ignorée. Limites : archive de 10 Mo, 300 épreuves, 500 lignes par classement, 2 Mo par page, 20 Mo décompressés. Aucun numéro de licence dans l'export : les couples sont rattachés par dossard aux inscriptions de l'épreuve.",
+  })
+  @ApiParam({ name: "id", description: "ID de la compétition" })
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["file"],
+      properties: {
+        file: {
+          type: "string",
+          format: "binary",
+          description: "Archive zip de l'export TopTurnier",
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 200, type: TopTurnierImportReportDto })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Archive ou export invalide, aucune épreuve reconnue, ou classement illisible : message, lignes en erreur et correspondance des épreuves",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Rôle insuffisant, compétition organisée par un autre club ou session « connecté en tant que »",
+  })
+  @ApiResponse({ status: 404, description: "Compétition non trouvée" })
+  @ApiResponse({ status: 413, description: "Archive trop volumineuse" })
+  @ApiResponse({
+    status: 503,
+    description: "Clé de pseudonymisation des résultats non configurée",
+  })
+  async importTopTurnierResults(
+    @Param("id") id: string,
+    @Query() query: ImportResultsQueryDto,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Request() req: RequestWithUser,
+  ): Promise<TopTurnierImportReportDto> {
+    // Organising club resolved from the path id only, never from the body.
+    await this.accessService.assertCanManageResults(id, req.user);
+    if (!file?.buffer || file.buffer.length === 0) {
+      throw new BadRequestException("Archive zip de l'export requise");
+    }
+    return this.topTurnierImportService.importArchive(
+      id,
+      file.buffer,
+      req.user,
+      { dryRun: query.dryRun === true },
+    );
+  }
+
+  /**
+   * TEMPORARY (#787): remove with the service once the FFD gives access to
+   * its results data (#651).
+   */
+  @Post(":id/results/import/topturnier-url")
+  @HttpCode(HttpStatus.OK)
+  // Back-office staff only: never a club, never impersonated.
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, RolesGuard, ThrottlerUserGuard)
+  @Roles(UserRole.STAFF, UserRole.ADMIN)
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary:
+      "TEMPORAIRE — importe les résultats depuis l'adresse publique d'un export TopTurnier",
+    description:
+      "Solution temporaire (#787) en attendant un accès aux données de la FFD (#651). STAFF et ADMIN uniquement, jamais en « connecté en tant que », à la demande uniquement (aucun relevé planifié). Désactivée sauf `TOPTURNIER_URL_IMPORT_ENABLED=true` (404 sinon). Seuls les sites de `TOPTURNIER_ALLOWED_HOSTS` sont lus, en https uniquement sur le port standard, jamais une adresse privée, de bouclage ou lien-local ; redirections (2 au plus, https aussi) dans la liste seulement ; un seul import à la fois par site (409 sinon) ; pages lues une à une, espacées de 500 ms, 151 pages au plus, chacune bornée (délai total, disjoncteur, 2 Mo) ; lecture de l'export bornée à 180 s (400 au-delà, rien n'est écrit). Ensuite, mêmes lecture, correspondance des épreuves, règles et réponse que l'import de l'archive (`/results/import/topturnier`) ; l'audit porte la source TOPTURNIER_URL et l'hôte + chemin de l'adresse.",
+  })
+  @ApiParam({ name: "id", description: "ID de la compétition" })
+  @ApiBody({ type: ImportTopTurnierUrlDto })
+  @ApiResponse({ status: 200, type: TopTurnierImportReportDto })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Adresse refusée (site non autorisé, http, adresse privée, port, redirection), export invalide, trop long à lire ou aucune épreuve reconnue",
+  })
+  @ApiResponse({
+    status: 409,
+    description: "Un import depuis ce site est déjà en cours",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Réservé au staff et aux admins, hors « connecté en tant que »",
+  })
+  @ApiResponse({
+    status: 404,
+    description: "Compétition non trouvée, ou import par adresse désactivé",
+  })
+  @ApiResponse({ status: 502, description: "Site de l'export injoignable" })
+  @ApiResponse({
+    status: 503,
+    description:
+      "Site momentanément coupé par le disjoncteur, ou clé de pseudonymisation absente",
+  })
+  async importTopTurnierUrlResults(
+    @Param("id") id: string,
+    @Query() query: ImportResultsQueryDto,
+    @Body() dto: ImportTopTurnierUrlDto,
+    @Request() req: RequestWithUser,
+  ): Promise<TopTurnierImportReportDto> {
+    await this.accessService.assertCanManageResults(id, req.user);
+    return this.topTurnierUrlImportService.importUrl(id, dto.url, req.user, {
       dryRun: query.dryRun === true,
     });
   }

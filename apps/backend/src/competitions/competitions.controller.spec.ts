@@ -22,6 +22,11 @@ import { CompetitionQueryService } from "./services/competition-query.service";
 import { CompetitionRegistrationService } from "./services/competition-registration.service";
 import { CompetitionResultsService } from "./services/competition-results.service";
 import { CompetitionResultsImportService } from "./services/competition-results-import.service";
+import { CompetitionTopTurnierImportService } from "./services/competition-topturnier-import.service";
+import { CompetitionTopTurnierUrlImportService } from "./services/competition-topturnier-url-import.service";
+import { ImportTopTurnierUrlDto } from "./dto/results-import.dto";
+import { plainToInstance } from "class-transformer";
+import { validate } from "class-validator";
 
 describe("CompetitionsController", () => {
   let controller: CompetitionsController;
@@ -77,6 +82,8 @@ describe("CompetitionsController", () => {
     importCsv: jest.fn(),
     deleteEventResults: jest.fn(),
   };
+  const mockTopTurnierImportService = { importArchive: jest.fn() };
+  const mockTopTurnierUrlImportService = { importUrl: jest.fn() };
 
   const req = (userId: string, role = "LICENSEE") =>
     ({ user: { userId, role } }) as any as RequestWithUser;
@@ -105,6 +112,14 @@ describe("CompetitionsController", () => {
         {
           provide: CompetitionResultsImportService,
           useValue: mockResultsImportService,
+        },
+        {
+          provide: CompetitionTopTurnierImportService,
+          useValue: mockTopTurnierImportService,
+        },
+        {
+          provide: CompetitionTopTurnierUrlImportService,
+          useValue: mockTopTurnierUrlImportService,
         },
       ],
     })
@@ -336,6 +351,162 @@ describe("CompetitionsController", () => {
         ),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(mockResultsImportService.importCsv).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("importTopTurnierResults (#786)", () => {
+    const file = (buffer: Buffer) => ({ buffer }) as Express.Multer.File;
+
+    it("has the same actors and guards as the CSV import", () => {
+      const handler = CompetitionsController.prototype.importTopTurnierResults;
+      expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([
+        UserRole.CLUB,
+        UserRole.STAFF,
+        UserRole.ADMIN,
+      ]);
+      const guards = Reflect.getMetadata("__guards__", handler);
+      expect(guards).toContain(RolesGuard);
+      expect(guards).toContain(NoImpersonationGuard);
+    });
+
+    it("checks the organiser rule, then forwards the archive and the dry-run flag", async () => {
+      const report = { dryRun: true, created: 1, events: [] };
+      mockTopTurnierImportService.importArchive.mockResolvedValue(report);
+      const request = req("club-1", "CLUB");
+      const archive = Buffer.from("PK");
+
+      const result = await controller.importTopTurnierResults(
+        "comp1",
+        { dryRun: true },
+        file(archive),
+        request,
+      );
+
+      expect(mockAccessService.assertCanManageResults).toHaveBeenCalledWith(
+        "comp1",
+        request.user,
+      );
+      expect(mockTopTurnierImportService.importArchive).toHaveBeenCalledWith(
+        "comp1",
+        archive,
+        request.user,
+        { dryRun: true },
+      );
+      expect(result).toBe(report);
+    });
+
+    it("requires an archive", async () => {
+      await expect(
+        controller.importTopTurnierResults(
+          "comp1",
+          {},
+          undefined,
+          req("staff-1", "STAFF"),
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        controller.importTopTurnierResults(
+          "comp1",
+          {},
+          file(Buffer.alloc(0)),
+          req("staff-1", "STAFF"),
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(mockTopTurnierImportService.importArchive).not.toHaveBeenCalled();
+    });
+
+    it("does not import when the caller is not the organiser", async () => {
+      mockAccessService.assertCanManageResults.mockRejectedValueOnce(
+        new ForbiddenException(),
+      );
+      await expect(
+        controller.importTopTurnierResults(
+          "comp1",
+          {},
+          file(Buffer.from("PK")),
+          req("club-2", "CLUB"),
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockTopTurnierImportService.importArchive).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("importTopTurnierUrlResults (#787, temporary)", () => {
+    it("is reserved to STAFF and ADMIN (never a club), never impersonated", () => {
+      const handler =
+        CompetitionsController.prototype.importTopTurnierUrlResults;
+      expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([
+        UserRole.STAFF,
+        UserRole.ADMIN,
+      ]);
+      const guards: unknown[] = Reflect.getMetadata("__guards__", handler);
+      expect(guards).toContain(RolesGuard);
+      expect(guards).toContain(NoImpersonationGuard);
+      expect(guards).toContain(ThrottlerUserGuard);
+    });
+
+    it("checks the access, then forwards the URL and the dry-run flag", async () => {
+      const report = { dryRun: true, events: [] };
+      mockTopTurnierUrlImportService.importUrl.mockResolvedValue(report);
+      const request = req("staff-1", "STAFF");
+      const url = "https://chairperson.ddsbagnols.com/x/index.htm";
+
+      const result = await controller.importTopTurnierUrlResults(
+        "comp1",
+        { dryRun: true },
+        { url },
+        request,
+      );
+
+      expect(mockAccessService.assertCanManageResults).toHaveBeenCalledWith(
+        "comp1",
+        request.user,
+      );
+      expect(mockTopTurnierUrlImportService.importUrl).toHaveBeenCalledWith(
+        "comp1",
+        url,
+        request.user,
+        { dryRun: true },
+      );
+      expect(result).toBe(report);
+    });
+
+    it("does not fetch anything when the access is refused", async () => {
+      mockAccessService.assertCanManageResults.mockRejectedValueOnce(
+        new ForbiddenException(),
+      );
+      await expect(
+        controller.importTopTurnierUrlResults(
+          "comp1",
+          {},
+          { url: "https://chairperson.ddsbagnols.com/x/" },
+          req("staff-1", "STAFF"),
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockTopTurnierUrlImportService.importUrl).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      "",
+      "not a url",
+      "ftp://chairperson.ddsbagnols.com/x/",
+      "file:///etc/passwd",
+      "chairperson.ddsbagnols.com/x/",
+      `https://chairperson.ddsbagnols.com/${"a".repeat(2100)}`,
+    ])("the DTO refuses %s", async (url) => {
+      const errors = await validate(
+        plainToInstance(ImportTopTurnierUrlDto, { url }),
+      );
+      expect(errors.length).toBeGreaterThan(0);
+    });
+
+    it("the DTO accepts an https URL", async () => {
+      const errors = await validate(
+        plainToInstance(ImportTopTurnierUrlDto, {
+          url: "https://chairperson.ddsbagnols.com/2026/x/index.htm",
+        }),
+      );
+      expect(errors).toEqual([]);
     });
   });
 

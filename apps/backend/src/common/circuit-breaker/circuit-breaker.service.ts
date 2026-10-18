@@ -16,7 +16,8 @@ type BreakerKey =
   | "azure-blob-write"
   | "ffd-documents"
   | "email"
-  | "email-auth";
+  | "email-auth"
+  | "topturnier";
 
 interface BreakerConfig {
   errorThresholdPercentage: number;
@@ -108,6 +109,15 @@ const BREAKER_CONFIGS: Record<BreakerKey, BreakerConfig> = {
     timeout: 10_000,
     resetTimeout: 30_000,
     volumeThreshold: 5,
+  },
+  // TEMPORARY (#787): pages of a public TopTurnier export, fetched one at a
+  // time on a staff request. Each page is also bounded by withTimeout(10s);
+  // a failing site opens the breaker fast (few requests, never a cron).
+  topturnier: {
+    errorThresholdPercentage: 50,
+    timeout: 15_000,
+    resetTimeout: 60_000,
+    volumeThreshold: 3,
   },
 };
 
