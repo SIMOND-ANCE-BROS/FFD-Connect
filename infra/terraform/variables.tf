@@ -200,10 +200,16 @@ variable "migrate_job_placeholder_image" {
   default     = "mcr.microsoft.com/k8se/quickstart-jobs:latest"
 }
 
-# ── CI deploy targets (#773) ────────────────
+# ── CI identities (#773, #778) ──────────────
+
+variable "ci_shared_identity_enabled" {
+  description = "Keep the LEGACY shared CI identity (ffd-connect-production-ci) trusted and authorised. true until a staging deploy has succeeded with the per-environment identities ci-staging/ci-prod (#778); then set false and apply to delete its federated credentials and role assignments (runbook deploiement-azure.md, \"Droits des identités CI\")."
+  type        = bool
+  default     = true
+}
 
 variable "ci_deploy_container_apps" {
-  description = "Container Apps (created outside Terraform, in the main resource group) that deploy-backend.yml and backend-warm-hours.yml update. The CI identity gets the backend-app-deployer role on each of them and write access to no other app (ci-iam.tf)."
+  description = "LEGACY shared CI identity only (removed with it, #778): the Container Apps it may update. The per-environment identities are bound to their own app in ci-iam.tf (ci-staging -> backend-staging, ci-prod -> backend-prod)."
   type        = set(string)
   default     = ["backend-staging", "backend-prod"]
 

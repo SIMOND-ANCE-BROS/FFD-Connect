@@ -931,10 +931,14 @@ jobs:
             [registry."docker.io"]
               mirrors = ["mirror.gcr.io"]
 
+      # ci-staging identity (#778), trusted for the staging/master refs: this
+      # job has no GitHub environment. It may push images and write
+      # backend-staging, never backend-prod (ci-prod trusts only the
+      # `production` environment). Repository-level VARIABLE, not a secret.
       - name: Azure login (OIDC)
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_IMAGE_PUSH_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
