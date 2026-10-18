@@ -7,6 +7,8 @@ import {
   ThrottlerStorageService,
 } from "@nestjs/throttler";
 import { UserRole } from "@prisma/client";
+import { existsSync, readFileSync } from "fs";
+import { join } from "path";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { SessionCleanupService } from "../src/auth/session-cleanup.service";
@@ -17,6 +19,7 @@ import {
   zipDirectory,
 } from "../src/competitions/results-import/topturnier/__fixtures__/zip-builder";
 import { NotificationsService } from "../src/notifications/notifications.service";
+import { CompetitionTopTurnierUrlImportService } from "../src/competitions/services/competition-topturnier-url-import.service";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { TtsService } from "../src/tts/tts.service";
 import { configureTestApp } from "./test-app.factory";
@@ -39,6 +42,7 @@ const storage = {
 describe("TopTurnier results import HTTP (integration, real DB)", () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let urlImport: CompetitionTopTurnierUrlImportService;
   let jwt: JwtService;
   const suffix = `tti${Date.now()}`;
   const domain = `@${suffix}.test`;
@@ -136,6 +140,7 @@ describe("TopTurnier results import HTTP (integration, real DB)", () => {
     await app.init();
     prisma = moduleFixture.get(PrismaService);
     jwt = moduleFixture.get(JwtService);
+    urlImport = moduleFixture.get(CompetitionTopTurnierUrlImportService);
 
     const [organiser, other] = await Promise.all(
       ["Organisateur", "Autre"].map((name) =>
@@ -311,5 +316,108 @@ describe("TopTurnier results import HTTP (integration, real DB)", () => {
     await uploadAs(token, "", Buffer.alloc(10 * 1024 * 1024 + 1, 1)).expect(
       413,
     );
+  });
+
+  describe("URL import (#787, temporary)", () => {
+    const postUrl = (token: string, url: unknown) =>
+      request(app.getHttpServer())
+        .post(
+          `/api/v1/competitions/${competitionId}/results/import/topturnier-url?dryRun=true`,
+        )
+        .set("Authorization", `Bearer ${token}`)
+        .send({ url });
+    const ALLOWED = "https://chairperson.ddsbagnols.com/2026/x/index.htm";
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it("403 for the organising club (back-office staff only)", async () => {
+      const token = await tokenFor(UserRole.CLUB, { clubId: organiserClubId });
+      await postUrl(token, ALLOWED).expect(403);
+    });
+
+    it("403 for a licensee and for an impersonated session", async () => {
+      await postUrl(await tokenFor(UserRole.LICENSEE), ALLOWED).expect(403);
+      const admin = await prisma.user.create({
+        data: {
+          email: `imp-admin-${Math.random().toString(36).slice(2)}${domain}`,
+          password: "x",
+          firstName: "Test",
+          lastName: suffix,
+          role: UserRole.ADMIN,
+        },
+      });
+      const token = await tokenFor(UserRole.STAFF, {}, admin.id);
+      await postUrl(token, ALLOWED).expect(403);
+    });
+
+    it("404 while the feature flag is off (default)", async () => {
+      const fetchPage = jest.spyOn(urlImport, "fetchPage");
+      const token = await tokenFor(UserRole.STAFF);
+      await postUrl(token, ALLOWED).expect(404);
+      expect(fetchPage).not.toHaveBeenCalled();
+    });
+
+    it("400 for an unsafe URL, before any request (flag on)", async () => {
+      jest.spyOn(urlImport, "isEnabled").mockReturnValue(true);
+      const fetchPage = jest.spyOn(urlImport, "fetchPage");
+      const token = await tokenFor(UserRole.ADMIN);
+      for (const url of [
+        "http://127.0.0.1/x/index.htm",
+        "http://169.254.169.254/latest/meta-data/",
+        "https://evil.example.com/x/index.htm",
+        "https://chairperson.ddsbagnols.com:8443/x/",
+        "file:///etc/passwd",
+        42,
+      ]) {
+        await postUrl(token, url).expect(400);
+      }
+      expect(fetchPage).not.toHaveBeenCalled();
+    });
+
+    it("STAFF imports through the shared pipeline, audited with host + path", async () => {
+      jest.spyOn(urlImport, "isEnabled").mockReturnValue(true);
+      jest.spyOn(urlImport, "sleep").mockResolvedValue(undefined);
+      const fetchPage = jest
+        .spyOn(urlImport, "fetchPage")
+        .mockImplementation((url: URL) => {
+          const relative = url.pathname.replace("/2026/x/", "");
+          const file = join(EXEMPLEVILLE_EXPORT, relative);
+          return Promise.resolve(
+            existsSync(file)
+              ? { status: 200, location: null, body: readFileSync(file) }
+              : { status: 404, location: null, body: Buffer.alloc(0) },
+          );
+        });
+      const token = await tokenFor(UserRole.STAFF);
+      const res = await postUrl(token, `${ALLOWED}?k=secret`).expect(200);
+      expect(res.body.dryRun).toBe(true);
+      expect(
+        (res.body.events as { status: string }[]).some(
+          (e) => e.status === "MATCHED",
+        ),
+      ).toBe(true);
+      expect(fetchPage.mock.calls[0][0].href).toBe(ALLOWED);
+
+      await request(app.getHttpServer())
+        .post(
+          `/api/v1/competitions/${competitionId}/results/import/topturnier-url`,
+        )
+        .set("Authorization", `Bearer ${token}`)
+        .send({ url: ALLOWED })
+        .expect(200);
+      const audit = await prisma.adminAuditLog.findFirst({
+        where: {
+          targetId: competitionId,
+          action: "COMPETITION_RESULTS_IMPORT",
+        },
+        orderBy: { createdAt: "desc" },
+        select: { after: true },
+      });
+      expect(audit?.after).toMatchObject({
+        source: "TOPTURNIER_URL",
+        url: "chairperson.ddsbagnols.com/2026/x/",
+      });
+      expect(JSON.stringify(audit?.after)).not.toContain("secret");
+    });
   });
 });

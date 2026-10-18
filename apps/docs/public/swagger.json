@@ -20795,6 +20795,152 @@
         "tags": ["competitions"]
       }
     },
+    "/competitions/{id}/results/import/topturnier-url": {
+      "post": {
+        "description": "Solution temporaire (#787) en attendant un accès aux données de la FFD (#651). STAFF et ADMIN uniquement, jamais en « connecté en tant que », à la demande uniquement (aucun relevé planifié). Désactivée sauf `TOPTURNIER_URL_IMPORT_ENABLED=true` (404 sinon). Seuls les sites de `TOPTURNIER_ALLOWED_HOSTS` sont lus, en https uniquement sur le port standard, jamais une adresse privée, de bouclage ou lien-local ; redirections (2 au plus, https aussi) dans la liste seulement ; un seul import à la fois par site (409 sinon) ; pages lues une à une, espacées de 500 ms, 151 pages au plus, chacune bornée (délai total, disjoncteur, 2 Mo) ; lecture de l'export bornée à 180 s (400 au-delà, rien n'est écrit). Ensuite, mêmes lecture, correspondance des épreuves, règles et réponse que l'import de l'archive (`/results/import/topturnier`) ; l'audit porte la source TOPTURNIER_URL et l'hôte + chemin de l'adresse.",
+        "operationId": "CompetitionsController_importTopTurnierUrlResults",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID de la compétition",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dryRun",
+            "required": false,
+            "in": "query",
+            "description": "true : valide le fichier et calcule les compteurs sans rien écrire (aperçu), sans journal d'audit ni notification",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportTopTurnierUrlDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopTurnierImportReportDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Adresse refusée (site non autorisé, http, adresse privée, port, redirection), export invalide, trop long à lire ou aucune épreuve reconnue"
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Réservé au staff et aux admins, hors « connecté en tant que »"
+          },
+          "404": {
+            "description": "Compétition non trouvée, ou import par adresse désactivé"
+          },
+          "409": {
+            "description": "Un import depuis ce site est déjà en cours"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Site de l'export injoignable"
+          },
+          "503": {
+            "description": "Site momentanément coupé par le disjoncteur, ou clé de pseudonymisation absente"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "TEMPORAIRE — importe les résultats depuis l'adresse publique d'un export TopTurnier",
+        "tags": ["competitions"]
+      }
+    },
     "/competitions/{id}/unregister": {
       "post": {
         "description": "Permet à un utilisateur de se désinscrire d'un événement auquel il était inscrit. Refusé (403) pendant un accès support (« se connecter en tant que »).",
@@ -32266,6 +32412,18 @@
           "unlinked",
           "events"
         ]
+      },
+      "ImportTopTurnierUrlDto": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Adresse publique de la page de la compétition de l'export TopTurnier (…/index.htm), sur un site autorisé (TOPTURNIER_ALLOWED_HOSTS)",
+            "example": "https://chairperson.ddsbagnols.com/2026/exempleville/index.htm",
+            "maxLength": 2048
+          }
+        },
+        "required": ["url"]
       },
       "DeleteEventResultsReportDto": {
         "type": "object",

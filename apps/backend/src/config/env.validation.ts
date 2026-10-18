@@ -163,6 +163,18 @@ class EnvironmentVariables {
   @IsOptional()
   WDSF_API_V2_URL?: string;
 
+  // TEMPORAIRE (#787, à retirer avec l'accès aux données FFD, #651) : import
+  // des résultats depuis l'adresse publique d'un export TopTurnier, staff et
+  // admins. Désactivé sauf « true ». Hôtes autorisés séparés par des virgules
+  // (défaut : chairperson.ddsbagnols.com).
+  @IsIn(["true", "false"])
+  @IsOptional()
+  TOPTURNIER_URL_IMPORT_ENABLED?: string;
+
+  @IsString()
+  @IsOptional()
+  TOPTURNIER_ALLOWED_HOSTS?: string;
+
   // GitHub (rapports de bugs)
   @IsString()
   @IsOptional()

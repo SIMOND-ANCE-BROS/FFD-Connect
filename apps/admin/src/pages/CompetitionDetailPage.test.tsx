@@ -407,6 +407,74 @@ describe('CompetitionDetailPage', () => {
       expect(send).not.toHaveBeenCalled();
     });
 
+    describe('URL import (#787, temporary)', () => {
+      const URL_OK = 'https://chairperson.ddsbagnols.com/2026/x/index.htm';
+
+      async function openUrl() {
+        renderPage();
+        await screen.findByRole('heading', { name: 'Open de Lyon' });
+        await user.click(screen.getByRole('radio', { name: 'Adresse (temporaire)' }));
+        return screen.getByRole('textbox', { name: /Adresse de l’export TopTurnier/ });
+      }
+
+      it('is flagged as temporary, checks the address, then imports it', async () => {
+        const input = await openUrl();
+        expect(screen.getByText('Solution temporaire')).toBeInTheDocument();
+        const send = vi
+          .spyOn(sdk, 'competitionsControllerImportTopTurnierUrlResults')
+          .mockResolvedValueOnce(ok({ ...report(), events: mapping }) as never)
+          .mockResolvedValueOnce(ok({ ...report({ dryRun: false }), events: mapping }) as never);
+        const verify = screen.getByRole('button', { name: 'Vérifier l’adresse' });
+        const save = screen.getByRole('button', { name: 'Importer depuis l’adresse' });
+        expect(verify).toBeDisabled();
+        await user.type(input, `  ${URL_OK} `);
+        expect(save).toBeDisabled();
+        await user.click(verify);
+        await screen.findByRole('table', { name: 'Correspondance des épreuves' });
+        expect(
+          screen.getByRole('table', { name: 'Aperçu de l’import par adresse' }),
+        ).toBeInTheDocument();
+        expect(send).toHaveBeenLastCalledWith({
+          path: { id: 'comp-1' },
+          query: { dryRun: true },
+          body: { url: URL_OK },
+        });
+        await user.click(save);
+        expect(
+          await screen.findByRole('table', { name: 'Bilan de l’import par adresse' }),
+        ).toBeInTheDocument();
+        expect(send).toHaveBeenLastCalledWith({
+          path: { id: 'comp-1' },
+          query: { dryRun: false },
+          body: { url: URL_OK },
+        });
+      });
+
+      it('shows a refusal (feature off or unsafe address) and requires a new check after an edit', async () => {
+        const input = await openUrl();
+        vi.spyOn(sdk, 'competitionsControllerImportTopTurnierUrlResults')
+          .mockResolvedValueOnce({
+            data: undefined,
+            error: {
+              statusCode: 404,
+              message: 'Import par adresse TopTurnier désactivé sur cet environnement',
+            },
+          } as never)
+          .mockResolvedValueOnce(ok({ ...report(), events: mapping }) as never);
+        await user.type(input, URL_OK);
+        await user.click(screen.getByRole('button', { name: 'Vérifier l’adresse' }));
+        expect(
+          await screen.findByText('Import par adresse TopTurnier désactivé sur cet environnement'),
+        ).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'Vérifier l’adresse' }));
+        await screen.findByRole('table', { name: 'Correspondance des épreuves' });
+        const save = screen.getByRole('button', { name: 'Importer depuis l’adresse' });
+        expect(save).toBeEnabled();
+        await user.type(input, 'x');
+        expect(save).toBeDisabled();
+      });
+    });
+
     it('goes back to the CSV import', async () => {
       await openTopTurnier();
       await user.click(screen.getByRole('radio', { name: 'Fichier CSV' }));
