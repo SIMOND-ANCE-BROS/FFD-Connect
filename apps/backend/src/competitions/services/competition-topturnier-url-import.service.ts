@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   BadRequestException,
+  ConflictException,
   HttpException,
   Injectable,
   Logger,
@@ -34,8 +35,17 @@ import { CompetitionTopTurnierImportService } from "./competition-topturnier-imp
 
 /** Pages fetched for one import: the competition page + 150 rankings. */
 export const TOPTURNIER_URL_MAX_PAGES = 151;
-/** Pause between two requests to the site (sequential, never in parallel). */
+/**
+ * Pause between two requests to the same site, across imports (one import at
+ * a time per site, so never in parallel).
+ */
 export const TOPTURNIER_URL_SPACING_MS = 500;
+/**
+ * Budget of a whole import, checked before each page: below the ~240 s
+ * request timeout of the Azure ingress, so nothing is written after the
+ * client has given up (the pages are all read before any write).
+ */
+export const TOPTURNIER_URL_IMPORT_DEADLINE_MS = 180_000;
 /** Budget of one page (socket inactivity + overall). */
 export const TOPTURNIER_URL_PAGE_TIMEOUT_MS = 10_000;
 /** Redirects followed per page, each one inside the allowlist. */
@@ -51,11 +61,13 @@ const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
  *
  * Back-office only (STAFF / ADMIN), on demand only — never scheduled.
  * Disabled unless `TOPTURNIER_URL_IMPORT_ENABLED=true`. Only the hosts of
- * `TOPTURNIER_ALLOWED_HOSTS` are fetched, over http/https on the default
- * port, never a private / loopback / link-local address (checked at
- * connection time), redirects only inside the allowlist (2 at most), one
- * page at a time 500 ms apart, each bounded by a timeout and the `topturnier`
- * circuit breaker, pages and sizes capped. The pages then go through the
+ * `TOPTURNIER_ALLOWED_HOSTS` are fetched, over https on the default port,
+ * never a private / loopback / link-local address (checked at connection
+ * time), redirects only inside the allowlist (2 at most, https too), one
+ * import at a time per site and one page at a time 500 ms apart (both per
+ * replica: in-memory), each page bounded by a total deadline and the
+ * `topturnier` circuit breaker, the whole import by a 180 s deadline, pages
+ * and sizes capped. The pages then go through the
  * same reading, mapping and import pipeline as the uploaded export (#786).
  */
 @Injectable()
@@ -63,6 +75,11 @@ export class CompetitionTopTurnierUrlImportService {
   private readonly logger = new Logger(
     CompetitionTopTurnierUrlImportService.name,
   );
+
+  /** Sites with an import in progress (one at a time per site). */
+  private readonly importsInProgress = new Set<string>();
+  /** Time of the last request to each site, for the spacing. */
+  private readonly lastRequestAt = new Map<string, number>();
 
   constructor(
     private readonly config: ConfigService,
@@ -102,6 +119,14 @@ export class CompetitionTopTurnierUrlImportService {
       throw error;
     }
 
+    const site = base.hostname;
+    if (this.importsInProgress.has(site)) {
+      throw new ConflictException(
+        "Un import depuis ce site est déjà en cours : réessayer quand il sera terminé",
+      );
+    }
+    this.importsInProgress.add(site);
+
     const source = this.pageSource(base, hosts);
     try {
       return await this.topTurnierImport.importFromSource(
@@ -131,13 +156,15 @@ export class CompetitionTopTurnierUrlImportService {
       throw new BadGatewayException(
         "Site de l'export TopTurnier injoignable ou en erreur : réessayer plus tard, ou téléverser l'export",
       );
+    } finally {
+      this.importsInProgress.delete(site);
     }
   }
 
   /** Pages of the export under `base`, fetched one at a time. */
   pageSource(base: URL, hosts: readonly string[]): TopTurnierPageSource {
     let pages = 0;
-    let lastRequestAt = 0;
+    const deadline = this.now() + TOPTURNIER_URL_IMPORT_DEADLINE_MS;
     return {
       read: async (path: string): Promise<Buffer | null> => {
         // TopTurnier writes `.htm`: the `.html` fallbacks are not requested
@@ -156,13 +183,12 @@ export class CompetitionTopTurnierUrlImportService {
             `Trop de pages pour l'import par adresse (${TOPTURNIER_URL_MAX_PAGES} au plus) : téléverser l'export`,
           );
         }
-        const wait = lastRequestAt + TOPTURNIER_URL_SPACING_MS - Date.now();
-        if (lastRequestAt > 0 && wait > 0) await this.sleep(wait);
-        try {
-          return await this.fetchFollowingRedirects(url, hosts);
-        } finally {
-          lastRequestAt = Date.now();
+        if (this.now() >= deadline) {
+          throw new TopTurnierFormatError(
+            "Export trop long à lire : téléversez l'export",
+          );
         }
+        return this.fetchFollowingRedirects(url, hosts);
       },
     };
   }
@@ -173,7 +199,7 @@ export class CompetitionTopTurnierUrlImportService {
   ): Promise<Buffer | null> {
     let url = start;
     for (let hop = 0; ; hop++) {
-      const page = await this.fetchPage(url);
+      const page = await this.spacedFetch(url);
       if (page.status === 200) return page.body;
       if (page.status === 404 || page.status === 410) return null;
       if (REDIRECT_STATUSES.has(page.status) && page.location !== null) {
@@ -189,6 +215,21 @@ export class CompetitionTopTurnierUrlImportService {
     }
   }
 
+  /** One request, at least the spacing after the previous one to its site. */
+  private async spacedFetch(url: URL): Promise<FetchedPage> {
+    const site = url.hostname;
+    const last = this.lastRequestAt.get(site);
+    if (last !== undefined) {
+      const wait = last + TOPTURNIER_URL_SPACING_MS - this.now();
+      if (wait > 0) await this.sleep(wait);
+    }
+    try {
+      return await this.fetchPage(url);
+    } finally {
+      this.lastRequestAt.set(site, this.now());
+    }
+  }
+
   /** One request, behind the breaker and the timeout. */
   async fetchPage(url: URL): Promise<FetchedPage> {
     return this.circuitBreaker.fire("topturnier", () =>
@@ -201,6 +242,10 @@ export class CompetitionTopTurnierUrlImportService {
         "TopTurnier page",
       ),
     );
+  }
+
+  now(): number {
+    return Date.now();
   }
 
   sleep(ms: number): Promise<void> {

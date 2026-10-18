@@ -21,6 +21,8 @@ describe("fetchTopTurnierPage", () => {
   let server: Server;
   let port: number;
   let lastHeaders: IncomingHttpHeaders = {};
+  /** Resolved when the server sees the connection of `/404-trickle` close. */
+  let errorBodyClosed: Promise<void> = Promise.resolve();
 
   beforeAll(async () => {
     server = createServer((req, res) => {
@@ -50,6 +52,26 @@ describe("fetchTopTurnierPage", () => {
         case "/slow":
           // Never answers: the socket timeout must fire.
           return;
+        case "/trickle": {
+          // One byte every 50 ms, forever: never idle long enough for the
+          // socket inactivity timeout, only the total deadline stops it.
+          res.writeHead(200, { "Transfer-Encoding": "chunked" });
+          const timer = setInterval(() => res.write("x"), 50);
+          res.on("close", () => clearInterval(timer));
+          return;
+        }
+        case "/404-trickle": {
+          // An error page streamed forever: must be destroyed, not drained.
+          res.writeHead(404, { "Transfer-Encoding": "chunked" });
+          const timer = setInterval(() => res.write("x"), 20);
+          errorBodyClosed = new Promise<void>((done) =>
+            res.on("close", () => {
+              clearInterval(timer);
+              done();
+            }),
+          );
+          return;
+        }
         default:
           res.writeHead(404);
           res.end();
@@ -118,6 +140,25 @@ describe("fetchTopTurnierPage", () => {
     await expect(fetchTopTurnierPage(url("/gzip"), options)).rejects.toThrow(
       "compressée",
     );
+  });
+
+  it("aborts a trickling server at the total deadline", async () => {
+    const started = Date.now();
+    await expect(
+      fetchTopTurnierPage(url("/trickle"), { ...options, timeoutMs: 300 }),
+    ).rejects.toThrow("Délai dépassé");
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
+
+  it("closes the connection of a non-200 answer without reading its body", async () => {
+    const page = await fetchTopTurnierPage(url("/404-trickle"), options);
+    expect(page).toEqual({
+      status: 404,
+      location: null,
+      body: Buffer.alloc(0),
+    });
+    // The server sees the socket closed although its body never ends.
+    await expect(errorBodyClosed).resolves.toBeUndefined();
   });
 
   it("times out a silent server", async () => {

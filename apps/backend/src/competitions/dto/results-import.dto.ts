@@ -70,7 +70,7 @@ export class ImportTopTurnierUrlDto {
   @IsNotEmpty()
   @MaxLength(2048)
   @IsUrl({
-    protocols: ["http", "https"],
+    protocols: ["https"],
     require_protocol: true,
     require_tld: true,
     allow_underscores: false,

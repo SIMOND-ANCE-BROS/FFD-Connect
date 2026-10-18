@@ -66,18 +66,36 @@ export const guardedLookup: LookupFunction = (hostname, options, callback) => {
 
 export interface FetchPageOptions {
   maxBytes: number;
+  /**
+   * Total budget of the request, from the call to the last byte: past it the
+   * socket is destroyed (a server trickling one byte at a time never trips
+   * the inactivity timeout alone). Also the socket inactivity timeout.
+   */
   timeoutMs: number;
   /** Tests only: the guarded lookup otherwise. */
   lookup?: LookupFunction;
 }
 
-/** One GET, no redirect followed. */
+/**
+ * One GET, no redirect followed. The scheme is checked by the caller
+ * (`checkTopTurnierUrl`: https only, initial URL and every hop); plain http is
+ * only reached by the tests' loopback server.
+ */
 export function fetchTopTurnierPage(
   url: URL,
   options: FetchPageOptions,
 ): Promise<FetchedPage> {
   const request = url.protocol === "https:" ? httpsRequest : httpRequest;
   return new Promise<FetchedPage>((resolve, reject) => {
+    let settled = false;
+    const finish = (outcome: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      outcome();
+    };
+    const fail = (error: Error) => finish(() => reject(error));
+
     const req = request(
       url,
       {
@@ -94,25 +112,29 @@ export function fetchTopTurnierPage(
       (res: IncomingMessage) => {
         const status = res.statusCode ?? 0;
         if (status !== 200) {
-          res.resume();
+          // Destroyed, not drained: the body of an error or a redirect is
+          // never read (a server could stream it forever).
+          res.destroy();
           const location = res.headers.location;
-          resolve({
-            status,
-            location: typeof location === "string" ? location : null,
-            body: Buffer.alloc(0),
-          });
+          finish(() =>
+            resolve({
+              status,
+              location: typeof location === "string" ? location : null,
+              body: Buffer.alloc(0),
+            }),
+          );
           return;
         }
         const encoding = res.headers["content-encoding"];
         if (encoding !== undefined && encoding !== "identity") {
           res.destroy();
-          reject(new TopTurnierFetchError("Page compressée non acceptée"));
+          fail(new TopTurnierFetchError("Page compressée non acceptée"));
           return;
         }
         const declared = Number(res.headers["content-length"]);
         if (Number.isFinite(declared) && declared > options.maxBytes) {
           res.destroy();
-          reject(new TopTurnierPageTooLargeError(url.pathname));
+          fail(new TopTurnierPageTooLargeError(url.pathname));
           return;
         }
         const chunks: Buffer[] = [];
@@ -121,21 +143,32 @@ export function fetchTopTurnierPage(
           size += chunk.length;
           if (size > options.maxBytes) {
             res.destroy();
-            reject(new TopTurnierPageTooLargeError(url.pathname));
+            fail(new TopTurnierPageTooLargeError(url.pathname));
             return;
           }
           chunks.push(chunk);
         });
         res.on("end", () =>
-          resolve({ status, location: null, body: Buffer.concat(chunks) }),
+          finish(() =>
+            resolve({ status, location: null, body: Buffer.concat(chunks) }),
+          ),
         );
-        res.on("error", reject);
+        res.on("error", fail);
       },
     );
+    // Total deadline: `timeout` above only measures socket inactivity, and
+    // the caller's `withTimeout` gives up without closing anything.
+    const deadline = setTimeout(() => {
+      const error = new TopTurnierFetchError("Délai dépassé");
+      fail(error);
+      req.destroy(error);
+    }, options.timeoutMs);
     req.on("timeout", () => {
-      req.destroy(new TopTurnierFetchError("Délai dépassé"));
+      const error = new TopTurnierFetchError("Délai dépassé");
+      fail(error);
+      req.destroy(error);
     });
-    req.on("error", reject);
+    req.on("error", fail);
     req.end();
   });
 }

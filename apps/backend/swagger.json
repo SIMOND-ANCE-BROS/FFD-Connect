@@ -21080,7 +21080,7 @@
     },
     "/competitions/{id}/results/import/topturnier-url": {
       "post": {
-        "description": "Solution temporaire (#787) en attendant un accès aux données de la FFD (#651). STAFF et ADMIN uniquement, jamais en « connecté en tant que », à la demande uniquement (aucun relevé planifié). Désactivée sauf `TOPTURNIER_URL_IMPORT_ENABLED=true` (404 sinon). Seuls les sites de `TOPTURNIER_ALLOWED_HOSTS` sont lus, en http/https sur le port standard, jamais une adresse privée, de bouclage ou lien-local ; redirections (2 au plus) dans la liste seulement ; pages lues une à une, espacées de 500 ms, 151 pages au plus, chacune bornée (délai, disjoncteur, 2 Mo). Ensuite, mêmes lecture, correspondance des épreuves, règles et réponse que l'import de l'archive (`/results/import/topturnier`) ; l'audit porte la source TOPTURNIER_URL et l'hôte + chemin de l'adresse.",
+        "description": "Solution temporaire (#787) en attendant un accès aux données de la FFD (#651). STAFF et ADMIN uniquement, jamais en « connecté en tant que », à la demande uniquement (aucun relevé planifié). Désactivée sauf `TOPTURNIER_URL_IMPORT_ENABLED=true` (404 sinon). Seuls les sites de `TOPTURNIER_ALLOWED_HOSTS` sont lus, en https uniquement sur le port standard, jamais une adresse privée, de bouclage ou lien-local ; redirections (2 au plus, https aussi) dans la liste seulement ; un seul import à la fois par site (409 sinon) ; pages lues une à une, espacées de 500 ms, 151 pages au plus, chacune bornée (délai total, disjoncteur, 2 Mo) ; lecture de l'export bornée à 180 s (400 au-delà, rien n'est écrit). Ensuite, mêmes lecture, correspondance des épreuves, règles et réponse que l'import de l'archive (`/results/import/topturnier`) ; l'audit porte la source TOPTURNIER_URL et l'hôte + chemin de l'adresse.",
         "operationId": "CompetitionsController_importTopTurnierUrlResults",
         "parameters": [
           {
@@ -21125,7 +21125,7 @@
             }
           },
           "400": {
-            "description": "Adresse refusée (site non autorisé, adresse privée, port, redirection), export invalide ou aucune épreuve reconnue"
+            "description": "Adresse refusée (site non autorisé, http, adresse privée, port, redirection), export invalide, trop long à lire ou aucune épreuve reconnue"
           },
           "401": {
             "description": "Non authentifié - Token manquant ou invalide",
@@ -21158,28 +21158,7 @@
             "description": "Compétition non trouvée, ou import par adresse désactivé"
           },
           "409": {
-            "description": "Conflit - La ressource existe déjà",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 409
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Resource already exists"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Conflict"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Un import depuis ce site est déjà en cours"
           },
           "429": {
             "description": "Trop de requêtes - Rate limit dépassé",

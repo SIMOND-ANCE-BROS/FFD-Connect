@@ -850,7 +850,7 @@ export class CompetitionsController {
     summary:
       "TEMPORAIRE — importe les résultats depuis l'adresse publique d'un export TopTurnier",
     description:
-      "Solution temporaire (#787) en attendant un accès aux données de la FFD (#651). STAFF et ADMIN uniquement, jamais en « connecté en tant que », à la demande uniquement (aucun relevé planifié). Désactivée sauf `TOPTURNIER_URL_IMPORT_ENABLED=true` (404 sinon). Seuls les sites de `TOPTURNIER_ALLOWED_HOSTS` sont lus, en http/https sur le port standard, jamais une adresse privée, de bouclage ou lien-local ; redirections (2 au plus) dans la liste seulement ; pages lues une à une, espacées de 500 ms, 151 pages au plus, chacune bornée (délai, disjoncteur, 2 Mo). Ensuite, mêmes lecture, correspondance des épreuves, règles et réponse que l'import de l'archive (`/results/import/topturnier`) ; l'audit porte la source TOPTURNIER_URL et l'hôte + chemin de l'adresse.",
+      "Solution temporaire (#787) en attendant un accès aux données de la FFD (#651). STAFF et ADMIN uniquement, jamais en « connecté en tant que », à la demande uniquement (aucun relevé planifié). Désactivée sauf `TOPTURNIER_URL_IMPORT_ENABLED=true` (404 sinon). Seuls les sites de `TOPTURNIER_ALLOWED_HOSTS` sont lus, en https uniquement sur le port standard, jamais une adresse privée, de bouclage ou lien-local ; redirections (2 au plus, https aussi) dans la liste seulement ; un seul import à la fois par site (409 sinon) ; pages lues une à une, espacées de 500 ms, 151 pages au plus, chacune bornée (délai total, disjoncteur, 2 Mo) ; lecture de l'export bornée à 180 s (400 au-delà, rien n'est écrit). Ensuite, mêmes lecture, correspondance des épreuves, règles et réponse que l'import de l'archive (`/results/import/topturnier`) ; l'audit porte la source TOPTURNIER_URL et l'hôte + chemin de l'adresse.",
   })
   @ApiParam({ name: "id", description: "ID de la compétition" })
   @ApiBody({ type: ImportTopTurnierUrlDto })
@@ -858,7 +858,11 @@ export class CompetitionsController {
   @ApiResponse({
     status: 400,
     description:
-      "Adresse refusée (site non autorisé, adresse privée, port, redirection), export invalide ou aucune épreuve reconnue",
+      "Adresse refusée (site non autorisé, http, adresse privée, port, redirection), export invalide, trop long à lire ou aucune épreuve reconnue",
+  })
+  @ApiResponse({
+    status: 409,
+    description: "Un import depuis ce site est déjà en cours",
   })
   @ApiResponse({
     status: 403,

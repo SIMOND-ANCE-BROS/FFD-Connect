@@ -38,14 +38,20 @@ describe("checkTopTurnierUrl (SSRF guard)", () => {
   const refused = (url: string) =>
     expect(() => checkTopTurnierUrl(url, HOSTS)).toThrow(TopTurnierUrlError);
 
-  it("accepts http and https URLs of an allowed host", () => {
+  it("accepts https URLs of an allowed host", () => {
     expect(
       checkTopTurnierUrl("https://results.example.org/2026/x/index.htm", HOSTS)
         .href,
     ).toBe("https://results.example.org/2026/x/index.htm");
     expect(
-      checkTopTurnierUrl("http://RESULTS.example.org/x/", HOSTS).hostname,
+      checkTopTurnierUrl("https://RESULTS.example.org/x/", HOSTS).hostname,
     ).toBe("results.example.org");
+  });
+
+  it("refuses plain http, even on an allowed host", () => {
+    expect(() =>
+      checkTopTurnierUrl("http://results.example.org/x/index.htm", HOSTS),
+    ).toThrow("https:// uniquement");
   });
 
   it.each([
@@ -116,6 +122,12 @@ describe("isPublicAddress", () => {
     "ff02::1",
     "::ffff:127.0.0.1",
     "::ffff:10.0.0.1",
+    "168.63.129.16",
+    "::7f00:1",
+    "::a9fe:a9fe",
+    "::8.8.8.8",
+    "::ffff:0:7f00:1",
+    "::ffff:0:808:808",
     "64:ff9b::a00:1",
     "2002:a00:1::",
     "not-an-ip",
@@ -123,10 +135,13 @@ describe("isPublicAddress", () => {
     expect(isPublicAddress(address)).toBe(false);
   });
 
-  it.each(["93.184.216.34", "8.8.8.8", "2606:4700::1111"])(
-    "accepts the public address %s",
-    (address) => {
-      expect(isPublicAddress(address)).toBe(true);
-    },
-  );
+  it.each([
+    "93.184.216.34",
+    "8.8.8.8",
+    "168.63.129.15",
+    "168.63.129.17",
+    "2606:4700::1111",
+  ])("accepts the public address %s", (address) => {
+    expect(isPublicAddress(address)).toBe(true);
+  });
 });

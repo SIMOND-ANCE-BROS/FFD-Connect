@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   BadRequestException,
+  ConflictException,
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
@@ -13,6 +14,7 @@ import type { TopTurnierPageSource } from "../results-import/topturnier/topturni
 import { TopTurnierUrlError } from "../results-import/topturnier/topturnier-url";
 import {
   CompetitionTopTurnierUrlImportService,
+  TOPTURNIER_URL_IMPORT_DEADLINE_MS,
   TOPTURNIER_URL_MAX_PAGES,
   TOPTURNIER_URL_SPACING_MS,
 } from "./competition-topturnier-url-import.service";
@@ -120,6 +122,7 @@ describe("CompetitionTopTurnierUrlImportService (#787, temporary)", () => {
     "file:///etc/passwd",
     `https://${HOST}:8443/x/`,
     `https://user:pw@${HOST}/x/`,
+    `http://${HOST}/2026/exempleville/index.htm`,
   ])("refuses %s before any request (400)", async (url) => {
     await expect(
       service.importUrl("comp-1", url, STAFF),
@@ -160,6 +163,7 @@ describe("CompetitionTopTurnierUrlImportService (#787, temporary)", () => {
     "http://[::1]/",
     `https://${HOST}:8080/`,
     "file:///etc/passwd",
+    `http://${HOST}/2026/exempleville/index.htm`,
   ])("refuses a redirect to %s (400)", async (location) => {
     fetchPage.mockResolvedValueOnce(redirect(location));
     await expect(
@@ -233,6 +237,72 @@ describe("CompetitionTopTurnierUrlImportService (#787, temporary)", () => {
     await expect(
       service.importUrl("comp-1", URL_OK, STAFF),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("stops reading past the import deadline, before any write (400)", async () => {
+    let clock = 1_000_000;
+    jest.spyOn(service, "now").mockImplementation(() => clock);
+    fetchPage.mockImplementation(() => {
+      clock += TOPTURNIER_URL_IMPORT_DEADLINE_MS / 2 + 1;
+      return Promise.resolve(ok("<html></html>"));
+    });
+    reads = ["index.htm", "1-x/erg.htm", "2-x/erg.htm"];
+    await expect(
+      service.importUrl("comp-1", URL_OK, STAFF),
+    ).rejects.toMatchObject({
+      response: { message: "Export trop long à lire : téléversez l'export" },
+    });
+    // The third page is never requested.
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+  });
+
+  it("runs one import at a time per site (409), and frees the site after", async () => {
+    let release: () => void = () => undefined;
+    importFromSource.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ created: 1, events: [] });
+        }),
+    );
+    const first = service.importUrl("comp-1", URL_OK, STAFF);
+    await expect(
+      service.importUrl("comp-2", URL_OK, STAFF, { dryRun: true }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      service.importUrl("comp-2", URL_OK, STAFF),
+    ).rejects.toMatchObject({
+      response: {
+        message: expect.stringContaining(
+          "Un import depuis ce site est déjà en cours",
+        ),
+      },
+    });
+    release();
+    await expect(first).resolves.toEqual({ created: 1, events: [] });
+    // Freed on success…
+    await expect(
+      service.importUrl("comp-2", URL_OK, STAFF),
+    ).resolves.toBeDefined();
+    // …and on failure.
+    fetchPage.mockRejectedValueOnce(new Error("ECONNRESET"));
+    await expect(
+      service.importUrl("comp-2", URL_OK, STAFF),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+    await expect(
+      service.importUrl("comp-2", URL_OK, STAFF),
+    ).resolves.toBeDefined();
+  });
+
+  it("spaces the requests to a site across imports", async () => {
+    reads = ["index.htm"];
+    await service.importUrl("comp-1", URL_OK, STAFF, { dryRun: true });
+    expect(sleep).not.toHaveBeenCalled();
+    await service.importUrl("comp-1", URL_OK, STAFF);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(sleep.mock.calls[0][0]).toBeGreaterThan(0);
+    expect(sleep.mock.calls[0][0]).toBeLessThanOrEqual(
+      TOPTURNIER_URL_SPACING_MS,
+    );
   });
 
   it("sends every real request through the topturnier breaker", async () => {

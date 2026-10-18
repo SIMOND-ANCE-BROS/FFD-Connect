@@ -31,8 +31,11 @@ export function parseAllowedHosts(raw: string | undefined): string[] {
 }
 
 /**
- * The URL, checked: http/https, no credentials, default port only, host in
- * the allowlist (exact match, no subdomain), never an IP literal.
+ * The URL, checked: https only, no credentials, default port only, host in
+ * the allowlist (exact match, no subdomain), never an IP literal. Applied to
+ * the submitted URL and to every redirect hop, so a downgrade to plain http
+ * (readable and alterable on the way) is refused too. The allowlisted site
+ * serves its exports over https (checked 2026-10-18).
  */
 export function checkTopTurnierUrl(
   raw: string,
@@ -47,8 +50,8 @@ export function checkTopTurnierUrl(
   } catch {
     throw new TopTurnierUrlError("Adresse invalide");
   }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new TopTurnierUrlError("Adresse en http:// ou https:// uniquement");
+  if (url.protocol !== "https:") {
+    throw new TopTurnierUrlError("Adresse en https:// uniquement");
   }
   if (url.username !== "" || url.password !== "") {
     throw new TopTurnierUrlError("Adresse avec identifiants refusée");
@@ -92,8 +95,10 @@ export function auditUrl(url: URL): string {
 
 /**
  * Addresses never connected to: loopback, private, link-local, CGNAT,
- * multicast, reserved, documentation, unique-local IPv6 and the IPv4 ranges
- * reachable through IPv6 transition prefixes.
+ * multicast, reserved, documentation, the Azure platform address
+ * (168.63.129.16, wireserver: DNS, health probes, VM agent), unique-local IPv6
+ * and the IPv4 ranges reachable through IPv6 transition prefixes
+ * (IPv4-compatible, -mapped, -translated, NAT64, 6to4, Teredo).
  */
 // Two lists: Node's BlockList matches an IPv4 address against the IPv6
 // ::ffff:0:0/96 subnet, which would block every IPv4 address.
@@ -104,6 +109,7 @@ for (const [network, prefix] of [
   ["10.0.0.0", 8],
   ["100.64.0.0", 10],
   ["127.0.0.0", 8],
+  ["168.63.129.16", 32],
   ["169.254.0.0", 16],
   ["172.16.0.0", 12],
   ["192.0.0.0", 24],
@@ -119,9 +125,10 @@ for (const [network, prefix] of [
   BLOCKED_V4.addSubnet(network, prefix, "ipv4");
 }
 for (const [network, prefix] of [
-  ["::", 128],
+  ["::", 96],
   ["::1", 128],
   ["::ffff:0:0", 96],
+  ["::ffff:0:0:0", 96],
   ["64:ff9b::", 96],
   ["64:ff9b:1::", 48],
   ["100::", 64],
@@ -140,8 +147,9 @@ for (const [network, prefix] of [
 export function isPublicAddress(address: string): boolean {
   const family = isIP(address);
   if (family === 4) return !BLOCKED_V4.check(address, "ipv4");
-  // IPv4-mapped / translated IPv6 (::ffff:a.b.c.d, 64:ff9b::/96) are blocked
-  // as a whole: a public site answers on a native address.
+  // IPv4-compatible / mapped / translated IPv6 (::a.b.c.d, ::ffff:a.b.c.d,
+  // ::ffff:0:a.b.c.d, 64:ff9b::/96) are blocked as a whole: a public site
+  // answers on a native address.
   if (family === 6) return !BLOCKED_V6.check(address, "ipv6");
   return false;
 }
