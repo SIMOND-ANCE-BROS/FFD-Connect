@@ -5,25 +5,33 @@
 # using a federated identity credential on an Azure AD app.
 # No static client secrets stored in GitHub secrets.
 #
-# ONE IDENTITY PER ENVIRONMENT (#778). Staging and production used to share a
-# single CI identity, so a job of the GitHub environment `staging` (no
+# ONE IDENTITY PER ROLE AND ENVIRONMENT (#778). Staging and production used to
+# share a single CI identity, so a job of the GitHub environment `staging` (no
 # reviewer), or any run on develop/staging, could write backend-prod and
 # bypass the required reviewer of the `production` environment. Now:
 #
-#   ci-staging  trusts `environment:staging` + the staging/master branch refs
-#               (image build in ci.yml, which runs outside any environment).
-#               Rights: push/purge the registry, read the RG, update
-#               backend-staging, run the staging migration job.
-#   ci-prod     trusts `environment:production` ONLY, i.e. a job that waited
-#               for the production reviewer. Rights: read/purge the registry,
-#               read the RG, update backend-prod, run the prod migration job
-#               (once var.migrate_jobs has one, #215).
+#   ci-image-push  trusts the staging/master branch refs (ci.yml build-image,
+#                  which runs outside any environment). Rights: push images,
+#                  read the registry. It can deploy NOTHING.
+#   ci-staging     trusts `environment:staging` ONLY. Rights: read/purge the
+#                  registry, read the RG, update backend-staging, run the
+#                  staging migration job.
+#   ci-prod        trusts `environment:production` ONLY, i.e. a job that
+#                  waited for the production reviewer. Rights: read/purge the
+#                  registry, read the RG, update backend-prod, run the prod
+#                  migration job (once var.migrate_jobs has one, #215).
 #
-# Neither identity holds a right on the other environment's app or job. The
-# former shared identity (`azuread_application.ci` below) stays until the
-# split is proven, then `ci_shared_identity_enabled = false` removes its
-# federated credentials and role assignments (runbook deploiement-azure.md,
-# "Droits des identités CI").
+# No identity holds a write right on another environment's app or job. The
+# registry is shared and tags are mutable, so deploys never pull a tag: they
+# pull the immutable DIGEST that ci.yml's build-image recorded for the image
+# it pushed in the triggering run (deploy-backend.yml, gate job). Pushing or
+# overwriting a tag therefore cannot change what a deploy runs.
+#
+# The former shared identity (`azuread_application.ci` below) keeps, until the
+# split is proven, ONLY its staging rights (rollback path); its prod subjects
+# and prod rights are removed by the first apply of this file. Then
+# `ci_shared_identity_enabled = false` removes the rest (runbook
+# deploiement-azure.md, "Bascule vers les identités par environnement").
 
 # azuread provider requirement is declared in main.tf (a module may have only
 # one required_providers block).
@@ -43,47 +51,62 @@ data "azuread_client_config" "current" {}
 # environment replaces the ref); a job outside any environment presents
 # `...:ref:refs/heads/<branch>`. A workflow_run run (deploy-backend.yml) runs
 # in the context of the DEFAULT branch (develop), hence its jobs are bound to
-# environments rather than trusted by branch.
+# environments rather than trusted by branch. No identity trusts a
+# `pull_request` subject, a develop ref or a wildcard.
 locals {
   github_oidc_subject_prefix = "repo:${var.github_org}@${var.github_org_id}/${var.github_repo}@${var.github_repo_id}"
 
-  # Everything that differs between the two CI identities, in one place.
-  ci_env_identities = {
+  # Everything that differs between the CI identities, in one place:
+  #   subjects       trusted OIDC subjects (suffix after the repo prefix),
+  #                  keyed by a short name used in the credential's name
+  #   acr_roles      built-in roles on the registry
+  #   reader_scope   "rg" (Reader on the resource group) or "acr" (Reader on
+  #                  the registry only)
+  #   container_app  backend app it may update (backend-app-deployer), or null
+  # The migration job runner role is assigned in migrate-job.tf, to the
+  # identity whose key equals the var.migrate_jobs key (staging / prod).
+  ci_identities = {
+    image-push = {
+      display_name = "${local.name_prefix}-ci-image-push"
+      subjects = {
+        # ci.yml `build-image` on a staging / master push (no environment).
+        branch-staging = {
+          subject     = "ref:refs/heads/staging"
+          description = "staging branch (ci.yml build-image, push only)"
+        }
+        branch-master = {
+          subject     = "ref:refs/heads/master"
+          description = "master branch (ci.yml build-image, push only)"
+        }
+      }
+      # AcrPush: push the image and its build cache (includes pull, for the
+      # cache and the Trivy scan).
+      acr_roles = ["AcrPush"]
+      # `az acr login` resolves the registry through ARM: Reader on the
+      # registry alone, not the RG (this identity needs to see no app).
+      reader_scope  = "acr"
+      container_app = null
+    }
+
     staging = {
-      display_name  = "${local.name_prefix}-ci-staging"
-      container_app = "backend-staging"
-      # Trusted OIDC subjects (suffix after the repo prefix), keyed by a short
-      # name used in the credential's display name.
+      display_name = "${local.name_prefix}-ci-staging"
       subjects = {
         # deploy-backend.yml `deploy-staging` job.
         env-staging = {
           subject     = "environment:staging"
-          description = "staging ENVIRONMENT (deploy-backend.yml deploy-staging)"
-        }
-        # ci.yml `build-image` on a staging push: builds and pushes the image
-        # the staging deploy then pulls. No environment on that job.
-        branch-staging = {
-          subject     = "ref:refs/heads/staging"
-          description = "staging branch (ci.yml build-image)"
-        }
-        # ci.yml `build-image` on a master push. Building the prod image needs
-        # AcrPush only, which this identity has; ci-prod deliberately has no
-        # push right and trusts no branch ref. A master-ref job can therefore
-        # write backend-staging, never backend-prod.
-        branch-master = {
-          subject     = "ref:refs/heads/master"
-          description = "master branch (ci.yml build-image of the prod image)"
+          description = "staging ENVIRONMENT only (deploy-backend.yml deploy-staging)"
         }
       }
-      # AcrPush: image push (ci.yml) + manifest reads of acr-purge.sh.
-      # AcrDelete: acr-purge.sh after a successful deploy (ACR Basic has no
-      # retention policy, acr.tf).
-      acr_roles = ["AcrPush", "AcrDelete"]
+      # AcrPull: manifest/tag reads of acr-purge.sh. AcrDelete: the purge
+      # after a successful deploy (ACR Basic has no retention policy, acr.tf).
+      # No AcrPush: a deploy never pushes.
+      acr_roles     = ["AcrPull", "AcrDelete"]
+      reader_scope  = "rg"
+      container_app = "backend-staging"
     }
 
     prod = {
-      display_name  = "${local.name_prefix}-ci-prod"
-      container_app = "backend-prod"
+      display_name = "${local.name_prefix}-ci-prod"
       subjects = {
         # deploy-backend.yml `deploy-production` and backend-warm-hours.yml,
         # both bound to the `production` environment (required reviewer).
@@ -92,31 +115,29 @@ locals {
           description = "production ENVIRONMENT only (deploy-backend.yml deploy-production, backend-warm-hours.yml)"
         }
       }
-      # No AcrPush: the prod deploy never builds nor pushes (the app pulls
-      # with its own identity). AcrPull: manifest/tag reads of acr-purge.sh,
-      # explicit so the purge keeps working if the RG Reader is narrowed.
-      # AcrDelete: acr-purge.sh after a successful prod deploy.
-      acr_roles = ["AcrPull", "AcrDelete"]
+      acr_roles     = ["AcrPull", "AcrDelete"]
+      reader_scope  = "rg"
+      container_app = "backend-prod"
     }
   }
 
-  ci_env_federated_credentials = merge([
-    for env, cfg in local.ci_env_identities : {
-      for name, s in cfg.subjects : "${env}/${name}" => merge(s, { env = env, name = name })
+  ci_federated_credentials = merge([
+    for id, cfg in local.ci_identities : {
+      for name, s in cfg.subjects : "${id}/${name}" => merge(s, { id = id, name = name })
     }
   ]...)
 
-  ci_env_acr_roles = merge([
-    for env, cfg in local.ci_env_identities : {
-      for role in cfg.acr_roles : "${env}/${role}" => { env = env, role = role }
+  ci_acr_roles = merge([
+    for id, cfg in local.ci_identities : {
+      for role in cfg.acr_roles : "${id}/${role}" => { id = id, role = role }
     }
   ]...)
 }
 
-# ── Per-environment CI identities (#778) ────
+# ── CI identities (#778) ────────────────────
 
 resource "azuread_application" "ci_env" {
-  for_each = local.ci_env_identities
+  for_each = local.ci_identities
 
   display_name = each.value.display_name
 
@@ -124,7 +145,7 @@ resource "azuread_application" "ci_env" {
 }
 
 resource "azuread_service_principal" "ci_env" {
-  for_each = local.ci_env_identities
+  for_each = local.ci_identities
 
   client_id = azuread_application.ci_env[each.key].client_id
 
@@ -132,10 +153,10 @@ resource "azuread_service_principal" "ci_env" {
 }
 
 resource "azuread_application_federated_identity_credential" "ci_env" {
-  for_each = local.ci_env_federated_credentials
+  for_each = local.ci_federated_credentials
 
-  application_id = azuread_application.ci_env[each.value.env].id
-  display_name   = "${local.name_prefix}-ci-${each.value.env}-github-${each.value.name}"
+  application_id = azuread_application.ci_env[each.value.id].id
+  display_name   = "${local.name_prefix}-ci-${each.value.id}-github-${each.value.name}"
   description    = "GitHub Actions OIDC — ${each.value.description}"
 
   audiences = ["api://AzureADTokenExchange"]
@@ -145,23 +166,24 @@ resource "azuread_application_federated_identity_credential" "ci_env" {
 
 # Registry roles (see acr_roles above for each one's justification).
 resource "azurerm_role_assignment" "ci_env_acr" {
-  for_each = local.ci_env_acr_roles
+  for_each = local.ci_acr_roles
 
   scope                = azurerm_container_registry.backend.id
   role_definition_name = each.value.role
-  principal_id         = azuread_service_principal.ci_env[each.value.env].object_id
+  principal_id         = azuread_service_principal.ci_env[each.value.id].object_id
 }
 
-# Reader on the RG: `az containerapp show/list`, `revision list`, `job list`,
-# `job execution list`. acr-purge.sh inventories the revisions and job
-# executions of EVERY app and job of the group before deleting anything (an
-# image a revision references is never purged, #681): without this read the
-# purge deletes nothing. Read-only; it shows the other environment's
-# non-secret configuration, as before the split.
+# Reader. On the RG (staging, prod): `az containerapp show/list`,
+# `revision list`, `job list`, `job execution list`; acr-purge.sh inventories
+# the revisions and job executions of EVERY app and job of the group before
+# deleting anything (an image a revision references is never purged, #681):
+# without this read the purge deletes nothing. Read-only; it shows the other
+# environment's non-secret configuration, as before the split.
+# On the registry only (image-push): `az acr login`.
 resource "azurerm_role_assignment" "ci_env_reader" {
-  for_each = local.ci_env_identities
+  for_each = local.ci_identities
 
-  scope                = azurerm_resource_group.main.id
+  scope                = each.value.reader_scope == "rg" ? azurerm_resource_group.main.id : azurerm_container_registry.backend.id
   role_definition_name = "Reader"
   principal_id         = azuread_service_principal.ci_env[each.key].object_id
 }
@@ -170,15 +192,12 @@ resource "azurerm_role_assignment" "ci_env_reader" {
 # apps are created outside Terraform: the scope is built from the RG id rather
 # than from an azurerm_container_app data source.
 resource "azurerm_role_assignment" "ci_env_backend_app_deployer" {
-  for_each = local.ci_env_identities
+  for_each = { for id, cfg in local.ci_identities : id => cfg if cfg.container_app != null }
 
   scope              = "${azurerm_resource_group.main.id}/providers/Microsoft.App/containerApps/${each.value.container_app}"
   role_definition_id = azurerm_role_definition.backend_app_deployer.role_definition_resource_id
   principal_id       = azuread_service_principal.ci_env[each.key].object_id
 }
-
-# The migration job runner role is assigned per environment in migrate-job.tf
-# (ci_env_migrate_job_runner).
 
 # ── Backend Container Apps: update only (#773) ──
 # Replaces the built-in "Container Apps Contributor" that was granted on the
@@ -232,16 +251,19 @@ resource "azurerm_role_definition" "backend_app_deployer" {
   assignable_scopes = [azurerm_resource_group.main.id]
 }
 
+
 # ============================================
 # LEGACY shared CI identity — to be removed (#778)
 # ============================================
-# The identity both environments used until #778. Kept while the workflows
-# switch to the per-environment client ids, so that a deploy keeps working
-# between the apply and the GitHub variables being set. Once a staging deploy
-# has succeeded with ci-staging, set `ci_shared_identity_enabled = false` and
-# apply: that deletes its 5 federated credentials and all its role
-# assignments (it can then no longer obtain a token nor touch anything). The
-# empty app registration itself is deleted with this block in a follow-up PR.
+# The identity both environments used until #778. The first apply of this
+# file already strips everything that reaches prod: its `master`, `develop`
+# and `environment:production` credentials and its backend-prod assignment
+# are deleted. What remains is the staging path only (staging ref +
+# `environment:staging` credentials, registry and RG reads, backend-staging,
+# the staging migration job), kept as a rollback while the workflows switch
+# to the new client ids. Once a staging deploy has succeeded with ci-staging,
+# set `ci_shared_identity_enabled = false` and apply: that deletes the rest.
+# The empty app registration is deleted with this block in a follow-up PR.
 
 locals {
   ci_shared_count = var.ci_shared_identity_enabled ? 1 : 0
@@ -271,30 +293,6 @@ resource "azuread_application_federated_identity_credential" "staging" {
   subject   = "${local.github_oidc_subject_prefix}:ref:refs/heads/staging"
 }
 
-resource "azuread_application_federated_identity_credential" "master" {
-  count = local.ci_shared_count
-
-  application_id = azuread_application.ci.id
-  display_name   = "${local.name_prefix}-github-master"
-  description    = "GitHub Actions OIDC — master branch"
-
-  audiences = ["api://AzureADTokenExchange"]
-  issuer    = "https://token.actions.githubusercontent.com"
-  subject   = "${local.github_oidc_subject_prefix}:ref:refs/heads/master"
-}
-
-resource "azuread_application_federated_identity_credential" "develop" {
-  count = local.ci_shared_count
-
-  application_id = azuread_application.ci.id
-  display_name   = "${local.name_prefix}-github-develop"
-  description    = "GitHub Actions OIDC — develop branch (workflow_run subject)"
-
-  audiences = ["api://AzureADTokenExchange"]
-  issuer    = "https://token.actions.githubusercontent.com"
-  subject   = "${local.github_oidc_subject_prefix}:ref:refs/heads/develop"
-}
-
 resource "azuread_application_federated_identity_credential" "env_staging" {
   count = local.ci_shared_count
 
@@ -307,17 +305,9 @@ resource "azuread_application_federated_identity_credential" "env_staging" {
   subject   = "${local.github_oidc_subject_prefix}:environment:staging"
 }
 
-resource "azuread_application_federated_identity_credential" "env_production" {
-  count = local.ci_shared_count
-
-  application_id = azuread_application.ci.id
-  display_name   = "${local.name_prefix}-github-env-production"
-  description    = "GitHub Actions OIDC — production ENVIRONMENT (deploy-backend.yml)"
-
-  audiences = ["api://AzureADTokenExchange"]
-  issuer    = "https://token.actions.githubusercontent.com"
-  subject   = "${local.github_oidc_subject_prefix}:environment:production"
-}
+# Removed by the first apply (#778): the legacy `master`, `develop` and
+# `env_production` credentials (resources deleted from the configuration,
+# hence destroyed), and the legacy backend-prod deployer assignment.
 
 resource "azurerm_role_assignment" "ci_acr_push" {
   count = local.ci_shared_count
@@ -343,8 +333,9 @@ resource "azurerm_role_assignment" "ci_reader" {
   principal_id         = azuread_service_principal.ci.object_id
 }
 
+# backend-staging ONLY (the key "backend-prod" of #773 is destroyed).
 resource "azurerm_role_assignment" "ci_backend_app_deployer" {
-  for_each = var.ci_shared_identity_enabled ? var.ci_deploy_container_apps : toset([])
+  for_each = var.ci_shared_identity_enabled ? toset(["backend-staging"]) : toset([])
 
   scope              = "${azurerm_resource_group.main.id}/providers/Microsoft.App/containerApps/${each.key}"
   role_definition_id = azurerm_role_definition.backend_app_deployer.role_definition_resource_id
@@ -359,23 +350,8 @@ moved {
 }
 
 moved {
-  from = azuread_application_federated_identity_credential.master
-  to   = azuread_application_federated_identity_credential.master[0]
-}
-
-moved {
-  from = azuread_application_federated_identity_credential.develop
-  to   = azuread_application_federated_identity_credential.develop[0]
-}
-
-moved {
   from = azuread_application_federated_identity_credential.env_staging
   to   = azuread_application_federated_identity_credential.env_staging[0]
-}
-
-moved {
-  from = azuread_application_federated_identity_credential.env_production
-  to   = azuread_application_federated_identity_credential.env_production[0]
 }
 
 moved {

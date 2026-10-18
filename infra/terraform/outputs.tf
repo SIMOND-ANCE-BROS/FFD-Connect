@@ -60,8 +60,13 @@ output "ci_client_id" {
   value       = azuread_application.ci.client_id
 }
 
+output "ci_image_push_client_id" {
+  description = "Client ID of ci-image-push (#778) — set as repository variable AZURE_IMAGE_PUSH_CLIENT_ID (ci.yml build-image). Not a secret."
+  value       = azuread_application.ci_env["image-push"].client_id
+}
+
 output "ci_staging_client_id" {
-  description = "Client ID of ci-staging (#778) — set as variable AZURE_CLIENT_ID on the `staging` GitHub environment AND as repository variable AZURE_IMAGE_PUSH_CLIENT_ID (ci.yml build-image). Not a secret."
+  description = "Client ID of ci-staging (#778) — set as variable AZURE_CLIENT_ID on the `staging` GitHub environment ONLY. Not a secret."
   value       = azuread_application.ci_env["staging"].client_id
 }
 
@@ -85,7 +90,7 @@ output "github_secrets_to_update" {
   value = {
     AZURE_CLIENT_ID_ENV_STAGING    = azuread_application.ci_env["staging"].client_id
     AZURE_CLIENT_ID_ENV_PRODUCTION = azuread_application.ci_env["prod"].client_id
-    AZURE_IMAGE_PUSH_CLIENT_ID     = azuread_application.ci_env["staging"].client_id
+    AZURE_IMAGE_PUSH_CLIENT_ID     = azuread_application.ci_env["image-push"].client_id
     AZURE_TENANT_ID                = data.azuread_client_config.current.tenant_id
     AZURE_SUBSCRIPTION_ID          = data.azurerm_subscription.current.subscription_id
     ACR_REGISTRY                   = azurerm_container_registry.backend.login_server
