@@ -138,3 +138,83 @@ export class ImportResultsReportDto {
   })
   unlinked!: number | null;
 }
+
+/** How one event of a TopTurnier export was mapped (#786). */
+export class TopTurnierEventMappingDto {
+  @ApiProperty({
+    description: "Dossier de l'épreuve dans l'export",
+    example: "3-nat_adultsavancelat",
+  })
+  folder!: string;
+
+  @ApiProperty({
+    description: "Libellé TopTurnier de l'épreuve",
+    example: "Nat, Adults Avancé Latin",
+  })
+  label!: string;
+
+  @ApiProperty({
+    enum: [
+      "MATCHED",
+      "UNMATCHED",
+      "AMBIGUOUS",
+      "CONFLICT",
+      "NO_RESULTS",
+      "INVALID",
+    ],
+    description:
+      "MATCHED : importée ; UNMATCHED : aucune épreuve du programme ; AMBIGUOUS : plusieurs épreuves possibles (rien n'est deviné) ; CONFLICT : plusieurs épreuves TopTurnier pour la même épreuve du programme ; NO_RESULTS : pas de classement final dans l'export ; INVALID : classement illisible (l'import est refusé)",
+    example: "MATCHED",
+  })
+  status!:
+    | "MATCHED"
+    | "UNMATCHED"
+    | "AMBIGUOUS"
+    | "CONFLICT"
+    | "NO_RESULTS"
+    | "INVALID";
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "Épreuve du programme correspondante",
+  })
+  eventId!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "Nom de l'épreuve du programme correspondante (spécialité, classes d'âge, niveau)",
+    example: "Latines Adulte Avancé",
+  })
+  eventName!: string | null;
+
+  @ApiProperty({
+    type: Boolean,
+    nullable: true,
+    description:
+      "false : épreuve TopTurnier qui réunit plusieurs classes d'âge, rattachée à la seule épreuve du programme qui en fait partie (à vérifier dans l'aperçu)",
+  })
+  exact!: boolean | null;
+
+  @ApiProperty({ description: "Lignes du classement final", example: 6 })
+  rows!: number;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "Pourquoi l'épreuve n'est pas importée",
+  })
+  message!: string | null;
+}
+
+/** Outcome of a TopTurnier export import (#786): the usual counts + the mapping. */
+export class TopTurnierImportReportDto extends ImportResultsReportDto {
+  @ApiProperty({
+    type: [TopTurnierEventMappingDto],
+    description:
+      "Correspondance de chaque épreuve de l'export avec le programme ; seules les MATCHED sont importées",
+  })
+  events!: TopTurnierEventMappingDto[];
+}
