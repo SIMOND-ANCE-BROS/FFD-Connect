@@ -12,9 +12,9 @@
   },
   "dependencies": {
     "framer-motion": "^14.0.0",
-    "lucide-react": "1.54.0",
+    "lucide-react": "1.55.0",
     "marked": "^18.1.0",
-    "radix-ui": "1.7.0",
+    "radix-ui": "1.8.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
