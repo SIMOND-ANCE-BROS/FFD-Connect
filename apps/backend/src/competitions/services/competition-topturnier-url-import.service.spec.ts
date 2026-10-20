@@ -305,6 +305,87 @@ describe("CompetitionTopTurnierUrlImportService (#787, temporary)", () => {
     );
   });
 
+  it("shares the per-site lock with the list of recent competitions (#801)", async () => {
+    let release: () => void = () => undefined;
+    const reading = service.withSiteLock(
+      HOST,
+      () =>
+        new Promise<string>((resolve) => {
+          release = () => resolve("read");
+        }),
+    );
+    // A list read holds the site: an import waits for it…
+    await expect(
+      service.importUrl("comp-1", URL_OK, STAFF),
+    ).rejects.toBeInstanceOf(ConflictException);
+    // …and so does another read.
+    await expect(
+      service.withSiteLock(HOST, () => Promise.resolve("again")),
+    ).rejects.toMatchObject({
+      response: { message: expect.stringContaining("déjà en cours") },
+    });
+    // Another site is not held.
+    await expect(
+      service.withSiteLock("other.example.org", () => Promise.resolve("other")),
+    ).resolves.toBe("other");
+    release();
+    await expect(reading).resolves.toBe("read");
+    // Freed after a failure too.
+    await expect(
+      service.withSiteLock(HOST, () => Promise.reject(new Error("boom"))),
+    ).rejects.toThrow("boom");
+    await expect(
+      service.withSiteLock(HOST, () => Promise.resolve("free")),
+    ).resolves.toBe("free");
+  });
+
+  it("an import in progress holds the site for a list read (#801)", async () => {
+    let release: () => void = () => undefined;
+    importFromSource.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ created: 1, events: [] });
+        }),
+    );
+    const importing = service.importUrl("comp-1", URL_OK, STAFF);
+    await expect(
+      service.withSiteLock(HOST, () => Promise.resolve("x")),
+    ).rejects.toBeInstanceOf(ConflictException);
+    release();
+    await importing;
+  });
+
+  it("fetchSitePage: same redirects and spacing as an export page (#801)", async () => {
+    const hosts = [HOST];
+    fetchPage
+      .mockResolvedValueOnce(redirect(`https://${HOST}/resultats/b.php`))
+      .mockResolvedValueOnce(ok("<html>list</html>"));
+    const page = await service.fetchSitePage(
+      new URL(`https://${HOST}/resultats/index.php?annee=2026`),
+      hosts,
+    );
+    expect(page?.toString()).toBe("<html>list</html>");
+    expect(fetchPage.mock.calls.map(([url]) => url.pathname)).toEqual([
+      "/resultats/index.php",
+      "/resultats/b.php",
+    ]);
+    expect(sleep).toHaveBeenCalledTimes(1);
+
+    fetchPage.mockResolvedValueOnce(redirect("https://evil.example/x"));
+    await expect(
+      service.fetchSitePage(new URL(`https://${HOST}/resultats/`), hosts),
+    ).rejects.toBeInstanceOf(TopTurnierUrlError);
+
+    fetchPage.mockResolvedValueOnce({
+      status: 404,
+      location: null,
+      body: Buffer.alloc(0),
+    });
+    await expect(
+      service.fetchSitePage(new URL(`https://${HOST}/resultats/`), hosts),
+    ).resolves.toBeNull();
+  });
+
   it("sends every real request through the topturnier breaker", async () => {
     fetchPage.mockRestore();
     fire.mockImplementation(() => Promise.resolve(ok("<html></html>")));

@@ -1692,3 +1692,22 @@ export const competitionProgramScheduleSelect = {
   title: true,
   eventId: true,
 } as const;
+
+/**
+ * TEMPORARY (#801): what matching an entry of the TopTurnier list of recent
+ * competitions needs — the days, the place names, and whether results exist
+ * (one event with results is enough: bounded to 1).
+ */
+export const competitionTopTurnierIndexMatchSelect = {
+  id: true,
+  title: true,
+  date: true,
+  endDate: true,
+  city: true,
+  location: true,
+  events: {
+    where: { results: { some: {} } },
+    select: idOnlySelect,
+    take: 1,
+  },
+} as const;
