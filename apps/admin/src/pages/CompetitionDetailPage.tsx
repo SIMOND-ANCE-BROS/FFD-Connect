@@ -12,7 +12,6 @@ import {
   SegmentedControl,
   SimpleGrid,
   Stack,
-  Table,
   Text,
   Textarea,
   Title,
@@ -29,63 +28,13 @@ import { competitionProgramQuery, competitionQuery, unwrap } from '../api/querie
 import { BackToList } from '../components/BackToList';
 import { ListSkeleton } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
+import { ImportError, ReportTable } from '../components/ResultsImportReport';
 import { TopTurnierImport } from '../components/TopTurnierImport';
 import { TopTurnierUrlImport } from '../components/TopTurnierUrlImport';
 import { apiErrorMessage } from '../lib/apiError';
 import { COMPETITION_STATUS_BADGES, competitionDates, eventLabel } from '../lib/competitions';
 import { readText } from '../lib/files';
-import {
-  csvLengthError,
-  deletionSummary,
-  type ImportReportCounts,
-  lineErrors,
-  reportRows,
-  RESULTS_CSV_COLUMNS,
-} from '../lib/resultsImport';
-
-function ReportTable({ report, title }: { report: ImportReportCounts; title: string }) {
-  return (
-    <Table withTableBorder maw={480} aria-label={title}>
-      <Table.Tbody>
-        {reportRows(report).map((row) => (
-          <Table.Tr key={row.key}>
-            <Table.Th scope="row" fw={500}>
-              {row.label}
-            </Table.Th>
-            <Table.Td ta="right">{row.value}</Table.Td>
-          </Table.Tr>
-        ))}
-      </Table.Tbody>
-    </Table>
-  );
-}
-
-/** A refused file: its line errors when the API lists them, its message otherwise. */
-function ImportError({ error, fallback }: { error: unknown; fallback: string }) {
-  const lines = lineErrors(error);
-  return (
-    <Alert color="red" title={apiErrorMessage(error, fallback)}>
-      {lines.length > 0 && (
-        <Table aria-label="Lignes en erreur" mt="xs">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th w={80}>Ligne</Table.Th>
-              <Table.Th>Erreur</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {lines.map((e, i) => (
-              <Table.Tr key={`${e.line}-${i}`}>
-                <Table.Td>{e.line}</Table.Td>
-                <Table.Td>{e.message}</Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-      )}
-    </Alert>
-  );
-}
+import { csvLengthError, deletionSummary, RESULTS_CSV_COLUMNS } from '../lib/resultsImport';
 
 type ImportMode = 'csv' | 'topturnier' | 'url';
 

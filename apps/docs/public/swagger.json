@@ -21709,6 +21709,311 @@
         "tags": ["competitions"]
       }
     },
+    "/admin/topturnier/status": {
+      "get": {
+        "description": "Lit seulement la configuration (drapeau TOPTURNIER_URL_IMPORT_ENABLED, site dans TOPTURNIER_ALLOWED_HOSTS) : aucune requête vers le site. Sert au back-office à afficher ou masquer la page.",
+        "operationId": "AdminTopTurnierController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopTurnierIndexStatusDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "TEMPORAIRE — la liste des compétitions récentes TopTurnier est-elle disponible ?",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/topturnier/competitions": {
+      "get": {
+        "description": "Solution temporaire (#801, avec #787) en attendant un accès aux données de la FFD (#651). STAFF et ADMIN, jamais en « connecté en tant que », à la demande uniquement : chaque appel lit au plus 2 pages publiques (année en cours et précédente, ou l'année demandée) de chairperson.ddsbagnols.com, jamais planifié, préchargé ni mis en cache. Désactivé sauf `TOPTURNIER_URL_IMPORT_ENABLED=true` et le site dans `TOPTURNIER_ALLOWED_HOSTS` (404 sinon). Mêmes protections réseau que l'import par adresse (https, contrôle des adresses, redirections dans la liste, espacement, disjoncteur, délai, taille) et même verrou par site (409 pendant un import depuis ce site). Rapprochement explicite : même jour ET même lieu (ville du dossier de l'export ou début du titre contre ville, lieu ou titre de la compétition) ; une seule compétition → MATCHED, plusieurs → AMBIGUOUS (à choisir), aucune → NONE. L'import reste `POST /competitions/:id/results/import/topturnier-url` (essai à blanc puis import).",
+        "operationId": "AdminTopTurnierController_competitions",
+        "parameters": [
+          {
+            "name": "year",
+            "required": false,
+            "in": "query",
+            "description": "Année lue (année en cours ou précédente, Europe/Paris). Absente : les deux.",
+            "schema": {
+              "minimum": 2000,
+              "maximum": 2100,
+              "example": 2026,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopTurnierCompetitionsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Année hors de l'année en cours et de la précédente"
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Réservé au staff et aux admins, hors « connecté en tant que »"
+          },
+          "404": {
+            "description": "Fonction désactivée"
+          },
+          "409": {
+            "description": "Un import ou une lecture de ce site est déjà en cours"
+          },
+          "429": {
+            "description": "Trop de lectures"
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Site injoignable ou en erreur"
+          },
+          "503": {
+            "description": "Site momentanément coupé par le disjoncteur"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "TEMPORAIRE — compétitions récentes du site TopTurnier, rapprochées de celles de l'app",
+        "tags": ["admin"]
+      }
+    },
     "/reports": {
       "post": {
         "description": "Permet de signaler un problème, bug ou suggestion avec une image optionnelle.",
@@ -32730,6 +33035,114 @@
             "default": false
           }
         }
+      },
+      "TopTurnierIndexStatusDto": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "true : la lecture de la liste des compétitions récentes est disponible sur cet environnement (aucune requête vers le site)"
+          }
+        },
+        "required": ["enabled"]
+      },
+      "TopTurnierCandidateDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID de la compétition de l'app"
+          },
+          "title": {
+            "type": "string",
+            "description": "Titre de la compétition de l'app"
+          }
+        },
+        "required": ["id", "title"]
+      },
+      "TopTurnierCompetitionMatchDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["MATCHED", "AMBIGUOUS", "NONE"],
+            "description": "MATCHED : une seule compétition de l'app le même jour et au même endroit ; AMBIGUOUS : plusieurs (à choisir à la main, rien n'est deviné) ; NONE : aucune",
+            "example": "MATCHED"
+          },
+          "competitionId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Compétition rapprochée (MATCHED), null sinon"
+          },
+          "candidates": {
+            "description": "Compétitions possibles d'une entrée AMBIGUOUS (vide sinon)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TopTurnierCandidateDto"
+            }
+          }
+        },
+        "required": ["status", "competitionId", "candidates"]
+      },
+      "TopTurnierCompetitionItemDto": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "nullable": true,
+            "description": "Jour de la compétition (YYYY-MM-DD), null si illisible",
+            "example": "2026-10-17"
+          },
+          "title": {
+            "type": "string",
+            "description": "Titre affiché par le site",
+            "example": "Exempleville, Trophée d'automne"
+          },
+          "category": {
+            "type": "string",
+            "nullable": true,
+            "description": "Catégorie affichée par le site",
+            "example": "Ep. à Points, Opens"
+          },
+          "exportUrl": {
+            "type": "string",
+            "description": "Adresse https de l'export (page de la compétition), sur le site autorisé : à passer à `/competitions/:id/results/import/topturnier-url`",
+            "example": "https://chairperson.ddsbagnols.com/resultats/20261017_exempleville/index.htm"
+          },
+          "match": {
+            "$ref": "#/components/schemas/TopTurnierCompetitionMatchDto"
+          },
+          "resultsAlreadyImported": {
+            "type": "boolean",
+            "description": "true : la compétition rapprochée (MATCHED) a déjà des résultats dans l'app"
+          }
+        },
+        "required": ["date", "title", "category", "exportUrl", "match", "resultsAlreadyImported"]
+      },
+      "TopTurnierCompetitionsDto": {
+        "type": "object",
+        "properties": {
+          "years": {
+            "description": "Années lues sur le site",
+            "example": [2026, 2025],
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "items": {
+            "description": "Compétitions listées, plus récentes d'abord",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TopTurnierCompetitionItemDto"
+            }
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "true : la liste du site dépassait le plafond lu par année"
+          }
+        },
+        "required": ["years", "items", "truncated"]
       },
       "NotificationPreferenceDto": {
         "type": "object",

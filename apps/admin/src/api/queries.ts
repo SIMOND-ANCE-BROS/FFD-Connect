@@ -15,6 +15,7 @@ import {
   healthDataAccessLogControllerList,
   adminTracksControllerFindOne,
   adminTracksControllerList,
+  adminTopTurnierControllerStatus,
   competitionsControllerFindAll,
   competitionsControllerFindOne,
   competitionsControllerGetProgram,
@@ -123,6 +124,20 @@ export const pendingCountQuery = queryOptions({
   queryKey: ['admin', 'moderation', 'pending-count'],
   queryFn: () => unwrap(trackCorrectionsControllerPendingCount()),
   // Never wake the scale-to-zero backend on a refocus, a reconnect or a retry.
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+  retry: false,
+});
+
+/**
+ * TEMPORARY (#801): is the list of recent TopTurnier competitions available
+ * here? Configuration only — the API never contacts the site for it. Read
+ * once per session for the menu.
+ */
+export const topTurnierStatusQuery = queryOptions({
+  queryKey: ['admin', 'topturnier', 'status'],
+  queryFn: () => unwrap(adminTopTurnierControllerStatus()),
+  staleTime: Infinity,
   refetchOnWindowFocus: false,
   refetchOnReconnect: false,
   retry: false,

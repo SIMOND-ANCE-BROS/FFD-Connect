@@ -76,7 +76,10 @@ export class CompetitionTopTurnierUrlImportService {
     CompetitionTopTurnierUrlImportService.name,
   );
 
-  /** Sites with an import in progress (one at a time per site). */
+  /**
+   * Sites with an import or a list read (#801) in progress: one at a time
+   * per site, shared by both.
+   */
   private readonly importsInProgress = new Set<string>();
   /** Time of the last request to each site, for the spacing. */
   private readonly lastRequestAt = new Map<string, number>();
@@ -191,6 +194,35 @@ export class CompetitionTopTurnierUrlImportService {
         return this.fetchFollowingRedirects(url, hosts);
       },
     };
+  }
+
+  /**
+   * TEMPORARY (#801): runs `read` while holding the site, like an import does
+   * (409 while an import or another read of the site is in progress). For the
+   * list of recent competitions, which reads its pages with `fetchSitePage`.
+   */
+  async withSiteLock<T>(site: string, read: () => Promise<T>): Promise<T> {
+    if (this.importsInProgress.has(site)) {
+      throw new ConflictException(
+        "Une lecture de ce site est déjà en cours : réessayer quand elle sera terminée",
+      );
+    }
+    this.importsInProgress.add(site);
+    try {
+      return await read();
+    } finally {
+      this.importsInProgress.delete(site);
+    }
+  }
+
+  /**
+   * One page of an allowlisted site with the same protections as an export
+   * page: spacing, breaker, timeout, size cap, redirects re-checked against
+   * the allowlist. null for a 404 / 410. The URL must already have passed
+   * `checkTopTurnierUrl`.
+   */
+  fetchSitePage(url: URL, hosts: readonly string[]): Promise<Buffer | null> {
+    return this.fetchFollowingRedirects(url, hosts);
   }
 
   private async fetchFollowingRedirects(
