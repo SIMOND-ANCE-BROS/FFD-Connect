@@ -1,3 +1,5 @@
+import { parseChairpersonIndex } from "./chairperson-index";
+import { placeKey, titleHeadKey } from "./chairperson-match";
 import {
   MAX_COLLECTED_TEXT,
   htmlText,
@@ -50,13 +52,34 @@ const ADVERSARIAL: [string, string][] = [
   ["long attribute run", `<td ${repeat("a=b ")}>`],
   ["long href attribute", `<a ${repeat(" href ")}>x</a>`],
   ["entity-like runs", repeat("&#x")],
+  // List of recent competitions (#801).
+  ["unclosed result blocks", repeat("<div class='resultatsEvent'>")],
+  [
+    "blocks with unclosed captures",
+    repeat("<div class='resultatsEvent'><p><h4><a href='x/index.htm'>"),
+  ],
+  [
+    "deep div nesting",
+    `${repeat("<div>", SIZE / 2)}${repeat("</div>", SIZE / 2)}`,
+  ],
+  ["long class attribute", `<div class='${repeat("resultatsEvent ")}'>`],
+  [
+    "long href of a block",
+    `<div class='resultatsEvent'><a href='${repeat("../")}index.htm'>x</a>`,
+  ],
+  ["long date text", `<div class='resultatsEvent'><p>${repeat("17 oct ")}</p>`],
 ];
+
+const INDEX_URL = new URL(
+  "https://chairperson.ddsbagnols.com/resultats/index.php?annee=2026",
+);
 
 const PARSERS: [string, (html: string) => unknown][] = [
   ["ranking", parseTopTurnierRanking],
   ["index", parseTopTurnierIndex],
   ["title", pageTitle],
   ["text", htmlText],
+  ["chairperson list", (html) => parseChairpersonIndex(html, INDEX_URL)],
 ];
 
 const CASES = ADVERSARIAL.flatMap(([name, html]) =>
@@ -82,6 +105,24 @@ describe("TopTurnier parsing of adversarial pages (ReDoS)", () => {
     const ratio = timed(run(large)) / Math.max(timed(run(small)), 1);
     // Linear ≈ 8, quadratic ≈ 64.
     expect(ratio).toBeLessThan(24);
+  });
+
+  it("scales linearly on the list of recent competitions (#801)", () => {
+    const piece =
+      "<div class='resultatsEvent'><p>1 jan 26</p><a href='20260101_a/index.htm'>A</a></div>";
+    const small = repeat(piece, 64 * 1024);
+    const large = repeat(piece, 8 * 64 * 1024);
+    const run = (html: string) => () => parseChairpersonIndex(html, INDEX_URL);
+    timed(run(small)); // warm-up
+    const ratio = timed(run(large)) / Math.max(timed(run(small)), 1);
+    // Linear ≈ 8, quadratic ≈ 64.
+    expect(ratio).toBeLessThan(24);
+  });
+
+  it("compares place names in bounded time (#801)", () => {
+    const long = `${"saint ".repeat(SIZE / 6)}-${"é".repeat(SIZE)}`;
+    expect(timed(() => placeKey(long))).toBeLessThan(BUDGET_MS);
+    expect(timed(() => titleHeadKey(long))).toBeLessThan(BUDGET_MS);
   });
 
   it("a 2 MB page of open non-result rows stays well under a second", () => {

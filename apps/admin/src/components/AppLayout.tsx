@@ -19,17 +19,25 @@ import { useDisclosure } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router';
-import { pendingCountQuery, pendingRenewalsCountQuery } from '../api/queries';
+import {
+  pendingCountQuery,
+  pendingRenewalsCountQuery,
+  topTurnierStatusQuery,
+} from '../api/queries';
 import { useSession } from '../session/sessionStore';
 import { signOut } from '../session/sessionSync';
 
 /** Queues whose pending count is shown as a badge in the menu. */
 type Queue = 'moderation' | 'renewals';
 
+/** Optional pages, shown only when the API says they are available. */
+type Feature = 'topturnier';
+
 interface NavLeaf {
   to: string;
   label: string;
   queue?: Queue;
+  feature?: Feature;
 }
 
 /** A section of the menu: a page, or a group of related pages. */
@@ -41,6 +49,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: '/users', label: 'Utilisateurs' },
   { to: '/clubs', label: 'Clubs' },
   { to: '/competitions', label: 'Compétitions' },
+  // TEMPORARY (#801, with #787): only when the backend enables it.
+  {
+    to: '/chairperson-results',
+    label: 'Compétitions récentes (chairperson)',
+    feature: 'topturnier',
+  },
   {
     label: 'Musiques',
     children: [
@@ -131,6 +145,12 @@ export function AppLayout() {
     closeNav();
   }, [pathname, closeNav]);
 
+  // Configuration only, read once per session: the API never reaches the site for it.
+  const topTurnier = useQuery(topTurnierStatusQuery);
+  const features: Record<Feature, boolean> = {
+    topturnier: topTurnier.data?.enabled === true,
+  };
+
   const counts: Record<Queue, number> = {
     moderation: pending.data?.count ?? 0,
     renewals: renewals.data?.count ?? 0,
@@ -195,19 +215,20 @@ export function AppLayout() {
         <AppShell.Section grow component={ScrollArea} p="sm">
           <Stack gap={2}>
             {NAV_ITEMS.map((item) => {
-              const leaf = (l: NavLeaf) => (
-                <NavLink
-                  key={l.to}
-                  component={RouterLink}
-                  to={l.to}
-                  label={l.label}
-                  active={isActive(pathname, l.to)}
-                  rightSection={l.queue ? countBadge(counts[l.queue]) : undefined}
-                  onClick={closeNav}
-                  style={NAV_LINK_STYLE}
-                  fw={500}
-                />
-              );
+              const leaf = (l: NavLeaf) =>
+                l.feature && !features[l.feature] ? null : (
+                  <NavLink
+                    key={l.to}
+                    component={RouterLink}
+                    to={l.to}
+                    label={l.label}
+                    active={isActive(pathname, l.to)}
+                    rightSection={l.queue ? countBadge(counts[l.queue]) : undefined}
+                    onClick={closeNav}
+                    style={NAV_LINK_STYLE}
+                    fw={500}
+                  />
+                );
               if (!('children' in item)) return leaf(item);
               return (
                 <Box key={item.label} role="group" aria-labelledby={`nav-${item.label}`} mt={4}>

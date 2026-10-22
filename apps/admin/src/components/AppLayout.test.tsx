@@ -20,6 +20,12 @@ const renewalsSpy = (total: number) =>
     error: undefined,
   } as never);
 
+/** #801: the optional chairperson page, enabled or not by the API. */
+const topTurnierSpy = (enabled: boolean) =>
+  vi
+    .spyOn(sdk, 'adminTopTurnierControllerStatus')
+    .mockResolvedValue({ data: { enabled }, error: undefined } as never);
+
 function renderLayout(path = '/users') {
   return renderWithProviders(
     <Routes>
@@ -41,6 +47,7 @@ describe('AppLayout', () => {
     vi.restoreAllMocks();
     user = setupUser();
     renewalsSpy(0);
+    topTurnierSpy(false);
   });
 
   it('lists the sections of the back-office, without a "new user" shortcut', async () => {
@@ -144,6 +151,25 @@ describe('AppLayout', () => {
     expect(screen.queryByRole('link', { name: 'Musiques' })).toBeNull();
   });
 
+  it('hides « Compétitions récentes (chairperson) » while the API disables it (#801)', async () => {
+    countSpy(0);
+    renderLayout();
+    await waitFor(() => expect(sdk.adminTopTurnierControllerStatus).toHaveBeenCalled());
+    expect(screen.queryByRole('link', { name: 'Compétitions récentes (chairperson)' })).toBeNull();
+  });
+
+  it('shows « Compétitions récentes (chairperson) » under « Compétitions » when enabled (#801)', async () => {
+    countSpy(0);
+    topTurnierSpy(true);
+    renderLayout();
+    const link = await screen.findByRole('link', { name: 'Compétitions récentes (chairperson)' });
+    expect(link).toHaveAttribute('href', '/chairperson-results');
+    const order = screen.getAllByRole('link').map((l) => l.textContent);
+    expect(order.indexOf('Compétitions récentes (chairperson)')).toBe(
+      order.indexOf('Compétitions') + 1,
+    );
+  });
+
   it('marks the current section as active, including its sub-pages', () => {
     countSpy(0);
     renderLayout('/users/42');
@@ -163,6 +189,7 @@ describe('AppLayout', () => {
       '/users',
       '/clubs',
       '/competitions',
+      '/chairperson-results',
       '/tracks',
       '/moderation',
       '/license-renewals',

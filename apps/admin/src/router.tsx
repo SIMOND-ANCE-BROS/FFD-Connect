@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router';
 import { AppLayout } from './components/AppLayout';
 import { AuditLogPage } from './pages/AuditLogPage';
+import { ChairpersonCompetitionsPage } from './pages/ChairpersonCompetitionsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { HealthDataAccessLogPage } from './pages/HealthDataAccessLogPage';
 import { LoginPage } from './pages/LoginPage';
@@ -41,6 +42,8 @@ export const router = createBrowserRouter([
       { path: 'clubs/:id', element: <ClubDetailPage /> },
       { path: 'competitions', element: <CompetitionsPage /> },
       { path: 'competitions/:id', element: <CompetitionDetailPage /> },
+      // TEMPORARY (#801, with #787).
+      { path: 'chairperson-results', element: <ChairpersonCompetitionsPage /> },
       { path: 'moderation', element: <ModerationPage /> },
       { path: 'moderation/:id', element: <ModerationDetailPage /> },
       { path: 'license-renewals', element: <LicenseRenewalsPage /> },
