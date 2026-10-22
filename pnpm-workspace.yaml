@@ -50,7 +50,6 @@ overrides:
   path-to-regexp: '>=8.4.0'
   lodash: '>=4.18.0'
   protobufjs: '>=8.6.6'
-  vite: '>=8.0.16'
   '@xmldom/xmldom': '0.8.15'
   axios: '^1.20.0'
   fast-xml-builder: '>=1.1.7'
@@ -65,14 +64,13 @@ overrides:
   ws: '>=8.21.0'
   # Planchers de sécurité Dependabot (2026-07) — deps transitives/dev.
   # Volontairement absents (le correctif casse plus qu'il ne répare) :
-  #  - ajv (<6.14.0) : 6.14.0 n'existe pas dans la ligne v6 (fix en v8, majeur cassant)
+  #  - (ajv : exclusion levee le 2026-10-22, voir plus bas)
   #  - (js-yaml : exclusion levée le 2026-08-29, voir plus bas)
   #  - (uuid : exclusion levée le 2026-10-07, voir plus bas)
   qs: '^6.16.0'
   esbuild: '>=0.28.1'
   '@tootallnate/once': '>=2.0.1'
   joi: '^18.2.5'
-  launch-editor: '>=2.14.1'
   smol-toml: '^1.7.1'
   yaml: '>=2.8.3'
   # websocket-driver GHSA-xv26-6w52-cph6 (CRITICAL, 2026) — transitive via
@@ -258,6 +256,29 @@ overrides:
   #    tire par argparse@1 <- js-yaml@3 <- @istanbuljs/load-nyc-config
   #    (couverture Jest). js-yaml@3 n'utilise argparse que dans son CLI ; les
   #    chaines de format ne sont jamais fournies par un tiers.
+
+  # Planchers ajoutes le 2026-10-22 (issue #806) — avis publies apres le
+  # 2026-10-07, detectes par la porte osv-scanner. Tous corriges dans la ligne
+  # majeure deja resolue ; forme « plage vulnerable -> version corrigee ».
+  #
+  # vite (GHSA-587h-7wmj-h5pm high + GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw,
+  # GHSA-rq7h-c2jc-7f22, GHSA-9jrq-w75r-8gcw) : l'ancien `vite: '>=8.0.16'`
+  # (un `>=` nu) figeait la resolution a 8.1.0 alors que apps/admin et
+  # apps/landing declarent deja ^8.3.x — meme piege qu'axios plus haut.
+  # Consommateurs : apps/admin, apps/landing, astro (^8.3.4), vitest
+  # (^6 || ^7 || ^8). Corrige en 8.3.3 dans la ligne 8.3.
+  'vite@>=8.0.0 <8.3.5': '^8.3.5'
+  # launch-editor (GHSA-587h-7wmj-h5pm high + 2 moderates) : corrige en 2.14.2.
+  # Tire par @react-native/dev-middleware et vite (outillage de dev uniquement).
+  # Remplace l'ancien `>=2.14.1` nu.
+  'launch-editor@<2.14.2': '^2.14.2'
+  # follow-redirects (GHSA-8r9p-f939-6h3c, GHSA-q3jh-wrc6-jgq8) : corrige en
+  # 1.16.1, meme ligne. Transitif via axios (backend + client).
+  'follow-redirects@<1.16.1': '^1.16.1'
+  # ajv v6 (GHSA-2g4f-4pwh-qvx6, medium) : l'exclusion de juillet disait « pas
+  # de 6.14.0 » ; elle est publiee depuis. Forme bornee a la ligne 6 : les
+  # consommateurs de la v8 ne bougent pas.
+  'ajv@>=6.0.0 <6.14.0': '^6.14.0'
 
 onlyBuiltDependencies:
   - '@firebase/util'
