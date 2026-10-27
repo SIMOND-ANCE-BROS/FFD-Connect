@@ -25,7 +25,7 @@ overrides:
   'metro-core@>=0.84.0 <0.84.5': '0.84.5'
   'metro-runtime@>=0.84.0 <0.84.5': '0.84.5'
   'metro-source-map@>=0.84.0 <0.84.5': '0.84.5'
-  multer: '^2.4.0'
+  multer: '^2.5.0'
   serialize-javascript: '>=7.0.3'
   rollup: '>=4.59.0'
   'hono@<4.12.34': '4.12.34'
@@ -53,7 +53,7 @@ overrides:
   '@xmldom/xmldom': '0.8.15'
   axios: '^1.20.0'
   fast-xml-builder: '>=1.1.7'
-  fast-uri: '^4.1.4'
+  fast-uri: '^4.2.3'
   astro: '^7.2.8'
   # shell-quote GHSA-pqg4-j6r4-53mv (CRITICAL, 2026-10) — quote() injection, fixed in 1.11.0.
   # Dependents: launch-editor (^1.8.4), react-devtools-core (^1.6.1).
@@ -111,7 +111,7 @@ overrides:
   'postcss@<=8.5.22': '8.5.23'
   'sharp@<0.35.4': '0.35.4'
   'valibot@<=1.4.1': '1.4.2'
-  'body-parser@>=2.0.0 <2.3.0': '2.3.0'
+  'body-parser@>=2.0.0 <2.4.0': '^2.4.0'
 
   # Planchers ajoutes le 2026-09-07 — les 3 avis high qui bloquaient la porte
   # d'audit sur develop. Les deux paquets concernes sont transitifs et ont chacun
@@ -279,6 +279,30 @@ overrides:
   # de 6.14.0 » ; elle est publiee depuis. Forme bornee a la ligne 6 : les
   # consommateurs de la v8 ne bougent pas.
   'ajv@>=6.0.0 <6.14.0': '^6.14.0'
+
+  # Planchers ajoutes le 2026-10-27 (issue #821) — avis publies apres le
+  # 2026-10-22, detectes par le Nightly Audit. Forme « plage vulnerable ->
+  # version corrigee », bornee a la ligne majeure deja resolue.
+  #
+  # multer (GHSA-q7qp-rjg7-q26m high) : corrige en 2.5.0. Le plancher `multer`
+  # en tete de fichier passe de ^2.4.0 a ^2.5.0 (apps/backend declare ^2.5.0) ;
+  # il est necessaire car @nestjs/platform-express 11.x epingle multer en
+  # version exacte (2.4.0 en 11.2.8).
+  # body-parser (GHSA-27r3-jxmh-p828 high) : corrige en 2.4.0 dans la ligne 2 ;
+  # le plancher ci-dessus passe de `<2.3.0 -> 2.3.0` a `<2.4.0 -> ^2.4.0`.
+  # fast-uri (GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr moderates + 2 low) :
+  # corrige en 4.2.3 ; le plancher ci-dessus passe de ^4.1.4 a ^4.2.3.
+  #
+  # undici (GHSA-xjj6-f33q-929c high + GHSA-4qv8-2p9j-2685,
+  # GHSA-f72v-6w45-q472 moderates) : corrige en 8.12.2 dans la ligne 8.
+  'undici@>=8.0.0 <8.12.2': '^8.12.2'
+  #
+  # zod (GHSA-mrhx-c7xc-m3w5 high) : corrige en 4.6.6, apps/client declare
+  # ^4.6.6. La copie 3.25.76 tiree par @expo/cli (^3.25.76, y compris dans la
+  # derniere 57.0.x) n'a AUCUN correctif dans la ligne 3 : la forcer en 4.x
+  # casserait l'outillage Expo (API differente). Exception datee dans
+  # audit-exceptions.json, comme @azure/msal-node (correctif uniquement en
+  # 7.1.0, alors que @azure/identity 4.x declare ^6.0.0).
 
 onlyBuiltDependencies:
   - '@firebase/util'

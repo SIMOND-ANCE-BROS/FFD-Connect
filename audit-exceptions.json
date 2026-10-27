@@ -14,12 +14,6 @@
       "reason": "Deni de service par boucle infinie dans le parseur ICNS. Correctif publie en 2.0.3 (2026-09) mais UNIQUEMENT dans la ligne 2.x : image-size est tire par metro, qui declare ^1.x, et aucune 1.x corrigee n'existe. Forcer la 2.x casserait metro (API differente). Outil de build local (lit des images du depot), pas expose a des entrees non fiables. A reexaminer au plus tard le 2026-11-27 ou au passage a un metro compatible 2.x."
     },
     {
-      "id": "GHSA-vfj7-8cjw-p6xm",
-      "package": "braces",
-      "expires": "2027-01-05",
-      "reason": "Deni de service par epuisement de pile via des motifs profondement imbriques (CVSS 7.5, publie le 2026-09-18). Aucun correctif amont : l'avis couvre <= 3.0.3, qui est la derniere version publiee. Transitif via micromatch@4.0.8, lui-meme tire par l'outillage de build (jest, metro) pour le filtrage de chemins : les motifs proviennent de la configuration du depot, jamais d'une entree non fiable. Non embarque dans le bundle applicatif. A reexaminer au plus tard le 2027-01-05 ou des qu'une 3.0.4 parait."
-    },
-    {
       "id": "GHSA-ch52-4w7c-c8xp",
       "package": "http-cache-semantics",
       "expires": "2027-01-05",
@@ -30,6 +24,18 @@
       "package": "node-forge",
       "expires": "2027-01-05",
       "reason": "La verification de signature RSA PKCS#1 v1.5 accepte des elements DigestAlgorithm imbriques supplementaires (CVSS 7.5, publie le 2026-09-03). Aucun correctif amont : l'avis couvre <= 1.4.0, derniere version publiee, et le plancher pnpm est deja sur cette version. Transitif via @expo/cli et @expo/code-signing-certificates, tires par le paquet expo : outillage de build et de signature des mises a jour, que Metro n'inclut pas dans le bundle. Depuis #162, aussi transitif cote backend via passkit-generator, qui l'utilise uniquement pour SIGNER le pass Apple Wallet (PKCS#7) avec notre propre cle : aucune signature tierce n'est verifiee. Le code applicatif ne verifie aucune signature RSA avec node-forge a l'execution. A reexaminer au plus tard le 2027-01-05."
+    },
+    {
+      "id": "GHSA-xcx6-jx8p-x3h5",
+      "package": "@azure/msal-node",
+      "expires": "2027-01-25",
+      "reason": "Divulgation de parametres vers un point de terminaison controle par un attaquant dans le flux authorization code (CVSS high, publie en 2026-10). Correctif UNIQUEMENT en 7.1.0 (aucune 6.x corrigee) alors que @azure/identity, y compris sa derniere 4.14.0, declare msal-node ^6.0.0 : forcer la 7.x franchirait une majeure sous un paquet qui ne la supporte pas. Le backend n utilise que DefaultAzureCredential (identite managee, OCR, TTS, Blob Storage) et n appelle jamais le flux authorization code (acquireTokenByCode), seul flux concerne. Aussi transitif via unstorage <- astro (construction statique de apps/docs). A reexaminer au plus tard le 2027-01-25 ou des que @azure/identity accepte msal-node 7.1+."
+    },
+    {
+      "id": "GHSA-mrhx-c7xc-m3w5",
+      "package": "zod",
+      "expires": "2027-01-25",
+      "reason": "Epuisement memoire lors de la validation de collections contraintes surdimensionnees (CVSS high, publie en 2026-10). Corrige en 4.6.6 uniquement : la copie 4.x (apps/client) est corrigee par le plancher ^4.6.6, mais la copie 3.25.76 est tiree par @expo/cli (^3.25.76, y compris dans la derniere 57.0.x) et aucune 3.x corrigee n existe. Forcer la 4.x casserait l outillage Expo (API differente). @expo/cli est un outil de build et de developpement qui valide la configuration du depot, jamais des entrees non fiables, et n est pas inclus dans le bundle applicatif. L exception porte sur l id d avis et couvre donc aussi la 4.x si elle reapparaissait : surveiller que DEPENDENCY_AUDIT.md ne liste que zod@3. A reexaminer au plus tard le 2027-01-25 ou au passage a un @expo/cli sur zod 4."
     }
   ]
 }

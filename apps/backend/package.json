@@ -68,7 +68,7 @@
     "helmet": "^8.3.0",
     "iconv-lite": "^0.7.3",
     "ioredis": "^6.0.0",
-    "multer": "^2.3.0",
+    "multer": "^2.5.0",
     "music-tempo": "^1.0.3",
     "nestjs-pino": "^5.2.1",
     "opossum": "^10.0.0",
