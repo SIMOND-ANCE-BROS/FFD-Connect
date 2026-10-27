@@ -35,7 +35,7 @@
     "test:mutation:ci": "stryker run --reporters progress,html"
   },
   "dependencies": {
-    "@azure/identity": "^4.13.3",
+    "@azure/identity": "^4.14.0",
     "@azure/storage-blob": "^12.34.0",
     "@ffd-connect/shared": "workspace:*",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
