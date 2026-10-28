@@ -199,11 +199,3 @@ variable "migrate_job_placeholder_image" {
   type        = string
   default     = "mcr.microsoft.com/k8se/quickstart-jobs:latest"
 }
-
-# ── CI identities (#773, #778) ──────────────
-
-variable "ci_shared_identity_enabled" {
-  description = "Keep the LEGACY shared CI identity (ffd-connect-production-ci) for STAGING only (its prod subjects and rights are already gone, #778): rollback path while the workflows switch to ci-image-push / ci-staging / ci-prod. Set false once a staging deploy has succeeded with ci-staging, then apply to delete its remaining federated credentials and role assignments (runbook deploiement-azure.md, \"Droits des identités CI\")."
-  type        = bool
-  default     = true
-}
