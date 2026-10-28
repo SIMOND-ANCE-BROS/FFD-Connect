@@ -29,6 +29,7 @@ export function mockPhoneViewport() {
   vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
     ...desktop(query),
     media: query,
-    matches: query === MOBILE_QUERY,
+    // Keeps the stub's other answers (reduced motion, see vitest.setup.ts).
+    matches: query === MOBILE_QUERY || desktop(query).matches,
   }));
 }
