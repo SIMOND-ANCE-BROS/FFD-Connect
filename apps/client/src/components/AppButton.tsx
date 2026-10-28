@@ -4,7 +4,6 @@ import {
   Pressable,
   StyleSheet,
   TextStyle,
-  useColorScheme,
   View,
   ViewStyle,
 } from "react-native";
@@ -14,6 +13,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 
+import { useTheme } from "../context/ThemeContext";
 import { theme } from "../theme";
 import { AppText } from "./AppText";
 
@@ -68,8 +68,10 @@ const AppButtonComponent = React.forwardRef<View, AppButtonProps>(
     },
     ref,
   ) {
-    const scheme = useColorScheme();
-    const currentTheme = theme[scheme === "dark" ? "dark" : "light"];
+    // The in-app theme (honours the user's light/dark/system choice), not the
+    // OS scheme: a forced dark mode on a light phone used to keep light-mode
+    // outline/ghost labels (ffdBlue, ~2:1 on the dark surfaces).
+    const { theme: currentTheme } = useTheme();
     const palette = theme.colors;
 
     // Animation State

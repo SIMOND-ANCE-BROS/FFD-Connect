@@ -168,7 +168,11 @@ export const NotificationsScreen = ({ navigation }: Props) => {
               })}
             </AppText>
           </View>
-          <AppText variant="body" style={styles.bodyText}>
+          {/* Theme ink: the static #666 was 3.1:1 on the dark cards. */}
+          <AppText
+            variant="body"
+            style={[styles.bodyText, { color: theme.textSecondary }]}
+          >
             {item.body}
           </AppText>
         </View>
@@ -213,7 +217,11 @@ export const NotificationsScreen = ({ navigation }: Props) => {
             testID="notifications-read-all-button"
           >
             <CheckCheck size={20} color={theme.primary} />
-            <AppText variant="caption" weight="bold" style={styles.readAllText}>
+            <AppText
+              variant="caption"
+              weight="bold"
+              style={[styles.readAllText, { color: theme.primary }]}
+            >
               Tout lire
             </AppText>
           </TouchableOpacity>
@@ -321,7 +329,7 @@ const styles = StyleSheet.create({
   },
   backButton: { padding: 4 },
   readAllButton: { flexDirection: "row", alignItems: "center", padding: 8 },
-  readAllText: { color: "#007AFF", marginLeft: 4 },
+  readAllText: { marginLeft: 4 },
   title: { flex: 1, marginLeft: 8 },
   list: { padding: 16, paddingBottom: 32 },
   card: {
@@ -357,7 +365,7 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 2,
   },
-  bodyText: { color: "#666", marginTop: 4 },
+  bodyText: { marginTop: 4 },
   iconBox: {
     width: 40,
     height: 40,

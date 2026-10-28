@@ -231,10 +231,11 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                     testID="login-biometric-button"
                     style={[
                       styles.biometricButton,
-                      { backgroundColor: currentTheme.secondary },
+                      // primary on secondary was ~2:1 in both themes.
+                      { backgroundColor: currentTheme.primaryFill },
                     ]}
                   >
-                    <Fingerprint size={28} color={currentTheme.primary} />
+                    <Fingerprint size={28} color={currentTheme.onPrimary} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -364,7 +365,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textTransform: "uppercase",
     letterSpacing: 1,
-    fontSize: 11,
     fontWeight: "600",
   },
   input: {

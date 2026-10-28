@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react-native";
+import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import React from "react";
 import { View } from "react-native";
 import { ThemeProvider } from "../../context/ThemeContext";
@@ -110,6 +110,26 @@ describe("AppButton", () => {
       expect(labelStyle.color).toBe(theme.light.onDisabled);
     },
   );
+
+  // The in-app theme choice wins over the OS scheme: a dark preference on a
+  // light phone must not keep the light outline label (ffdBlue, ~2:1 on dark).
+  it("follows the in-app dark preference, not the OS scheme", async () => {
+    (mockAuth.getAuthConfig as jest.Mock).mockResolvedValueOnce({
+      isLoggedIn: false,
+      role: "LICENSEE",
+      appTheme: "dark",
+      animationsEnabled: true,
+    });
+    const { getByText } = await renderWithTheme(
+      <AppButton title="Contour" onPress={jest.fn()} variant="outline" />,
+    );
+    await waitFor(() => {
+      const labelStyle = StyleSheet.flatten(
+        getByText("Contour").props.style,
+      ) as TextStyle;
+      expect(labelStyle.color).toBe(theme.dark.primary);
+    });
+  });
 
   it("does not trigger on press when disabled", async () => {
     const mockPress = jest.fn();

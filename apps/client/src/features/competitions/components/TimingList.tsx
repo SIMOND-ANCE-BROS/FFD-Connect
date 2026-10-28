@@ -9,6 +9,11 @@ import Animated, {
 import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
 import { ScheduleItem } from "../context/CompetitionContext";
+import { theme as themeTokens } from "../../../theme";
+
+// « Maintenant » marker: white text sits on it, so the deep red (4.83:1 in
+// both themes), not the dark theme's bright danger (3.76:1).
+const NOW_FILL = themeTokens.colors.error;
 
 interface TimingListProps {
   schedule: ScheduleItem[];
@@ -113,19 +118,13 @@ export const TimingList: React.FC<TimingListProps> = ({
       >
         {showTimeLineBefore && (
           <View style={styles.timeLineContainer}>
-            <View
-              style={[styles.timeLine, { backgroundColor: theme.danger }]}
-            />
-            <View
-              style={[styles.timeLineBadge, { backgroundColor: theme.danger }]}
-            >
+            <View style={[styles.timeLine, { backgroundColor: NOW_FILL }]} />
+            <View style={[styles.timeLineBadge, { backgroundColor: NOW_FILL }]}>
               <AppText variant="caption" weight="600" color="white">
                 Maintenant
               </AppText>
             </View>
-            <View
-              style={[styles.timeLine, { backgroundColor: theme.danger }]}
-            />
+            <View style={[styles.timeLine, { backgroundColor: NOW_FILL }]} />
           </View>
         )}
 
@@ -149,8 +148,15 @@ export const TimingList: React.FC<TimingListProps> = ({
             <AppText
               variant="body"
               weight="600"
+              // On « my passage » rows (primaryFill) the time stays white:
+              // red on that blue was ~2:1 (1.3:1 in dark). The struck-through
+              // scheduled time below still shows the delay.
               color={
-                isDelayed ? theme.danger : isMyEvent ? "white" : theme.text
+                isMyEvent
+                  ? theme.onPrimary
+                  : isDelayed
+                    ? theme.dangerText
+                    : theme.text
               }
             >
               {estimatedTime}
@@ -190,19 +196,13 @@ export const TimingList: React.FC<TimingListProps> = ({
 
         {showTimeLine && (
           <View style={styles.timeLineContainer}>
-            <View
-              style={[styles.timeLine, { backgroundColor: theme.danger }]}
-            />
-            <View
-              style={[styles.timeLineBadge, { backgroundColor: theme.danger }]}
-            >
+            <View style={[styles.timeLine, { backgroundColor: NOW_FILL }]} />
+            <View style={[styles.timeLineBadge, { backgroundColor: NOW_FILL }]}>
               <AppText variant="caption" weight="600" color="white">
                 Maintenant
               </AppText>
             </View>
-            <View
-              style={[styles.timeLine, { backgroundColor: theme.danger }]}
-            />
+            <View style={[styles.timeLine, { backgroundColor: NOW_FILL }]} />
           </View>
         )}
       </Animated.View>
@@ -239,15 +239,21 @@ export const TimingList: React.FC<TimingListProps> = ({
         <AppText
           variant="body"
           style={[styles.filterText, { color: theme.text }]}
+          // The switch carries the label for screen readers.
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
         >
           Mes passages uniquement
         </AppText>
         <Switch
           value={filterMyEvents}
           onValueChange={setFilterMyEvents}
-          trackColor={{ false: theme.border, true: theme.primary }}
+          accessibilityLabel="Mes passages uniquement"
+          accessibilityHint="N'affiche que les passages où vous êtes inscrit"
+          // The border token is ~1.2:1: the off track must stay visible.
+          trackColor={{ false: theme.textSecondary, true: theme.primary }}
           thumbColor={"white"}
-          ios_backgroundColor={theme.border}
+          ios_backgroundColor={theme.textSecondary}
         />
       </View>
 

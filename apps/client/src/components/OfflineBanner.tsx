@@ -1,9 +1,12 @@
 import { WifiOff } from "lucide-react-native";
-import React from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../context/ThemeContext";
+import { announce } from "../utils/announce";
 import { AppText } from "./AppText";
+
+const OFFLINE_LABEL = "Hors ligne — données en cache";
 
 /**
  * Bandeau global « hors ligne » (#416). Discret : fine bande sous la barre de
@@ -27,6 +30,12 @@ export const OfflineBanner = ({
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
 
+  // role="alert" alone is not spoken when the banner appears: announce it
+  // once per transition to offline (VoiceOver ignores live regions).
+  useEffect(() => {
+    if (visible) announce(OFFLINE_LABEL);
+  }, [visible]);
+
   if (!visible) return null;
 
   return (
@@ -37,13 +46,14 @@ export const OfflineBanner = ({
       ]}
       testID="offline-banner"
       accessibilityRole="alert"
-      accessibilityLabel="Hors ligne — données en cache"
+      accessibilityLiveRegion="polite"
+      accessibilityLabel={OFFLINE_LABEL}
       accessibilityHint="Les informations affichées datent de la dernière connexion"
     >
       <View style={styles.row}>
         <WifiOff size={13} color="#1a1a1a" />
         <AppText variant="caption" color="#1a1a1a" style={styles.text}>
-          Hors ligne — données en cache
+          {OFFLINE_LABEL}
         </AppText>
       </View>
     </View>
@@ -61,5 +71,6 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     gap: 6,
   },
-  text: { fontSize: 12, fontWeight: "600" },
+  // Caption size (13): DESIGN.md floor.
+  text: { fontWeight: "600" },
 });

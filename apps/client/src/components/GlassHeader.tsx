@@ -136,6 +136,10 @@ export const GlassHeader = ({
           variant="h3"
           color={theme.text}
           numberOfLines={1}
+          accessibilityRole="header"
+          // The bar is 56 pt high (GLASS_HEADER_HEIGHT pads the content):
+          // cap the scaling so the title does not clip at the largest sizes.
+          maxFontSizeMultiplier={1.6}
           style={styles.title}
         >
           {title}

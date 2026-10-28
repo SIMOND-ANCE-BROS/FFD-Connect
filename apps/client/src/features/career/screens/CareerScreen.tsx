@@ -38,6 +38,7 @@ import type {
   CareerSearchMember,
 } from "../../../services/BackendService";
 import { BackendService } from "../../../services/BackendService";
+import { theme as themeTokens } from "../../../theme";
 import { getPodiumStyle } from "../../../utils/podium";
 import { useCareerLogic } from "../hooks/useCareerLogic";
 import { formatDiscipline } from "../../../utils/discipline";
@@ -328,7 +329,7 @@ export const CareerScreen = ({ navigation }: Props) => {
                   results.slice(0, 30).map((r) => {
                     const podium = getPodiumStyle(
                       r.ranking,
-                      currentTheme.primary,
+                      currentTheme.primaryFill,
                     );
                     return (
                       <TouchableOpacity
@@ -376,7 +377,11 @@ export const CareerScreen = ({ navigation }: Props) => {
                               // Podium badge identical to the LiveResults screen
                               // (same Trophy size/color/fill). Founder decision
                               // from beta QA: mirror the results screen exactly.
-                              <Trophy size={20} color="white" fill="white" />
+                              <Trophy
+                                size={20}
+                                color={podium.textColor}
+                                fill={podium.textColor}
+                              />
                             ) : (
                               // Off-podium keeps the historical white-on-primary
                               // rank number (unchanged look for ranks 4+).
@@ -501,11 +506,12 @@ export const CareerScreen = ({ navigation }: Props) => {
   );
 };
 
+// Fills under white captions: deep tones keep them AA in both themes
+// (#4CAF50 was 2.8:1, #FF9800 2.2:1, the greys about 2.7:1).
 function statusColor(status: string): string {
-  if (status === "CONFIRMED") return "#4CAF50";
-  if (status === "PENDING") return "#FF9800";
-  if (status === "CANCELLED") return "#9E9E9E";
-  return "#757575";
+  if (status === "CONFIRMED") return themeTokens.colors.successDeep;
+  if (status === "PENDING") return themeTokens.colors.warningDeep;
+  return themeTokens.colors.slate600;
 }
 
 function statusLabel(status: string): string {

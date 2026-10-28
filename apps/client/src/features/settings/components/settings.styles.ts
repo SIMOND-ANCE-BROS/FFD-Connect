@@ -184,9 +184,9 @@ export const styles = StyleSheet.create({
     alignItems: "center",
     paddingBottom: 40,
   },
+  // Caption size, no fade: 12 pt at 60 % opacity fell to ~2.5:1.
   versionText: {
-    fontSize: 12,
-    opacity: 0.6,
+    fontSize: 13,
   },
   securityIconBox: {
     backgroundColor: "rgba(52, 199, 89, 0.1)",

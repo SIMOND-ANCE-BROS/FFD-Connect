@@ -21,6 +21,7 @@ import { PinnedHeader } from "../../../components/PinnedHeader";
 import { useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
 import type { CareerPartnership } from "../../../services/BackendService";
+import { theme as themeTokens } from "../../../theme";
 import { getPodiumStyle } from "../../../utils/podium";
 import { useCareerUserLogic } from "../hooks/useCareerUserLogic";
 import { formatDiscipline } from "../../../utils/discipline";
@@ -37,11 +38,12 @@ function formatDate(iso: string): string {
   });
 }
 
+// Fills under white captions: deep tones keep them AA in both themes
+// (#4CAF50 was 2.8:1, #FF9800 2.2:1, the greys about 2.7:1).
 function statusColor(status: string): string {
-  if (status === "CONFIRMED") return "#4CAF50";
-  if (status === "PENDING") return "#FF9800";
-  if (status === "CANCELLED") return "#9E9E9E";
-  return "#757575";
+  if (status === "CONFIRMED") return themeTokens.colors.successDeep;
+  if (status === "PENDING") return themeTokens.colors.warningDeep;
+  return themeTokens.colors.slate600;
 }
 
 function PartnershipCard({
@@ -287,7 +289,7 @@ export const ViewCareerScreen = ({ navigation, route }: Props) => {
                 results.slice(0, 30).map((r) => {
                   const podium = getPodiumStyle(
                     r.ranking,
-                    currentTheme.primary,
+                    currentTheme.primaryFill,
                   );
                   return (
                     <TouchableOpacity
@@ -318,7 +320,11 @@ export const ViewCareerScreen = ({ navigation, route }: Props) => {
                             // Podium badge identical to the LiveResults screen
                             // (same Trophy size/color/fill). Founder decision
                             // from beta QA: mirror the results screen exactly.
-                            <Trophy size={20} color="white" fill="white" />
+                            <Trophy
+                              size={20}
+                              color={podium.textColor}
+                              fill={podium.textColor}
+                            />
                           ) : (
                             // Off-podium keeps the historical white-on-primary
                             // rank number (unchanged look for ranks 4+).

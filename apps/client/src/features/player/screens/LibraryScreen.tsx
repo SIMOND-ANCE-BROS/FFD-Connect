@@ -602,7 +602,13 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
                 { borderColor: currentTheme.border },
               ]}
             >
-              <Trophy color="#FFD700" size={22} />
+              {/* Gold reads on the dark button only (1.4:1 on the light one). */}
+              <Trophy
+                color={
+                  isDark ? currentTheme.colors.gold : currentTheme.warningText
+                }
+                size={22}
+              />
             </TouchableOpacity>
             {!isGuest && (
               <NotificationBell

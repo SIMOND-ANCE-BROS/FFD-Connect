@@ -102,6 +102,14 @@ export const ClubCompetitionsScreen = ({ navigation }: Props) => {
   const renderItem = ({ item }: { item: ApiCompetition }) => {
     const status = displayStatus(item);
     const statusColor = STATUS_COLORS[status];
+    // The hue stays on the dot and border; the label uses AA text tokens
+    // (the hues were 2.4-3.8:1 as text on their tints).
+    const statusTextColor =
+      status === "UPCOMING"
+        ? theme.successText
+        : status === "PAST"
+          ? theme.textSecondary
+          : theme.dangerText;
 
     return (
       <TouchableOpacity
@@ -125,7 +133,7 @@ export const ClubCompetitionsScreen = ({ navigation }: Props) => {
             />
             <AppText
               variant="caption"
-              style={[styles.statusLabel, { color: statusColor }]}
+              style={[styles.statusLabel, { color: statusTextColor }]}
             >
               {STATUS_LABELS[status]}
             </AppText>
@@ -138,14 +146,20 @@ export const ClubCompetitionsScreen = ({ navigation }: Props) => {
 
         <View style={styles.infoRow}>
           <Calendar size={16} color={theme.textSecondary} />
-          <AppText variant="body" style={styles.infoText}>
+          <AppText
+            variant="body"
+            style={[styles.infoText, { color: theme.textSecondary }]}
+          >
             {formatDate(item.date)}
           </AppText>
         </View>
 
         <View style={styles.infoRowWithMargin}>
           <MapPin size={16} color={theme.textSecondary} />
-          <AppText variant="body" style={styles.infoText}>
+          <AppText
+            variant="body"
+            style={[styles.infoText, { color: theme.textSecondary }]}
+          >
             {item.location}
           </AppText>
         </View>
@@ -362,7 +376,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   infoText: {
-    color: "#64748b",
     marginLeft: 6,
   },
   filterContainer: {
