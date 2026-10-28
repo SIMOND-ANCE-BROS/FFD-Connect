@@ -19,7 +19,9 @@
 #      (the inventory is incomplete).
 #   2. Keep: every non-SHA tag (latest, buildcache, manual tags), the KEEP
 #      newest 40-hex SHA tags, every tag/digest referenced in step 1, and the
-#      tags in KEEP_TAGS (the image being deployed).
+#      tags in KEEP_TAGS (the image being deployed), and every LOCKED manifest
+#      (deleteEnabled or writeEnabled false, #784: the image prod runs) with
+#      all its tags — a lock is only ever lifted by hand.
 #   3. Keep the full closure of kept manifests: children of a kept OCI index /
 #      manifest list (platform images, buildx attestations) are never deleted.
 #   4. Delete: stale SHA tags (untag when the manifest is still kept by another
@@ -175,6 +177,12 @@ purge_repo() {
   # tag <TAB> time, for tags only
   jq -r '.[] | . as $m | (.tags // [])[] | [., ($m.lastUpdateTime // $m.createdTime // "")] | @tsv' \
     "$R/meta.json" >"$R/tags.tsv"
+  # Locked manifests (#784): `az acr repository update --delete-enabled false`
+  # (or --write-enabled false). ACR refuses to delete them, and this script
+  # neither deletes nor untags them: the lock is lifted by hand.
+  jq -r '.[] | select(.changeableAttributes.deleteEnabled == false
+                      or .changeableAttributes.writeEnabled == false) | .digest' \
+    "$R/meta.json" | sort -u >"$R/locked_digests"
 
   # Warn when a CURRENT app template points at a tag that no longer exists.
   grep -F "$PREFIX:" "$W/current.txt" | sed "s|^$PREFIX:||; s|@.*||" | sort -u |
@@ -197,6 +205,7 @@ purge_repo() {
       { n = split($4, t, " "); for (i = 1; i <= n; i++) if (t[i] in k) { print $1; break } }' \
       "$R/keep_tags" "$R/manifests.tsv"
     cat "$R/ref_digests"
+    cat "$R/locked_digests"
   } | sort -u >"$R/keep_digests"
 
   awk -F "$TAB" '$2 ~ /index|manifest\.list/ { print $1 }' "$R/manifests.tsv" | sort -u >"$R/index_digests"
@@ -225,14 +234,16 @@ purge_repo() {
   : >"$R/ops_delete_index"
   : >"$R/ops_delete_other"
   awk -F "$TAB" -v repo="$REPO" -v cutoff="$CUTOFF" \
-    -v KT="$R/keep_tags" -v KD="$R/keep_digests" \
+    -v KT="$R/keep_tags" -v KD="$R/keep_digests" -v KL="$R/locked_digests" \
     -v OU="$R/ops_untag" -v OI="$R/ops_delete_index" -v OO="$R/ops_delete_other" '
     BEGIN {
       while ((getline l < KT) > 0) kt[l] = 1
       while ((getline l < KD) > 0) kd[l] = 1
+      while ((getline l < KL) > 0) kl[l] = 1
     }
     {
       d = $1; mt = $2; ts = substr($3, 1, 19); n = split($4, t, " ")
+      if (d in kl) next                                  # locked: untouched, tags included
       if (d in kd) {
         for (i = 1; i <= n; i++) if (!(t[i] in kt)) print "untag " repo ":" t[i] > OU
         next
@@ -244,6 +255,7 @@ purge_repo() {
 
   echo "Tags kept:          $(wc -l <"$R/keep_tags" | tr -d ' ')"
   echo "Manifests kept:     $(wc -l <"$R/keep_digests" | tr -d ' ') (incl. index children)"
+  echo "Locked manifests:   $(wc -l <"$R/locked_digests" | tr -d ' ') (never touched, #784)"
   echo "Tags to untag:      $(wc -l <"$R/ops_untag" | tr -d ' ')"
   echo "Manifests to delete: $(cat "$R/ops_delete_index" "$R/ops_delete_other" | wc -l | tr -d ' ')"
   cat "$R/ops_untag" "$R/ops_delete_index" "$R/ops_delete_other" | sed 's/^/  /'
