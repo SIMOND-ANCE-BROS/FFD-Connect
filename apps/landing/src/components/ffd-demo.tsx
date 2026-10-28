@@ -30,6 +30,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogClose } from './ui/dialog';
 
 import { CompetitionDetail } from './competition-detail';
+import { demoDate, demoDayMonth, demoSeason, demoSeasonEnd } from '../lib/demo-dates';
 
 // Web adaptation of the client screens at 0e257a11b8f9e052a042f1f58e53d0c706daef64.
 // See APP_PREVIEW.md for source paths, preserved styling and deliberate deviations.
@@ -38,7 +39,7 @@ const events = [
   {
     title: 'Open de Lyon',
     city: 'Lyon',
-    date: '24 octobre 2026',
+    date: demoDate(26),
     status: 'À venir',
     mine: true,
     registered: true,
@@ -46,7 +47,7 @@ const events = [
   {
     title: 'Trophée des Alpes',
     city: 'Grenoble',
-    date: '14 novembre 2026',
+    date: demoDate(47),
     status: 'À venir',
     mine: true,
     registered: false,
@@ -54,7 +55,7 @@ const events = [
   {
     title: 'Coupe Atlantique',
     city: 'Nantes',
-    date: '28 novembre 2026',
+    date: demoDate(61),
     status: 'À venir',
     mine: false,
     registered: false,
@@ -62,7 +63,7 @@ const events = [
   {
     title: 'Rencontre d’automne',
     city: 'Paris',
-    date: '7 octobre 2026',
+    date: demoDate(0),
     status: 'En cours',
     mine: true,
     registered: true,
@@ -70,7 +71,7 @@ const events = [
   {
     title: 'Grand Prix d’été',
     city: 'Bordeaux',
-    date: '12 septembre 2026',
+    date: demoDate(-46),
     status: 'Passées',
     mine: true,
     registered: true,
@@ -398,7 +399,7 @@ export function AppDemo({
                     {e.title === 'Open de Lyon' && (
                       <span className="native-deadline">
                         <Clock size={14} />
-                        Clôture le 18 octobre
+                        Clôture le {demoDayMonth(20)}
                       </span>
                     )}
                     <p>
@@ -470,7 +471,7 @@ export function AppDemo({
             )}
             {view === 'licence' && (
               <div className="native-license-area">
-                <p className="native-season">Saison 2026-2027 · Démonstration</p>
+                <p className="native-season">Saison {demoSeason()} · Démonstration</p>
                 <div className="native-license-card">
                   <button
                     className="native-license-heading"
@@ -481,7 +482,7 @@ export function AppDemo({
                     <img src={sitePath('license-source-logo.png')} width="60" height="60" alt="" />
                     <span>
                       <strong>FFD</strong>
-                      <b>2026-2027</b>
+                      <b>{demoSeason()}</b>
                     </span>
                     <span className="license-more" aria-hidden="true">
                       •••
@@ -526,7 +527,7 @@ export function AppDemo({
                         </dl>
                         <div>
                           <span>Licence valable jusqu’au</span>
-                          <strong>31/08/2027</strong>
+                          <strong>{demoSeasonEnd()}</strong>
                         </div>
                       </div>
                       <p className="native-license-watermark">SPÉCIMEN · NON VALIDE</p>
