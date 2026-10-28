@@ -8,11 +8,14 @@ export function ReportTable({ report, title }: { report: ImportReportCounts; tit
     <Table withTableBorder maw={480} aria-label={title}>
       <Table.Tbody>
         {reportRows(report).map((row) => (
-          <Table.Tr key={row.key}>
-            <Table.Th scope="row" fw={500}>
+          // Zero counts step back so the rows that change something stand out.
+          <Table.Tr key={row.key} c={row.value === '0' ? 'dimmed' : undefined}>
+            <Table.Th scope="row" fw={row.value === '0' ? 400 : 500}>
               {row.label}
             </Table.Th>
-            <Table.Td ta="right">{row.value}</Table.Td>
+            <Table.Td ta="right" fw={row.value === '0' ? 400 : 600}>
+              {row.value}
+            </Table.Td>
           </Table.Tr>
         ))}
       </Table.Tbody>

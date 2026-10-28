@@ -5,6 +5,7 @@ import {
   Button,
   Group,
   Modal,
+  Paper,
   Select,
   Stack,
   Table,
@@ -20,6 +21,7 @@ import { PageHeader } from '../components/PageHeader';
 import { ImportError, ReportTable } from '../components/ResultsImportReport';
 import { TopTurnierUrlImport } from '../components/TopTurnierUrlImport';
 import { apiErrorMessage, isConflict } from '../lib/apiError';
+import { useIsMobile } from '../lib/useIsMobile';
 import {
   type ChairpersonItem,
   formatDay,
@@ -93,6 +95,7 @@ export function ChairpersonCompetitionsPage() {
   const status = useQuery(topTurnierStatusQuery);
   const [year, setYear] = useState<YearChoice>('both');
   const [picked, setPicked] = useState<Record<string, string | null>>({});
+  const isMobile = useIsMobile();
   const [opened, setOpened] = useState<Opened | null>(null);
   // A mutation, not a query: never refetched on focus, reconnect or remount
   // (each read reaches the third-party site).
@@ -109,6 +112,42 @@ export function ChairpersonCompetitionsPage() {
     if (competitionId === null) return;
     setOpened({ competitionId, title: item.title, exportUrl: item.exportUrl });
   };
+
+  const matchBadges = (item: ChairpersonItem) => {
+    const badge = MATCH_BADGES[item.match.status];
+    return (
+      <Group gap={4}>
+        <Badge color={badge.color} variant="light">
+          {badge.label}
+        </Badge>
+        {item.resultsAlreadyImported && (
+          <Badge color="blue" variant="light">
+            Résultats déjà présents
+          </Badge>
+        )}
+      </Group>
+    );
+  };
+  const matchCell = (item: ChairpersonItem) => (
+    <MatchCell
+      item={item}
+      picked={picked[item.exportUrl] ?? null}
+      onPick={(id) => setPicked((current) => ({ ...current, [item.exportUrl]: id }))}
+    />
+  );
+  const verifyButton = (item: ChairpersonItem, fullWidth: boolean) =>
+    item.match.status === 'NONE' ? null : (
+      <Button
+        size={fullWidth ? 'sm' : 'xs'}
+        fullWidth={fullWidth}
+        variant="light"
+        disabled={targetCompetition(item, picked[item.exportUrl]) === null}
+        onClick={() => open(item)}
+        aria-label={`Vérifier « ${item.title} »`}
+      >
+        Vérifier
+      </Button>
+    );
 
   return (
     <Stack>
@@ -162,22 +201,52 @@ export function ChairpersonCompetitionsPage() {
                 {listSummary(read.data.items)}
                 {read.data.truncated && ' — liste tronquée par le site'}
               </Text>
-              <Table.ScrollContainer minWidth={760}>
-                <Table striped aria-label="Compétitions récentes du site chairperson">
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Date</Table.Th>
-                      <Table.Th>Compétition (site)</Table.Th>
-                      <Table.Th>Rapprochement</Table.Th>
-                      <Table.Th>Compétition de l’app</Table.Th>
-                      <Table.Th>Action</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {read.data.items.map((item) => {
-                      const badge = MATCH_BADGES[item.match.status];
-                      const target = targetCompetition(item, picked[item.exportUrl]);
-                      return (
+              {isMobile ? (
+                // Phone: one card per competition, the action inside it (the
+                // table would push « Vérifier » off screen).
+                <Stack gap="xs" role="list" aria-label="Compétitions récentes du site chairperson">
+                  {read.data.items.map((item) => (
+                    <Paper key={item.exportUrl} withBorder p="sm" role="listitem">
+                      <Stack gap={6}>
+                        <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
+                          <Text fw={600} style={{ overflowWrap: 'anywhere' }}>
+                            {item.title}
+                          </Text>
+                          <Text
+                            size="sm"
+                            c="dimmed"
+                            className="app-tabular"
+                            style={{ whiteSpace: 'nowrap' }}
+                          >
+                            {formatDay(item.date)}
+                          </Text>
+                        </Group>
+                        {item.category && (
+                          <Text size="sm" c="dimmed">
+                            {item.category}
+                          </Text>
+                        )}
+                        {matchBadges(item)}
+                        {matchCell(item)}
+                        {verifyButton(item, true)}
+                      </Stack>
+                    </Paper>
+                  ))}
+                </Stack>
+              ) : (
+                <Table.ScrollContainer minWidth={760}>
+                  <Table striped aria-label="Compétitions récentes du site chairperson">
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Date</Table.Th>
+                        <Table.Th>Compétition (site)</Table.Th>
+                        <Table.Th>Rapprochement</Table.Th>
+                        <Table.Th>Compétition de l’app</Table.Th>
+                        <Table.Th>Action</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {read.data.items.map((item) => (
                         <Table.Tr key={item.exportUrl}>
                           <Table.Td>{formatDay(item.date)}</Table.Td>
                           <Table.Td>
@@ -185,51 +254,20 @@ export function ChairpersonCompetitionsPage() {
                               {item.title}
                             </Text>
                             {item.category && (
-                              <Text size="xs" c="dimmed">
+                              <Text size="sm" c="dimmed">
                                 {item.category}
                               </Text>
                             )}
                           </Table.Td>
-                          <Table.Td>
-                            <Group gap={4}>
-                              <Badge color={badge.color} variant="light">
-                                {badge.label}
-                              </Badge>
-                              {item.resultsAlreadyImported && (
-                                <Badge color="blue" variant="light">
-                                  Résultats déjà présents
-                                </Badge>
-                              )}
-                            </Group>
-                          </Table.Td>
-                          <Table.Td>
-                            <MatchCell
-                              item={item}
-                              picked={picked[item.exportUrl] ?? null}
-                              onPick={(id) =>
-                                setPicked((current) => ({ ...current, [item.exportUrl]: id }))
-                              }
-                            />
-                          </Table.Td>
-                          <Table.Td>
-                            {item.match.status !== 'NONE' && (
-                              <Button
-                                size="xs"
-                                variant="light"
-                                disabled={target === null}
-                                onClick={() => open(item)}
-                                aria-label={`Vérifier « ${item.title} »`}
-                              >
-                                Vérifier
-                              </Button>
-                            )}
-                          </Table.Td>
+                          <Table.Td>{matchBadges(item)}</Table.Td>
+                          <Table.Td>{matchCell(item)}</Table.Td>
+                          <Table.Td>{verifyButton(item, false)}</Table.Td>
                         </Table.Tr>
-                      );
-                    })}
-                  </Table.Tbody>
-                </Table>
-              </Table.ScrollContainer>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              )}
             </Stack>
           )}
         </>

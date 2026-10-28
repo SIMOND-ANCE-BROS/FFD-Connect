@@ -399,7 +399,9 @@ function DecisionForm({ c, audioRef, onDecided, onConflict }: DecisionFormProps)
         <Stack>
           {!deletion && (
             <>
-              <Title order={4}>Valeurs à appliquer</Title>
+              <Title order={2} size="h4">
+                Valeurs à appliquer
+              </Title>
               <SimpleGrid cols={{ base: 1, sm: 2 }}>
                 <TextInput
                   label="Titre"

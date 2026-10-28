@@ -96,7 +96,9 @@ function Chart({
 function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
     <Stack component="section" gap="sm">
-      <Title order={3}>{title}</Title>
+      <Title order={2} size="h3">
+        {title}
+      </Title>
       {children}
     </Stack>
   );

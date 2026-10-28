@@ -1,4 +1,5 @@
 import {
+  Alert,
   type CSSVariablesResolver,
   createTheme,
   type MantineColorsTuple,
@@ -7,6 +8,9 @@ import {
   Table,
   Card,
   Badge,
+  Checkbox,
+  defaultVariantColorsResolver,
+  parseThemeColor,
 } from '@mantine/core';
 
 /**
@@ -28,12 +32,30 @@ const ffdBlue: MantineColorsTuple = [
   '#cfe3f4',
   '#9fc6e9',
   '#6ba6dd',
-  '#3f8ad2',
+  // Links and light-variant text in the dark scheme: 5.1:1 on the dark surfaces.
+  '#5a9edb',
   '#2479c9',
   BRAND.cyan,
   '#0058a6',
   BRAND.blue,
   '#003464',
+];
+
+/** Families whose dark-scheme fill (shade 6) needs dark text. */
+const INK_ON_FILL = new Set(['ffd', 'blue', 'green', 'orange', 'yellow']);
+
+// Amber, the app's warning family (pending, temporary).
+const amber: MantineColorsTuple = [
+  '#fffbeb',
+  '#fef3c7',
+  '#fde68a',
+  '#fcd34d',
+  '#fbbf24',
+  '#F59E0B',
+  '#d97706',
+  '#b45309',
+  '#92400e',
+  '#78350f',
 ];
 
 // Tailwind slate, as in the app: light greys of the UI and dark surfaces.
@@ -74,6 +96,11 @@ export const theme = createTheme({
     ffd: ffdBlue,
     gray: slate,
     dark: slateDark,
+    // Mantine's own blue and yellow are not in the app palette and fail
+    // contrast as light badges and alert titles: statuses map to the FFD blue
+    // and to the amber family.
+    blue: ffdBlue,
+    yellow: amber,
     // Emerald, amber and red families match the app's semantic palette.
     green: [
       '#ecfdf5',
@@ -87,18 +114,7 @@ export const theme = createTheme({
       '#065f46',
       '#064e3b',
     ],
-    orange: [
-      '#fffbeb',
-      '#fef3c7',
-      '#fde68a',
-      '#fcd34d',
-      '#fbbf24',
-      '#F59E0B',
-      '#d97706',
-      '#b45309',
-      '#92400e',
-      '#78350f',
-    ],
+    orange: amber,
     red: [
       '#fef2f2',
       '#fee2e2',
@@ -123,6 +139,21 @@ export const theme = createTheme({
     },
   },
   autoContrast: true,
+  // Mantine picks the text of a filled control from the light-scheme shade
+  // only: in the dark scheme the cyan, emerald and amber fills kept white
+  // text (3.2-3.9:1). Their text comes from a per-scheme variable instead.
+  variantColorResolver: (input) => {
+    const colors = defaultVariantColorsResolver(input);
+    if (input.variant !== 'filled') return colors;
+    const { color } = parseThemeColor({
+      color: input.color ?? input.theme.primaryColor,
+      theme: input.theme,
+    });
+    return INK_ON_FILL.has(color)
+      ? { ...colors, color: `var(--app-on-filled-${color}, ${colors.color})` }
+      : colors;
+  },
+  black: BRAND.slate950,
   radius: {
     xs: '0.25rem',
     sm: '0.375rem',
@@ -140,24 +171,48 @@ export const theme = createTheme({
     Badge: Badge.extend({
       defaultProps: { radius: 'sm' },
       styles: { label: { textTransform: 'none', fontWeight: 600 } },
+      // Statuses are read in dense tables: 13 px at the default size (Mantine
+      // ships 11 px), never under 12 px (DESIGN.md text floor).
+      vars: (_theme, props) => {
+        if (props.size === undefined || props.size === 'md') {
+          return { root: { '--badge-fz': '0.8125rem', '--badge-height': '1.375rem' } };
+        }
+        if (props.size === 'sm' || props.size === 'xs') {
+          return { root: { '--badge-fz': '0.75rem', '--badge-height': '1.25rem' } };
+        }
+        return { root: {} };
+      },
     }),
+    // Long notices keep a readable measure on wide screens.
+    Alert: Alert.extend({ styles: { message: { maxWidth: '80ch' } } }),
     Table: Table.extend({
       defaultProps: { verticalSpacing: 'sm', horizontalSpacing: 'md' },
       styles: { th: { fontWeight: 600, whiteSpace: 'nowrap' } },
     }),
     Modal: Modal.extend({ defaultProps: { radius: 'md' } }),
+    // The md default radius makes checkboxes round, read as radio buttons
+    // (single choice): a multiple choice keeps square boxes.
+    Checkbox: Checkbox.extend({ defaultProps: { radius: 'xs' } }),
   },
 });
 
 /** App-level surfaces the Mantine palette has no name for. */
-export const cssVariablesResolver: CSSVariablesResolver = () => ({
-  variables: {},
-  light: {
-    '--app-canvas': BRAND.slate50,
-    '--app-header-bg': BRAND.blue,
-  },
-  dark: {
-    '--app-canvas': BRAND.slate950,
-    '--app-header-bg': '#0b1324',
-  },
-});
+export const cssVariablesResolver: CSSVariablesResolver = () => {
+  const onFilled = (ink: string) =>
+    Object.fromEntries([...INK_ON_FILL].map((c) => [`--app-on-filled-${c}`, ink]));
+  return {
+    variables: {},
+    light: {
+      '--app-canvas': BRAND.slate50,
+      '--app-header-bg': BRAND.blue,
+      // Shade 8 fills (light scheme): white text, 6-10:1.
+      ...onFilled('var(--mantine-color-white)'),
+    },
+    dark: {
+      '--app-canvas': BRAND.slate950,
+      '--app-header-bg': '#0b1324',
+      // Shade 6 fills (dark scheme): slate ink, 5.2-6.3:1 (white is 3.2-3.9:1).
+      ...onFilled('var(--mantine-color-black)'),
+    },
+  };
+};
