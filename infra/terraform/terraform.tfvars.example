@@ -35,7 +35,3 @@ tags = {
 # CI/CD (required for immutable deploy)
 github_org  = "your-github-org"
 github_repo = "FFD-Connect"
-
-# Legacy shared CI identity (#778): set to false once a staging deploy has
-# succeeded with ci-staging (runbook deploiement-azure.md, step 6).
-# ci_shared_identity_enabled = true

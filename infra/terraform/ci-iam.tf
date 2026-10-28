@@ -27,14 +27,8 @@
 # it pushed in the triggering run (deploy-backend.yml, gate job). Pushing or
 # overwriting a tag therefore cannot change what a deploy runs.
 #
-# The former shared identity (`azuread_application.ci` below) keeps, until the
-# split is proven, only its Terraform-managed staging rights (rollback path):
-# the first apply of this file deletes its prod subjects and its Terraform
-# prod assignment. It does NOT remove the "Container Apps Contributor" on the
-# whole RG granted to it OUTSIDE Terraform (#773), which still reaches prod:
-# the runbook removes it right after that apply. Then
-# `ci_shared_identity_enabled = false` removes the rest (runbook
-# deploiement-azure.md, "Bascule vers les identités par environnement").
+# The former shared identity (`ffd-connect-production-ci`) was stripped of its
+# credentials and rights once the split was proven, then deleted (#826).
 
 # azuread provider requirement is declared in main.tf (a module may have only
 # one required_providers block).
@@ -259,129 +253,6 @@ resource "azurerm_role_definition" "backend_app_deployer" {
   }
 
   assignable_scopes = [azurerm_resource_group.main.id]
-}
-
-
-# ============================================
-# LEGACY shared CI identity — to be removed (#778)
-# ============================================
-# The identity both environments used until #778. The first apply of this
-# file deletes its `master`, `develop` and `environment:production`
-# credentials and its Terraform backend-prod assignment. Terraform cannot
-# remove the RG-wide "Container Apps Contributor" granted to it out of band
-# (#773): until the runbook's guarded `az role assignment delete` right after
-# that apply, a staging-subject token of this identity can still write
-# backend-prod. Safer variant: apply with `ci_shared_identity_enabled = false`
-# directly (no token at all, but no rollback path). Otherwise what remains is
-# the staging path only (staging ref +
-# `environment:staging` credentials, registry and RG reads, backend-staging,
-# the staging migration job), kept as a rollback while the workflows switch
-# to the new client ids. Once a staging deploy has succeeded with ci-staging,
-# set `ci_shared_identity_enabled = false` and apply: that deletes the rest.
-# The empty app registration is deleted with this block in a follow-up PR.
-
-locals {
-  ci_shared_count = var.ci_shared_identity_enabled ? 1 : 0
-}
-
-resource "azuread_application" "ci" {
-  display_name = "${local.name_prefix}-ci"
-
-  owners = [data.azuread_client_config.current.object_id]
-}
-
-resource "azuread_service_principal" "ci" {
-  client_id = azuread_application.ci.client_id
-
-  owners = [data.azuread_client_config.current.object_id]
-}
-
-resource "azuread_application_federated_identity_credential" "staging" {
-  count = local.ci_shared_count
-
-  application_id = azuread_application.ci.id
-  display_name   = "${local.name_prefix}-github-staging"
-  description    = "GitHub Actions OIDC — staging branch"
-
-  audiences = ["api://AzureADTokenExchange"]
-  issuer    = "https://token.actions.githubusercontent.com"
-  subject   = "${local.github_oidc_subject_prefix}:ref:refs/heads/staging"
-}
-
-resource "azuread_application_federated_identity_credential" "env_staging" {
-  count = local.ci_shared_count
-
-  application_id = azuread_application.ci.id
-  display_name   = "${local.name_prefix}-github-env-staging"
-  description    = "GitHub Actions OIDC — staging ENVIRONMENT (deploy-backend.yml)"
-
-  audiences = ["api://AzureADTokenExchange"]
-  issuer    = "https://token.actions.githubusercontent.com"
-  subject   = "${local.github_oidc_subject_prefix}:environment:staging"
-}
-
-# Removed by the first apply (#778): the legacy `master`, `develop` and
-# `env_production` credentials (resources deleted from the configuration,
-# hence destroyed), and the legacy backend-prod deployer assignment.
-
-resource "azurerm_role_assignment" "ci_acr_push" {
-  count = local.ci_shared_count
-
-  scope                = azurerm_container_registry.backend.id
-  role_definition_name = "AcrPush"
-  principal_id         = azuread_service_principal.ci.object_id
-}
-
-resource "azurerm_role_assignment" "ci_acr_delete" {
-  count = local.ci_shared_count
-
-  scope                = azurerm_container_registry.backend.id
-  role_definition_name = "AcrDelete"
-  principal_id         = azuread_service_principal.ci.object_id
-}
-
-resource "azurerm_role_assignment" "ci_reader" {
-  count = local.ci_shared_count
-
-  scope                = azurerm_resource_group.main.id
-  role_definition_name = "Reader"
-  principal_id         = azuread_service_principal.ci.object_id
-}
-
-# backend-staging ONLY (the key "backend-prod" of #773 is destroyed).
-resource "azurerm_role_assignment" "ci_backend_app_deployer" {
-  for_each = var.ci_shared_identity_enabled ? toset(["backend-staging"]) : toset([])
-
-  scope              = "${azurerm_resource_group.main.id}/providers/Microsoft.App/containerApps/${each.key}"
-  role_definition_id = azurerm_role_definition.backend_app_deployer.role_definition_resource_id
-  principal_id       = azuread_service_principal.ci.object_id
-}
-
-# Adding `count` changes the addresses: these keep the existing objects (no
-# destroy/recreate on the first apply).
-moved {
-  from = azuread_application_federated_identity_credential.staging
-  to   = azuread_application_federated_identity_credential.staging[0]
-}
-
-moved {
-  from = azuread_application_federated_identity_credential.env_staging
-  to   = azuread_application_federated_identity_credential.env_staging[0]
-}
-
-moved {
-  from = azurerm_role_assignment.ci_acr_push
-  to   = azurerm_role_assignment.ci_acr_push[0]
-}
-
-moved {
-  from = azurerm_role_assignment.ci_acr_delete
-  to   = azurerm_role_assignment.ci_acr_delete[0]
-}
-
-moved {
-  from = azurerm_role_assignment.ci_reader
-  to   = azurerm_role_assignment.ci_reader[0]
 }
 
 # ============================================

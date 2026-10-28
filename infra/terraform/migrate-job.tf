@@ -208,13 +208,3 @@ resource "azurerm_role_assignment" "ci_env_migrate_job_runner" {
   # Fresh SP (same apply): avoid PrincipalNotFound before replication.
   skip_service_principal_aad_check = true
 }
-
-# LEGACY shared CI identity (#778): staging job only, removed with
-# ci_shared_identity_enabled. Never the prod job.
-resource "azurerm_role_assignment" "ci_migrate_job_runner" {
-  for_each = var.ci_shared_identity_enabled ? { for k, v in var.migrate_jobs : k => v if k == "staging" } : {}
-
-  scope              = azurerm_container_app_job.migrate[each.key].id
-  role_definition_id = azurerm_role_definition.migrate_job_runner.role_definition_resource_id
-  principal_id       = azuread_service_principal.ci.object_id
-}
