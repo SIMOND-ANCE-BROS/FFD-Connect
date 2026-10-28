@@ -3,13 +3,14 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { testTheme } from '../test/render';
 import { RenewalDocumentViewer } from './RenewalDocumentViewer';
 
 const doc = { id: 'd1', type: 'MEDICAL_CERTIFICATE' as const };
 
 function renderViewer() {
   return render(
-    <MantineProvider>
+    <MantineProvider theme={testTheme}>
       <RenewalDocumentViewer requestId="r1" document={doc} />
     </MantineProvider>,
   );

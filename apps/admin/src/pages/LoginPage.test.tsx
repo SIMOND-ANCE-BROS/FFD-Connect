@@ -4,13 +4,14 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { testTheme } from '../test/render';
 import { API_ORIGIN } from '../config';
 import { useSession } from '../session/sessionStore';
 import { LoginPage } from './LoginPage';
 
 function renderLogin() {
   return render(
-    <MantineProvider>
+    <MantineProvider theme={testTheme}>
       <MemoryRouter initialEntries={['/login']}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
