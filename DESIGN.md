@@ -1,6 +1,6 @@
 # DESIGN.md — FFD-Connect Design System
 
-The product is an app French dancers open every competition weekend. The design must feel **trustworthy** (it's the federation's tool: licenses, results, registrations) AND **alive** (the moment-of-use is on event day, in a venue, between heats — fast, dense, lively).
+The product is an app French dancers open every competition weekend. The design must feel **trustworthy** (dancers rely on it for licenses, results and registrations — but it is an independent app, never presented as official or endorsed by the FFD; see PRODUCT.md) AND **alive** (the moment-of-use is on event day, in a venue, between heats — fast, dense, lively).
 
 This file is the source of truth. Tokens live in `apps/client/src/theme/index.ts`.
 
@@ -17,11 +17,11 @@ This file is the source of truth. Tokens live in `apps/client/src/theme/index.ts
 
 | Token     | Hex       | Usage                                                                              |
 | --------- | --------- | ---------------------------------------------------------------------------------- |
-| `ffdBlue` | `#004481` | Federation identity — license cards, official badges, heading accents              |
+| `ffdBlue` | `#004481` | Trust colour — license cards, validated-status badges, heading accents             |
 | `ffdCyan` | `#0088CE` | App-side accent — interactive elements, primary buttons in dark mode, focus states |
 | `ffdRed`  | `#E30613` | Status/urgency only — competition LIVE badge, deadline alerts, errors              |
 
-**Rule:** the deep blue is the federation. The cyan is the app. When in doubt, use cyan for interaction and reserve blue for moments where the user needs to feel "this is the official tool" (license display, validated results).
+**Rule:** the deep blue carries trust. The cyan is the app. When in doubt, use cyan for interaction and reserve blue for moments where the user needs to trust what they see (license display, validated results) — without ever implying an official or FFD-endorsed status.
 
 ### Neutrals (Slate)
 
