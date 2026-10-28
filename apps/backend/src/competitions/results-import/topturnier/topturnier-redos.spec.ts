@@ -19,55 +19,108 @@ import {
  * the terminator was missing: seconds to minutes of CPU per page.
  */
 
-// Generous on purpose: a backtracking regex costs seconds to minutes here,
-// a linear parse a few ms to ~100 ms — 200 ms tripped on a loaded machine
-// running the whole suite in parallel.
-const BUDGET_MS = 1000;
+// Timing a parse against a fixed budget failed whenever the machine was busy
+// (#807): other processes competing for the cores stretch every wall-clock
+// measurement. These tests compare the parser with itself instead:
+// - they time the CPU of this process (`process.cpuUsage`), which the other
+//   processes do not inflate;
+// - they parse the same input at two sizes, GROWTH_FACTOR apart, interleaved,
+//   keeping the fastest of RUNS runs, so a GC pause or a burst of load spoils
+//   one sample, not the verdict;
+// - a linear parse grows ~8x between the two sizes, a backtracking one ~64x
+//   or more: the growth must stay under MAX_GROWTH, far from both.
 const SIZE = 200 * 1024;
+const GROWTH_FACTOR = 8;
+const MAX_GROWTH = 24;
+const RUNS = 3;
+// Below this a duration is timer and scheduler noise, not parsing work. It
+// cannot hide a backtracking parser: none parses the large input in under
+// MAX_GROWTH * NOISE_FLOOR_MS (12 ms) — a quadratic rescan of 200 KB is
+// ~2e10 steps.
+const NOISE_FLOOR_MS = 0.5;
 
-function timed(run: () => unknown): number {
-  const start = process.hrtime.bigint();
+function cpuMs(run: () => unknown): number {
+  const start = process.cpuUsage();
   run();
-  return Number(process.hrtime.bigint() - start) / 1e6;
+  const { user, system } = process.cpuUsage(start);
+  return (user + system) / 1000;
 }
 
-const repeat = (piece: string, size = SIZE) =>
+/**
+ * How much more CPU `parse` needs for an input GROWTH_FACTOR times larger:
+ * ~GROWTH_FACTOR when linear, ~GROWTH_FACTOR² when quadratic.
+ */
+function growth(
+  parse: (input: string) => unknown,
+  makeInput: (size: number) => string,
+  size = SIZE,
+): number {
+  const small = makeInput(size / GROWTH_FACTOR);
+  const large = makeInput(size);
+  parse(small); // warm-up: let V8 compile the parser before timing it
+  let smallMs = Infinity;
+  let largeMs = Infinity;
+  for (let i = 0; i < RUNS; i++) {
+    smallMs = Math.min(
+      smallMs,
+      cpuMs(() => parse(small)),
+    );
+    largeMs = Math.min(
+      largeMs,
+      cpuMs(() => parse(large)),
+    );
+  }
+  return largeMs / Math.max(smallMs, NOISE_FLOOR_MS);
+}
+
+const repeat = (piece: string, size: number) =>
   piece.repeat(Math.ceil(size / piece.length));
 
-const ADVERSARIAL: [string, string][] = [
-  ["unclosed <td", repeat("<td")],
-  ["unclosed <td with attributes", repeat('<td class="x" ')],
-  ["<tr><td> without closing tags", repeat("<tr><td>")],
-  ["unclosed <a", repeat("<a href=x>")],
-  ["<a> without </a>", `<a href="1-x/index.htm">${repeat("<b>")}`],
-  ["lone <", repeat("<")],
-  ["< without >", repeat("<x ")],
-  ["unclosed comment", `<!--${repeat("-")}`],
-  ["repeated unclosed comments", repeat("<!--")],
-  ["unclosed script", repeat("<script>")],
-  ["script with partial closings", `<script>${repeat("</scrip")}`],
-  ["unclosed title", repeat("<title>")],
-  ["space runs", `<tr><td>1.</td><td>${repeat(" ")}x`],
-  ["slash and space runs", `<tr><td>1.</td><td>2</td><td>${repeat(" /  ")}`],
-  ["long attribute run", `<td ${repeat("a=b ")}>`],
-  ["long href attribute", `<a ${repeat(" href ")}>x</a>`],
-  ["entity-like runs", repeat("&#x")],
+const ADVERSARIAL: [string, (size: number) => string][] = [
+  ["unclosed <td", (n) => repeat("<td", n)],
+  ["unclosed <td with attributes", (n) => repeat('<td class="x" ', n)],
+  ["<tr><td> without closing tags", (n) => repeat("<tr><td>", n)],
+  ["unclosed <a", (n) => repeat("<a href=x>", n)],
+  ["<a> without </a>", (n) => `<a href="1-x/index.htm">${repeat("<b>", n)}`],
+  ["lone <", (n) => repeat("<", n)],
+  ["< without >", (n) => repeat("<x ", n)],
+  ["unclosed comment", (n) => `<!--${repeat("-", n)}`],
+  ["repeated unclosed comments", (n) => repeat("<!--", n)],
+  ["unclosed script", (n) => repeat("<script>", n)],
+  ["script with partial closings", (n) => `<script>${repeat("</scrip", n)}`],
+  ["unclosed title", (n) => repeat("<title>", n)],
+  ["space runs", (n) => `<tr><td>1.</td><td>${repeat(" ", n)}x`],
+  [
+    "slash and space runs",
+    (n) => `<tr><td>1.</td><td>2</td><td>${repeat(" /  ", n)}`,
+  ],
+  ["long attribute run", (n) => `<td ${repeat("a=b ", n)}>`],
+  ["long href attribute", (n) => `<a ${repeat(" href ", n)}>x</a>`],
+  ["entity-like runs", (n) => repeat("&#x", n)],
   // List of recent competitions (#801).
-  ["unclosed result blocks", repeat("<div class='resultatsEvent'>")],
+  ["unclosed result blocks", (n) => repeat("<div class='resultatsEvent'>", n)],
   [
     "blocks with unclosed captures",
-    repeat("<div class='resultatsEvent'><p><h4><a href='x/index.htm'>"),
+    (n) =>
+      repeat("<div class='resultatsEvent'><p><h4><a href='x/index.htm'>", n),
   ],
   [
     "deep div nesting",
-    `${repeat("<div>", SIZE / 2)}${repeat("</div>", SIZE / 2)}`,
+    (n) => `${repeat("<div>", n / 2)}${repeat("</div>", n / 2)}`,
   ],
-  ["long class attribute", `<div class='${repeat("resultatsEvent ")}'>`],
+  [
+    "long class attribute",
+    (n) => `<div class='${repeat("resultatsEvent ", n)}'>`,
+  ],
   [
     "long href of a block",
-    `<div class='resultatsEvent'><a href='${repeat("../")}index.htm'>x</a>`,
+    (n) =>
+      `<div class='resultatsEvent'><a href='${repeat("../", n)}index.htm'>x</a>`,
   ],
-  ["long date text", `<div class='resultatsEvent'><p>${repeat("17 oct ")}</p>`],
+  [
+    "long date text",
+    (n) => `<div class='resultatsEvent'><p>${repeat("17 oct ", n)}</p>`,
+  ],
 ];
 
 const INDEX_URL = new URL(
@@ -82,52 +135,47 @@ const PARSERS: [string, (html: string) => unknown][] = [
   ["chairperson list", (html) => parseChairpersonIndex(html, INDEX_URL)],
 ];
 
-const CASES = ADVERSARIAL.flatMap(([name, html]) =>
-  PARSERS.map(([parser, parse]) => [name, parser, html, parse] as const),
+const CASES = ADVERSARIAL.flatMap(([name, makeInput]) =>
+  PARSERS.map(([parser, parse]) => [name, parser, makeInput, parse] as const),
 );
 
 describe("TopTurnier parsing of adversarial pages (ReDoS)", () => {
   it.each(CASES)(
-    "%s (%s): 200 KB parsed under the budget",
-    (_name, _parser, html, parse) => {
-      expect(timed(() => parse(html))).toBeLessThan(BUDGET_MS);
+    "%s (%s): parsing time grows linearly up to 200 KB",
+    (_name, _parser, makeInput, parse) => {
+      expect(growth(parse, makeInput)).toBeLessThan(MAX_GROWTH);
     },
   );
 
-  it("scales linearly: 8x the input costs far less than 64x the time", () => {
-    const small = repeat("<a href=x><tr><td> <b>", 64 * 1024);
-    const large = repeat("<a href=x><tr><td> <b>", 8 * 64 * 1024);
-    const run = (html: string) => () => {
+  it("scales linearly on a mix of open tags", () => {
+    const parse = (html: string) => {
       parseTopTurnierRanking(html);
       parseTopTurnierIndex(html);
     };
-    timed(run(small)); // warm-up
-    const ratio = timed(run(large)) / Math.max(timed(run(small)), 1);
-    // Linear ≈ 8, quadratic ≈ 64.
-    expect(ratio).toBeLessThan(24);
+    const makeInput = (n: number) => repeat("<a href=x><tr><td> <b>", n);
+    expect(growth(parse, makeInput, 512 * 1024)).toBeLessThan(MAX_GROWTH);
   });
 
   it("scales linearly on the list of recent competitions (#801)", () => {
     const piece =
       "<div class='resultatsEvent'><p>1 jan 26</p><a href='20260101_a/index.htm'>A</a></div>";
-    const small = repeat(piece, 64 * 1024);
-    const large = repeat(piece, 8 * 64 * 1024);
-    const run = (html: string) => () => parseChairpersonIndex(html, INDEX_URL);
-    timed(run(small)); // warm-up
-    const ratio = timed(run(large)) / Math.max(timed(run(small)), 1);
-    // Linear ≈ 8, quadratic ≈ 64.
-    expect(ratio).toBeLessThan(24);
+    const parse = (html: string) => parseChairpersonIndex(html, INDEX_URL);
+    const makeInput = (n: number) => repeat(piece, n);
+    expect(growth(parse, makeInput, 512 * 1024)).toBeLessThan(MAX_GROWTH);
   });
 
-  it("compares place names in bounded time (#801)", () => {
-    const long = `${"saint ".repeat(SIZE / 6)}-${"é".repeat(SIZE)}`;
-    expect(timed(() => placeKey(long))).toBeLessThan(BUDGET_MS);
-    expect(timed(() => titleHeadKey(long))).toBeLessThan(BUDGET_MS);
+  it("compares place names in linear time (#801)", () => {
+    const makeInput = (n: number) =>
+      `${"saint ".repeat(n / 6)}-${"é".repeat(n)}`;
+    expect(growth(placeKey, makeInput)).toBeLessThan(MAX_GROWTH);
+    expect(growth(titleHeadKey, makeInput)).toBeLessThan(MAX_GROWTH);
   });
 
-  it("a 2 MB page of open non-result rows stays well under a second", () => {
-    const html = repeat("<tr><td>x<td>y<td>", 2 * 1024 * 1024);
-    expect(timed(() => parseTopTurnierRanking(html))).toBeLessThan(2_000);
+  it("parses up to a 2 MB page of open non-result rows in linear time", () => {
+    const makeInput = (n: number) => repeat("<tr><td>x<td>y<td>", n);
+    expect(
+      growth(parseTopTurnierRanking, makeInput, 2 * 1024 * 1024),
+    ).toBeLessThan(MAX_GROWTH);
   });
 
   it("caps a collected text, keeping it longer than any accepted field", () => {
