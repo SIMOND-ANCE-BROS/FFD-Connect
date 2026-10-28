@@ -5,9 +5,11 @@
 # the app, so they NEVER wake a scaled-to-zero replica and stay active 24/7,
 # including at night when uptime.yml is blind (the app is intentionally asleep).
 #
-# The Container Apps are provisioned out-of-band (not by this Terraform), so we
-# reference them via data sources. A data lookup reads ARM metadata
-# (control-plane) — it does NOT hit the app data-plane, so it does not wake it.
+# The Container Apps are provisioned out-of-band (not by this Terraform). The
+# alerts only need their ARM ids, built from the RG id like ci-iam.tf does.
+# NO `data "azurerm_container_app"` here (#779): that data source reads the
+# app's secrets (`read_secrets` defaults to true) and its whole template, so
+# every inline secret value and env var landed in the remote state.
 #
 # Metric names + aggregations confirmed via `az monitor metrics
 # list-definitions` (2026-07): RestartCount ("Total Replica Restart Count",
@@ -15,18 +17,11 @@
 # scale-from-zero wake is a start, not a restart, so it does not increment
 # RestartCount — the night-coverage design holds without threshold tuning.
 
-data "azurerm_container_app" "backend_prod" {
-  name                = "backend-prod"
-  resource_group_name = azurerm_resource_group.main.name
-}
-
-data "azurerm_container_app" "backend_staging" {
-  name                = "backend-staging"
-  resource_group_name = azurerm_resource_group.main.name
-}
-
 locals {
   aca_metric_namespace = "Microsoft.App/containerApps"
+  # Same casing as the ids Azure returns (no diff on the alerts' scopes).
+  backend_prod_app_id    = "${azurerm_resource_group.main.id}/providers/Microsoft.App/containerApps/backend-prod"
+  backend_staging_app_id = "${azurerm_resource_group.main.id}/providers/Microsoft.App/containerApps/backend-staging"
 }
 
 # ── Restart storm = crash loop / failed boot migration / OOM ──────────────────
@@ -36,7 +31,7 @@ locals {
 resource "azurerm_monitor_metric_alert" "aca_restart_prod" {
   name                = "${local.name_prefix}-aca-restart-prod"
   resource_group_name = azurerm_resource_group.main.name
-  scopes              = [data.azurerm_container_app.backend_prod.id]
+  scopes              = [local.backend_prod_app_id]
   description         = "backend-prod: container restart storm (crash loop / boot migration / OOM)"
   severity            = 1
   frequency           = "PT5M"
@@ -61,7 +56,7 @@ resource "azurerm_monitor_metric_alert" "aca_restart_prod" {
 resource "azurerm_monitor_metric_alert" "aca_restart_staging" {
   name                = "${local.name_prefix}-aca-restart-staging"
   resource_group_name = azurerm_resource_group.main.name
-  scopes              = [data.azurerm_container_app.backend_staging.id]
+  scopes              = [local.backend_staging_app_id]
   description         = "backend-staging: container restart storm"
   severity            = 2
   frequency           = "PT5M"
@@ -91,7 +86,7 @@ resource "azurerm_monitor_metric_alert" "aca_restart_staging" {
 resource "azurerm_monitor_metric_alert" "aca_replicas_runaway_prod" {
   name                = "${local.name_prefix}-aca-replicas-runaway-prod"
   resource_group_name = azurerm_resource_group.main.name
-  scopes              = [data.azurerm_container_app.backend_prod.id]
+  scopes              = [local.backend_prod_app_id]
   description         = "backend-prod: replica count abnormally high (runaway scale-out / cost)"
   severity            = 2
   frequency           = "PT5M"
