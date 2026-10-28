@@ -45,7 +45,6 @@ overrides:
   socket.io-parser: '>=4.2.7'
   h3: '>=1.15.6'
   handlebars: '>=4.7.10'
-  node-forge: '>=1.4.0'
   picomatch: '>=4.0.4'
   path-to-regexp: '>=8.4.0'
   lodash: '>=4.18.0'
@@ -217,9 +216,8 @@ overrides:
   # Volontairement absents, sans correctif amont au 2026-10-04 — ils vivent
   # dans audit-exceptions.json, pas ici : braces (GHSA-vfj7-8cjw-p6xm),
   # http-cache-semantics (GHSA-ch52-4w7c-c8xp), node-forge
-  # (GHSA-86w9-cpqp-85rv). Le plancher node-forge `>=1.4.0` ci-dessus est deja
-  # sur la derniere version publiee ; il est conserve pour empecher une
-  # regression vers plus ancien.
+  # (GHSA-86w9-cpqp-85rv). node-forge a depuis recu son correctif (1.4.1, voir
+  # les planchers du 2026-10-28 plus bas).
 
   # Planchers ajoutes le 2026-10-07 — deux avis medium dont le correctif
   # n'existe que dans une majeure superieure ; compatibilite du consommateur
@@ -303,6 +301,25 @@ overrides:
   # casserait l'outillage Expo (API differente). Exception datee dans
   # audit-exceptions.json, comme @azure/msal-node (correctif uniquement en
   # 7.1.0, alors que @azure/identity 4.x declare ^6.0.0).
+
+  # Planchers ajoutes le 2026-10-28 (issue #828) — exceptions arrivant a
+  # echeance dans audit-exceptions.json.
+  #
+  # node-forge (GHSA-86w9-cpqp-85rv high, DigestAlgorithm imbrique accepte par
+  # la verification RSA PKCS#1 v1.5) : corrige en 1.4.1 (2026-10-27, avis amont
+  # GHSA-2g46-22mc-6gwp, meme faille). La 1.4.2 corrige une regression de la
+  # 1.4.1 (`pem.decode()` sur un Buffer). Consommateurs : @expo/cli (^1.3.3),
+  # @expo/code-signing-certificates (^1.4.0), passkit-generator (^1.4.0) —
+  # tous acceptent la 1.4.2. Remplace l'ancien `>=1.4.0` nu.
+  'node-forge@<1.4.2': '^1.4.2'
+  #
+  # image-size (GHSA-5p2g-fcmc-qvqq, GHSA-w3rx-r6r6-pgpr) : PAS d'override.
+  # Il n'etait tire que par metro 0.83.x <- react-native 0.81.5 (+ RNTL 13),
+  # une copie perimee figee dans le lockfile pour les peers `'*'` de
+  # packages/jest-config (auto-install-peers), alors que le client est en
+  # react-native 0.86.3. Entree re-resolue : ces peers pointent maintenant sur
+  # les versions du client, la copie 0.81.5 et ses metro 0.83.x disparaissent,
+  # et metro 0.84 (celui du client) ne depend plus d'image-size.
 
 onlyBuiltDependencies:
   - '@firebase/util'
