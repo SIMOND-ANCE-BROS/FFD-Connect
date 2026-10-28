@@ -40,7 +40,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   letter-spacing: 0.12em;
 }
 .beta-dot {
@@ -105,7 +105,7 @@
   justify-content: space-between;
   gap: 12px;
   color: #c3e5f6;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   letter-spacing: 0.15em;
 }
 .beta-pass-mark {
@@ -314,7 +314,7 @@
 .beta-card-note {
   text-align: center;
   margin-top: 12px;
-  font-size: 0.73rem;
+  font-size: 0.8125rem;
   line-height: 1.6;
 }
 [data-platform='ios'] .beta-card[data-platform='ios'],

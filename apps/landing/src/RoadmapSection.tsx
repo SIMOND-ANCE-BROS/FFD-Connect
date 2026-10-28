@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, GitBranch } from 'lucide-react';
+import { Check, CircleDashed, GitBranch } from 'lucide-react';
 import { repository } from './lib/ffd';
 import {
   buildRoadmap,
@@ -104,7 +104,7 @@ export function PublicRoadmap() {
               <ul className="roadmap-items">
                 {group.items.map((item) => (
                   <li key={item.number}>
-                    <Check size={17} aria-hidden="true" />
+                    <CircleDashed size={17} aria-hidden="true" />
                     <span>{item.text}</span>
                   </li>
                 ))}
