@@ -31,7 +31,10 @@ export const LibraryGridItem = React.memo(
           { backgroundColor: currentTheme.primaryFill },
         ]}
       >
-        <Text style={styles.gridIcon}>{item.title.charAt(0)}</Text>
+        {/* onPrimary ink: black was 2.4:1 on the light theme's blue fill. */}
+        <Text style={[styles.gridIcon, { color: currentTheme.onPrimary }]}>
+          {item.title.charAt(0)}
+        </Text>
       </View>
       <View style={styles.gridContent}>
         <AppText

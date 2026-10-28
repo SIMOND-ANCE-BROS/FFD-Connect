@@ -98,7 +98,11 @@ export const ReportModal: React.FC<ReportModalProps> = ({
           <TouchableOpacity
             accessibilityRole="button"
             onPress={handleClose}
-            style={styles.successButton}
+            // White label: primaryFill is AA in both themes (#4CAF50 was 2.8:1).
+            style={[
+              styles.successButton,
+              { backgroundColor: currentTheme.primaryFill },
+            ]}
           >
             <Text style={styles.successButtonText}>Fermer</Text>
           </TouchableOpacity>
@@ -126,6 +130,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({
           </Text>
           <TouchableOpacity
             accessibilityRole="button"
+            accessibilityLabel="Fermer"
+            accessibilityHint="Ferme le formulaire sans envoyer"
             onPress={handleClose}
             style={styles.closeButton}
           >
@@ -138,6 +144,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
           <View style={styles.typeContainer}>
             <TouchableOpacity
               accessibilityRole="button"
+              accessibilityState={{ selected: type === "BUG" }}
               style={[
                 styles.typeButton,
                 type === "BUG" && styles.typeButtonActive,
@@ -175,6 +182,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
 
             <TouchableOpacity
               accessibilityRole="button"
+              accessibilityState={{ selected: type === "FEATURE" }}
               style={[
                 styles.typeButton,
                 type === "FEATURE" && styles.typeButtonActive,
@@ -232,6 +240,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                     ],
                   ]}
                   onPress={() => setSeverity("LOW")}
+                  accessibilityState={{ selected: severity === "LOW" }}
                   testID="report-severity-low"
                 >
                   <Info
@@ -270,6 +279,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                     ],
                   ]}
                   onPress={() => setSeverity("MEDIUM")}
+                  accessibilityState={{ selected: severity === "MEDIUM" }}
                   testID="report-severity-medium"
                 >
                   <AlertCircle
@@ -308,6 +318,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                     ],
                   ]}
                   onPress={() => setSeverity("HIGH")}
+                  accessibilityState={{ selected: severity === "HIGH" }}
                   testID="report-severity-high"
                 >
                   <AlertTriangle
@@ -362,6 +373,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                     },
                   ]}
                   onPress={() => setModule(m)}
+                  accessibilityState={{ selected: module === m }}
                 >
                   <Text
                     style={[
@@ -501,6 +513,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({
               </Text>
               <TouchableOpacity
                 accessibilityRole="button"
+                accessibilityLabel="Supprimer la capture d'écran"
+                accessibilityHint="Retire l'image jointe au rapport"
                 onPress={handleRemoveImage}
                 style={styles.removeImageButton}
                 testID="remove-image-button"
@@ -579,7 +593,13 @@ const styles = StyleSheet.create({
     borderBottomColor: "#eee",
   },
   headerTitle: { fontSize: 18, fontWeight: "bold" },
-  closeButton: { padding: 4 },
+  // 44 pt touch targets around the 24/20 pt icons.
+  closeButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   content: { padding: 20 },
   typeContainer: {
     flexDirection: "row",
@@ -648,7 +668,12 @@ const styles = StyleSheet.create({
     borderColor: "#ddd",
   },
   imageName: { flex: 1, color: "#333", marginRight: 10 },
-  removeImageButton: { padding: 4 },
+  removeImageButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   moduleScroll: {
     // marginBottom removed to fix centering of arrow
   },
@@ -708,7 +733,8 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   successButton: {
-    backgroundColor: "#4CAF50",
+    minHeight: 44,
+    justifyContent: "center",
     paddingVertical: 12,
     paddingHorizontal: 30,
     borderRadius: 25,

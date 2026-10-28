@@ -277,7 +277,8 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
                 style={[
                   styles.delayBadge,
                   styles.alignSelfStart,
-                  { backgroundColor: currentTheme.danger },
+                  // White caption: the deep red stays AA in dark mode too.
+                  { backgroundColor: currentTheme.colors.error },
                 ]}
               >
                 <AppText variant="caption" weight="600" color="white">

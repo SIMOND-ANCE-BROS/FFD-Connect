@@ -237,7 +237,7 @@ describe("LiveResultsScreen", () => {
 
   // Verrouille le mapping couleur médaille (source unique : utils/podium.ts) :
   // rang 1/2/3 → or/argent/bronze via les tokens du thème. Sans statut, le
-  // numéro de rang podium est rendu à droite avec la couleur médaille.
+  // badge de rang prend la couleur médaille, le numéro à droite l'encre texte.
   it("locks the medal colour mapping (1/2/3 -> gold/silver/bronze tokens)", async () => {
     mockUseLiveResultsLogic.mockReturnValue({
       state: {
@@ -275,13 +275,23 @@ describe("LiveResultsScreen", () => {
       actions: { loadResults: jest.fn() },
     });
 
-    const { getByText } = await render(
+    const { getByText, toJSON } = await render(
       <LiveResultsScreen {...createTestProps()} />,
     );
 
-    expect(getByText("1")).toHaveStyle({ color: tokens.colors.gold });
-    expect(getByText("2")).toHaveStyle({ color: tokens.colors.silver });
-    expect(getByText("3")).toHaveStyle({ color: tokens.colors.bronze });
+    // The medal colours fill the rank badges; the rank number beside them uses
+    // the text ink (a medal colour as text was 1.4:1 on white, #837).
+    const tree = JSON.stringify(toJSON());
+    for (const medal of [
+      tokens.colors.gold,
+      tokens.colors.silver,
+      tokens.colors.bronze,
+    ]) {
+      expect(tree).toContain(`"backgroundColor":"${medal}"`);
+    }
+    expect(getByText("1")).toHaveStyle({ color: "#111111" });
+    expect(getByText("2")).toHaveStyle({ color: "#111111" });
+    expect(getByText("3")).toHaveStyle({ color: "#111111" });
   });
 
   it("renders qualified and eliminated statuses properly", async () => {

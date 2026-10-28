@@ -73,6 +73,11 @@ export const LibraryTrackItem = React.memo(
     // Hors ligne, seules les copies locales (favoris téléchargés / imports)
     // sont jouables — les autres sont grisées (#416).
     const unavailableOffline = !isOnline && !item.isDownloaded;
+    // Playing row, equalizer and « downloaded » icon. The secondary token is
+    // ffdBlue in dark mode (~1.8:1 on the dark rows): the bright cyan there.
+    const playingAccent = isDark
+      ? currentTheme.primary
+      : currentTheme.secondary;
     const clashLabel = pasoClashLabel(item.style, item.clashTimecodes);
     // One sentence instead of every badge read separately ("A", "MPM"…).
     const a11yLabel = joinA11yLabel([
@@ -132,7 +137,7 @@ export const LibraryTrackItem = React.memo(
             styles.currentTrackHighlight,
             {
               backgroundColor: isDark ? "rgba(0, 136, 206, 0.1)" : "#F0F9FF",
-              borderLeftColor: currentTheme.secondary,
+              borderLeftColor: playingAccent,
             },
           ],
           unavailableOffline && styles.trackItemUnavailable,
@@ -183,7 +188,7 @@ export const LibraryTrackItem = React.memo(
                   testID="library-eq-bar"
                   style={[
                     styles.playingBar,
-                    { backgroundColor: currentTheme.secondary },
+                    { backgroundColor: playingAccent },
                     barScale(bar1),
                   ]}
                 />
@@ -191,7 +196,7 @@ export const LibraryTrackItem = React.memo(
                   testID="library-eq-bar"
                   style={[
                     styles.playingBar,
-                    { backgroundColor: currentTheme.secondary },
+                    { backgroundColor: playingAccent },
                     barScale(bar2),
                   ]}
                 />
@@ -199,7 +204,7 @@ export const LibraryTrackItem = React.memo(
                   testID="library-eq-bar"
                   style={[
                     styles.playingBar,
-                    { backgroundColor: currentTheme.secondary },
+                    { backgroundColor: playingAccent },
                     barScale(bar3),
                   ]}
                 />
@@ -212,7 +217,7 @@ export const LibraryTrackItem = React.memo(
           <AppText
             variant="body"
             weight="600"
-            color={isCurrent ? currentTheme.secondary : currentTheme.text}
+            color={isCurrent ? playingAccent : currentTheme.text}
             numberOfLines={1}
             style={styles.trackTitle}
           >
@@ -270,7 +275,7 @@ export const LibraryTrackItem = React.memo(
           {item.isDownloaded ? (
             <ArrowDownCircle
               size={16}
-              color={currentTheme.secondary}
+              color={playingAccent}
               testID={`library-track-${item.id}-downloaded`}
             />
           ) : null}

@@ -214,8 +214,13 @@ export const ClubRegistrationsScreen = () => {
       >
         <View style={styles.cardHeader}>
           <View style={styles.badgeContainer}>
-            <Clock size={12} color="#FF9800" />
-            <AppText variant="caption" style={styles.badgeText}>
+            {/* Semantic text tokens: the material hues were 1.9-3.1:1 on
+                their tints in light mode. */}
+            <Clock size={12} color={theme.warningText} />
+            <AppText
+              variant="caption"
+              style={[styles.badgeText, { color: theme.warningText }]}
+            >
               EN ATTENTE
             </AppText>
           </View>
@@ -252,8 +257,11 @@ export const ClubRegistrationsScreen = () => {
           style={[styles.actionButton, styles.bgRedLight]}
           onPress={() => handleAction(item, "REJECT")}
         >
-          <X size={20} color="#F44336" />
-          <AppText variant="button" style={styles.textRedAction}>
+          <X size={20} color={theme.dangerText} />
+          <AppText
+            variant="button"
+            style={[styles.textRedAction, { color: theme.dangerText }]}
+          >
             Refuser
           </AppText>
         </TouchableOpacity>
@@ -265,8 +273,11 @@ export const ClubRegistrationsScreen = () => {
           style={[styles.actionButton, styles.bgGreenLight]}
           onPress={() => handleAction(item, "APPROVE")}
         >
-          <Check size={20} color="#4CAF50" />
-          <AppText variant="button" style={styles.textGreenAction}>
+          <Check size={20} color={theme.successText} />
+          <AppText
+            variant="button"
+            style={[styles.textGreenAction, { color: theme.successText }]}
+          >
             Valider
           </AppText>
         </TouchableOpacity>
@@ -406,6 +417,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 10,
+    minHeight: 44,
     borderRadius: 8,
   },
   emptyContainer: {
