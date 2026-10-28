@@ -180,9 +180,15 @@ purge_repo() {
   # Locked manifests (#784): `az acr repository update --delete-enabled false`
   # (or --write-enabled false). ACR refuses to delete them, and this script
   # neither deletes nor untags them: the lock is lifted by hand.
-  jq -r '.[] | select(.changeableAttributes.deleteEnabled == false
+  # Fail closed: an unreadable lock list skips the repository.
+  if ! jq -r '.[] | select(.changeableAttributes.deleteEnabled == false
                       or .changeableAttributes.writeEnabled == false) | .digest' \
-    "$R/meta.json" | sort -u >"$R/locked_digests"
+    "$R/meta.json" >"$R/locked_raw"; then
+    echo "::warning::$REPO: cannot read manifest locks, skipped"
+    echo "::endgroup::"
+    return 0
+  fi
+  sort -u "$R/locked_raw" >"$R/locked_digests"
 
   # Warn when a CURRENT app template points at a tag that no longer exists.
   grep -F "$PREFIX:" "$W/current.txt" | sed "s|^$PREFIX:||; s|@.*||" | sort -u |
