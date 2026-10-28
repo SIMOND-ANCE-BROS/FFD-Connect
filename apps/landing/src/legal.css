@@ -1,5 +1,21 @@
 /* Legal documents: long-form reading, deliberately plainer than the landing page. */
 
+/* Aliases onto the index.css tokens. These names were referenced here and in
+   reset-password.css / parental-consent.css but never defined, so the legal,
+   reset-password and parental-consent pages fell back to inherited values. */
+:root {
+  --bg: var(--background);
+  --bg-elevated: var(--secondary);
+  --fg: var(--foreground);
+  --fg-muted: var(--muted-foreground);
+  --fg-dim: var(--muted-foreground);
+  --line: var(--border);
+  --line-strong: #7f97ab;
+  --font-sans: 'DM Sans', Arial, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
 .legal {
   min-height: 100vh;
   display: flex;
@@ -49,8 +65,8 @@
 }
 
 .legal__nav a[aria-current='page'] {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  color: var(--primary);
+  border-bottom-color: var(--primary);
 }
 
 .legal__body {
@@ -94,7 +110,7 @@
 }
 
 .legal__body a {
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .legal__body ul,
@@ -109,9 +125,9 @@
 .legal__body blockquote {
   margin: 1.5rem 0;
   padding: 1rem 1.25rem;
-  border-left: 3px solid var(--ffd-red);
+  border: 1px solid var(--line);
   background: var(--bg-elevated);
-  border-radius: 0 6px 6px 0;
+  border-radius: 12px;
 }
 
 .legal__body blockquote p {
