@@ -269,7 +269,7 @@ export function ClubDetailPage() {
 
       <Card withBorder style={{ borderColor: 'var(--mantine-color-red-6)' }}>
         <Stack gap="xs">
-          <Title order={4} c="red">
+          <Title order={2} size="h4" c="red">
             Zone dangereuse
           </Title>
           {blocking.length ? (
@@ -303,7 +303,9 @@ export function ClubDetailPage() {
       </Card>
 
       <Group justify="space-between">
-        <Title order={4}>Membres</Title>
+        <Title order={2} size="h4">
+          Membres
+        </Title>
         <Group gap="xs">
           {disabled && (
             <Text size="xs" c="dimmed">
@@ -368,7 +370,9 @@ export function ClubDetailPage() {
         </Text>
       )}
 
-      <Title order={4}>Historique admin</Title>
+      <Title order={2} size="h4">
+        Historique admin
+      </Title>
       {history.isError ? (
         <Alert color="red">Impossible de charger l'historique.</Alert>
       ) : history.data?.data.length ? (

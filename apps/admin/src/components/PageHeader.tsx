@@ -17,7 +17,7 @@ export function PageHeader({ title, description, badges, actions }: PageHeaderPr
     <Group justify="space-between" align="flex-end" gap="sm" wrap="wrap">
       <Stack gap={4} miw={0} style={{ flex: '1 1 16rem' }}>
         <Group gap="xs" wrap="wrap">
-          <Title order={2} style={{ overflowWrap: 'anywhere' }}>
+          <Title order={1} size="h2" style={{ overflowWrap: 'anywhere' }}>
             {title}
           </Title>
           {badges}

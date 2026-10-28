@@ -204,7 +204,9 @@ function UsageContent({ u }: { u: AdminUsageDto }) {
       )}
 
       <Stack gap="xs">
-        <Title order={3}>Écrans</Title>
+        <Title order={2} size="h3">
+          Écrans
+        </Title>
         <Table.ScrollContainer minWidth={420}>
           <Table striped>
             <Table.Thead>
@@ -231,7 +233,9 @@ function UsageContent({ u }: { u: AdminUsageDto }) {
 
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
         <Stack gap="xs">
-          <Title order={3}>Versions (7 derniers jours)</Title>
+          <Title order={2} size="h3">
+            Versions (7 derniers jours)
+          </Title>
           <Table striped>
             <Table.Thead>
               <Table.Tr>
@@ -250,7 +254,9 @@ function UsageContent({ u }: { u: AdminUsageDto }) {
           </Table>
         </Stack>
         <Stack gap="xs">
-          <Title order={3}>Compétitions les plus vues</Title>
+          <Title order={2} size="h3">
+            Compétitions les plus vues
+          </Title>
           {u.period === '12m' ? (
             <Text size="sm" c="dimmed">
               90 derniers jours

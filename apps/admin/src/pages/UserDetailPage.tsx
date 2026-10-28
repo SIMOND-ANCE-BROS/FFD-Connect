@@ -345,7 +345,10 @@ export function UserDetailPage() {
             <SimpleGrid cols={{ base: 1, sm: 2 }}>
               <Select
                 label="Rôle"
-                data={ref.data.roles}
+                data={ref.data.roles.map((r) => ({
+                  value: r,
+                  label: ROLE_LABELS[r as UserRole] ?? r,
+                }))}
                 disabled={isSelf}
                 description={isSelf ? 'Vous ne pouvez pas modifier votre propre rôle' : undefined}
                 {...form.getInputProps('role')}
@@ -411,7 +414,7 @@ export function UserDetailPage() {
       {!isSelf && (
         <Card withBorder style={{ borderColor: 'var(--mantine-color-red-6)' }}>
           <Stack gap="xs">
-            <Title order={4} c="red">
+            <Title order={2} size="h4" c="red">
               Zone dangereuse
             </Title>
             <Text size="sm">
@@ -498,7 +501,9 @@ export function UserDetailPage() {
 
       <HealthAccessHistory userId={u.id} />
 
-      <Title order={4}>Historique admin</Title>
+      <Title order={2} size="h4">
+        Historique admin
+      </Title>
       {history.data?.data.length ? (
         history.data.data.map((h) => (
           <Card key={h.id} withBorder p="xs">

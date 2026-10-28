@@ -45,7 +45,9 @@ function Section({
   return (
     <Stack component="section" gap="sm" aria-label={title}>
       <Group justify="space-between" wrap="wrap">
-        <Title order={3}>{title}</Title>
+        <Title order={2} size="h3">
+          {title}
+        </Title>
         {action}
       </Group>
       {children}
@@ -68,7 +70,8 @@ function QueueCard({ to, label, count }: { to: string; label: string; count?: nu
         ) : (
           <Badge
             size="xl"
-            color={count > 0 ? 'red' : 'gray'}
+            // Work waiting, not an incident: red stays for errors (DESIGN.md).
+            color={count > 0 ? 'ffd' : 'gray'}
             variant={count > 0 ? 'filled' : 'light'}
           >
             {count}
@@ -87,10 +90,10 @@ function QueueCard({ to, label, count }: { to: string; label: string; count?: nu
 function Figure({ label, value }: { label: string; value: number }) {
   return (
     <Card withBorder padding="sm">
-      <Text size="xs" c="dimmed">
+      <Text size="sm" c="dimmed">
         {label}
       </Text>
-      <Text fw={700} size="xl">
+      <Text fw={700} size="xl" className="app-tabular">
         {value}
       </Text>
     </Card>
@@ -155,11 +158,11 @@ function RecentActivity() {
               <Text size="sm" fw={500} truncate>
                 {ACTION_LABELS[entry.action]}
               </Text>
-              <Text size="xs" c="dimmed" truncate>
+              <Text size="sm" c="dimmed" truncate>
                 {entry.actorName ?? 'Système'}
               </Text>
             </Stack>
-            <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+            <Text size="sm" c="dimmed" className="app-tabular" style={{ whiteSpace: 'nowrap' }}>
               {dayjs(entry.createdAt).format('DD/MM/YYYY HH:mm')}
             </Text>
           </Group>

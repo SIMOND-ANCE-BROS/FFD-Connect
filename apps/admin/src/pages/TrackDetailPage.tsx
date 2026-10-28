@@ -316,7 +316,7 @@ function TrackEditor({ id }: { id: string }) {
 
       <Card withBorder style={{ borderColor: 'var(--mantine-color-red-6)' }}>
         <Stack gap="xs">
-          <Title order={4} c="red">
+          <Title order={2} size="h4" c="red">
             Zone dangereuse
           </Title>
           <Text size="sm">
@@ -351,7 +351,9 @@ function TrackEditor({ id }: { id: string }) {
         </Stack>
       </Card>
 
-      <Title order={4}>Historique admin</Title>
+      <Title order={2} size="h4">
+        Historique admin
+      </Title>
       {history.isError ? (
         <Alert color="red">
           {apiErrorMessage(history.error, "Impossible de charger l'historique.")}

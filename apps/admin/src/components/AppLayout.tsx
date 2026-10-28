@@ -72,10 +72,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
 
 const HEADER_HEIGHT = 'calc(3.5rem + env(safe-area-inset-top))';
 
-/** Red counter of a queue in the menu; nothing when the queue is empty. */
+/**
+ * Counter of a queue in the menu; nothing when the queue is empty. Brand
+ * colour, not red: pending work is routine, red stays for errors (DESIGN.md).
+ */
 const countBadge = (value: number) =>
   value > 0 ? (
-    <Badge size="sm" color="red" circle={value < 10}>
+    <Badge size="sm" color="ffd" circle={value < 10}>
       {value}
     </Badge>
   ) : null;
@@ -205,7 +208,14 @@ export function AppLayout() {
               {fullName}
             </Text>
             <ColorSchemeToggle />
-            <Button variant="white" color="ffd" size="xs" visibleFrom="sm" onClick={logout}>
+            <Button
+              variant="outline"
+              color="white"
+              size="xs"
+              visibleFrom="sm"
+              onClick={logout}
+              style={{ borderColor: 'rgba(255,255,255,0.45)' }}
+            >
               Déconnexion
             </Button>
           </Group>

@@ -124,7 +124,9 @@ export function LicenseRenewalDetailPage() {
       {conflict && <Alert color="orange">{conflict}</Alert>}
       <Card withBorder>
         <Stack gap={4}>
-          <Title order={4}>Licence actuelle</Title>
+          <Title order={2} size="h4">
+            Licence actuelle
+          </Title>
           <Text size="sm">Numéro : {r.user.license?.number ?? '—'}</Text>
           <Text size="sm">
             Fin de validité :{' '}
@@ -136,7 +138,9 @@ export function LicenseRenewalDetailPage() {
         {r.documents.map((d) => (
           <Card key={d.id} withBorder>
             <Stack gap="xs">
-              <Title order={5}>{DOCUMENT_LABELS[d.type]}</Title>
+              <Title order={3} size="h5">
+                {DOCUMENT_LABELS[d.type]}
+              </Title>
               <Text size="xs" c="dimmed">
                 Déposé le {dateTime(d.createdAt)}
               </Text>
@@ -177,7 +181,9 @@ export function LicenseRenewalDetailPage() {
       {r.history.length > 0 && (
         <Card withBorder>
           <Stack gap={4}>
-            <Title order={4}>Demandes précédentes</Title>
+            <Title order={2} size="h4">
+              Demandes précédentes
+            </Title>
             {r.history.map((h) => (
               <Text key={h.id} size="sm">
                 {`${STATUS_BADGES[h.status].label} · soumise le ${day(h.submittedAt)}`}
@@ -262,7 +268,9 @@ function DecisionForm({ r, onDecided, onConflict }: DecisionFormProps) {
       <SimpleGrid cols={{ base: 1, md: 2 }}>
         <Card withBorder>
           <Stack>
-            <Title order={4}>Approuver</Title>
+            <Title order={2} size="h4">
+              Approuver
+            </Title>
             <TextInput
               label="Numéro de licence"
               description="Prérempli depuis l’attestation ou la licence actuelle : vérifiez-le."
@@ -278,7 +286,9 @@ function DecisionForm({ r, onDecided, onConflict }: DecisionFormProps) {
         </Card>
         <Card withBorder>
           <Stack>
-            <Title order={4}>Refuser</Title>
+            <Title order={2} size="h4">
+              Refuser
+            </Title>
             <Radio.Group
               label="Motif"
               value={reason}

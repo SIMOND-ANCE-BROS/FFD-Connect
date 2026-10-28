@@ -1,6 +1,8 @@
 import {
+  Accordion,
   Alert,
   Badge,
+  Box,
   Button,
   Card,
   Code,
@@ -8,9 +10,7 @@ import {
   Group,
   List,
   Modal,
-  Paper,
   SegmentedControl,
-  SimpleGrid,
   Stack,
   Text,
   Textarea,
@@ -43,7 +43,9 @@ function ResultsImport({ competitionId }: { competitionId: string }) {
   return (
     <Card withBorder>
       <Stack>
-        <Title order={4}>Résultats</Title>
+        <Title order={2} size="h4">
+          Résultats
+        </Title>
         <SegmentedControl
           aria-label="Source des résultats"
           value={mode}
@@ -133,14 +135,26 @@ function CsvResultsImport({ competitionId }: { competitionId: string }) {
         d'en-tête obligatoire) ou choisissez le fichier, vérifiez-le, puis importez-le. Un fichier
         invalide n'importe rien ; réimporter un fichier corrigé met les lignes à jour.
       </Text>
-      <List size="sm" spacing={2}>
-        {RESULTS_CSV_COLUMNS.map((c) => (
-          <List.Item key={c.name}>
-            <Code>{c.name}</Code>
-            {c.required ? '' : ' (facultative)'} : {c.help}
-          </List.Item>
-        ))}
-      </List>
+      {/* Reference for a first import; folded so the text area stays in view. */}
+      <Accordion variant="contained" chevronPosition="left">
+        <Accordion.Item value="columns">
+          <Accordion.Control>
+            <Text size="sm" fw={500}>
+              Colonnes du fichier
+            </Text>
+          </Accordion.Control>
+          <Accordion.Panel>
+            <List size="sm" spacing={2}>
+              {RESULTS_CSV_COLUMNS.map((c) => (
+                <List.Item key={c.name}>
+                  <Code>{c.name}</Code>
+                  {c.required ? '' : ' (facultative)'} : {c.help}
+                </List.Item>
+              ))}
+            </List>
+          </Accordion.Panel>
+        </Accordion.Item>
+      </Accordion>
       <Textarea
         label="Contenu CSV"
         placeholder={
@@ -236,7 +250,9 @@ function EventsResults({ competitionId }: { competitionId: string }) {
   return (
     <Card withBorder>
       <Stack>
-        <Title order={4}>Épreuves</Title>
+        <Title order={2} size="h4">
+          Épreuves
+        </Title>
         <Text size="sm" c="dimmed">
           L'identifiant ou le nom d'une épreuve remplit la colonne <Code>epreuve</Code>. Pour
           corriger un import, supprimez les résultats importés de l'épreuve puis réimportez le
@@ -262,7 +278,12 @@ function EventsResults({ competitionId }: { competitionId: string }) {
           <Text size="sm">Cette compétition n'a aucune épreuve.</Text>
         )}
         {program.data?.events.map((event) => (
-          <Paper key={event.id} withBorder p="sm">
+          // Rows of the card, separated by a rule: not a card inside the card.
+          <Box
+            key={event.id}
+            pt="sm"
+            style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}
+          >
             <Group justify="space-between" wrap="wrap" gap="xs">
               <Stack gap={2} miw={0}>
                 <Group gap="xs">
@@ -288,7 +309,7 @@ function EventsResults({ competitionId }: { competitionId: string }) {
                 Supprimer les résultats importés
               </Button>
             </Group>
-          </Paper>
+          </Box>
         ))}
       </Stack>
       <Modal opened={target !== null} onClose={close} title="Supprimer les résultats importés">
@@ -321,7 +342,12 @@ export function CompetitionDetailPage() {
   const competition = useQuery(competitionQuery(id));
 
   if (competition.isError) {
-    return <Alert color="red">Compétition introuvable ou erreur serveur.</Alert>;
+    return (
+      <Stack>
+        <BackToList listPath="/competitions" />
+        <Alert color="red">Compétition introuvable ou erreur serveur.</Alert>
+      </Stack>
+    );
   }
   if (!competition.data) return <ListSkeleton rows={5} />;
   const c = competition.data;
@@ -339,13 +365,14 @@ export function CompetitionDetailPage() {
             </Badge>
           )
         }
+        // Two short facts under the title rather than a full-width card of their own.
+        description={
+          <Group component="span" gap="lg" wrap="wrap">
+            <span>Dates : {competitionDates(c)}</span>
+            <span>Lieu : {c.place ?? '—'}</span>
+          </Group>
+        }
       />
-      <Card withBorder>
-        <SimpleGrid cols={{ base: 1, sm: 2 }}>
-          <Text size="sm">Dates : {competitionDates(c)}</Text>
-          <Text size="sm">Lieu : {c.place ?? '—'}</Text>
-        </SimpleGrid>
-      </Card>
       <ResultsImport competitionId={c.id} />
       <EventsResults competitionId={c.id} />
     </Stack>

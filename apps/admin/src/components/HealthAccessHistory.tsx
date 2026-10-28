@@ -30,7 +30,9 @@ export function HealthAccessHistory({ userId }: { userId: string }) {
   return (
     <Stack gap="xs">
       <Group justify="space-between" align="baseline">
-        <Title order={4}>Qui a consulté ses données de santé</Title>
+        <Title order={2} size="h4">
+          Qui a consulté ses données de santé
+        </Title>
         {total > 0 && (
           <Anchor component={Link} to={subjectJournalPath(userId)} size="sm">
             Voir tout le journal{total > LATEST ? ` (${total})` : ''}
