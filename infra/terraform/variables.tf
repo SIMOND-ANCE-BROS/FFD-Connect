@@ -199,3 +199,50 @@ variable "migrate_job_placeholder_image" {
   type        = string
   default     = "mcr.microsoft.com/k8se/quickstart-jobs:latest"
 }
+
+# ── Backend app secrets — Key Vault references (#848) ──
+
+variable "backend_app_key_vault_secrets" {
+  description = "Per environment (staging / prod): the backend Container App's system-assigned identity principal id and the runtime Key Vault secrets it may read (Key Vault Secrets User, one assignment per secret). Values are created out-of-band, never in Terraform. Fetch the principal id: az containerapp show -n backend-<env> -g <rg> --query identity.principalId -o tsv."
+  type = map(object({
+    principal_id = string
+    secret_names = set(string)
+  }))
+  default = {
+    staging = {
+      principal_id = "b0d93235-6ca5-4593-86c5-c24fd47b2fba" # backend-staging (system-assigned)
+      secret_names = [
+        "jwt-secret-staging",           # JWT_SECRET
+        "resend-api-key-staging",       # RESEND_API_KEY
+        "sentry-dsn-staging",           # SENTRY_DSN
+        "wdsf-username-staging",        # WDSF_USERNAME
+        "wdsf-password-staging",        # WDSF_PASSWORD
+        "wdsf-api-key-staging",         # WDSF_API_KEY
+        "beta-tester-licenses-staging", # BETA_TESTER_LICENSES
+      ]
+    }
+  }
+
+  validation {
+    condition     = alltrue([for k in keys(var.backend_app_key_vault_secrets) : contains(["staging", "prod"], k)])
+    error_message = "backend_app_key_vault_secrets keys must be 'staging' or 'prod'."
+  }
+
+  # Isolation guard: an environment may only be granted secrets suffixed with
+  # its own name, so a typo cannot hand a prod secret to the staging identity.
+  validation {
+    condition = alltrue(flatten([
+      for env, cfg in var.backend_app_key_vault_secrets : [
+        for s in cfg.secret_names : endswith(s, "-${env}")
+      ]
+    ]))
+    error_message = "Each secret granted to an environment must end with -<env> (e.g. jwt-secret-staging for staging)."
+  }
+
+  # One identity per environment: a principal id copied from staging into the
+  # prod entry would hand the staging app the prod secrets.
+  validation {
+    condition     = length(distinct([for c in values(var.backend_app_key_vault_secrets) : c.principal_id])) == length(var.backend_app_key_vault_secrets)
+    error_message = "Each environment must use its own principal_id (backend-staging and backend-prod identities are distinct)."
+  }
+}
