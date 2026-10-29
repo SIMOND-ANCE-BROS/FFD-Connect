@@ -22014,6 +22014,174 @@
         "tags": ["admin"]
       }
     },
+    "/admin/competitions/results-status": {
+      "get": {
+        "description": "Pour chaque compétition demandée (1 à 100, dans l'ordre demandé) : nombre d'épreuves, nombre d'épreuves ayant des résultats, et l'état NONE / PARTIAL / COMPLETE. Une compétition inconnue ou sans épreuve vaut NONE. Jamais mis en cache.",
+        "operationId": "AdminCompetitionsController_resultsStatusList",
+        "parameters": [
+          {
+            "name": "ids",
+            "required": true,
+            "in": "query",
+            "description": "IDs des compétitions (1 à 100), répétés (`ids=A&ids=B`) ou séparés par des virgules",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CompetitionResultsStatusDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "IDs absents, invalides ou trop nombreux"
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Réservé au staff et aux admins"
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Résultats déjà importés, par compétition",
+        "tags": ["admin"]
+      }
+    },
     "/reports": {
       "post": {
         "description": "Permet de signaler un problème, bug ou suggestion avec une image optionnelle.",
@@ -32022,6 +32190,11 @@
           "locked": {
             "type": "boolean",
             "description": "L'épreuve a des inscriptions ou des résultats : elle ne peut être ni modifiée ni supprimée."
+          },
+          "resultCount": {
+            "type": "number",
+            "description": "Nombre de résultats importés pour l'épreuve (0 : aucun résultat).",
+            "example": 0
           }
         },
         "required": [
@@ -32033,7 +32206,8 @@
           "ageGroups",
           "level",
           "openLevels",
-          "locked"
+          "locked",
+          "resultCount"
         ]
       },
       "ProgramScheduleItemDto": {
@@ -33143,6 +33317,30 @@
           }
         },
         "required": ["years", "items", "truncated"]
+      },
+      "CompetitionResultsStatusDto": {
+        "type": "object",
+        "properties": {
+          "competitionId": {
+            "type": "string",
+            "description": "ID de la compétition"
+          },
+          "eventCount": {
+            "type": "number",
+            "description": "Nombre d'épreuves de la compétition"
+          },
+          "eventsWithResults": {
+            "type": "number",
+            "description": "Nombre d'épreuves ayant au moins un résultat importé"
+          },
+          "resultsStatus": {
+            "type": "string",
+            "enum": ["NONE", "PARTIAL", "COMPLETE"],
+            "description": "NONE : aucune épreuve n'a de résultat ; PARTIAL : certaines épreuves seulement ; COMPLETE : toutes les épreuves",
+            "example": "PARTIAL"
+          }
+        },
+        "required": ["competitionId", "eventCount", "eventsWithResults", "resultsStatus"]
       },
       "NotificationPreferenceDto": {
         "type": "object",

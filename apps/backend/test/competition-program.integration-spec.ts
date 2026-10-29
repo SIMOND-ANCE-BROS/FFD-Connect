@@ -27,6 +27,7 @@ interface ProgramBody {
     level: string | null;
     openLevels: string[];
     locked: boolean;
+    resultCount: number;
   }[];
   schedule: {
     id: string;
@@ -157,6 +158,7 @@ describe("Competition programme (integration, real DB)", () => {
         level: "Intermédiaire",
         openLevels: [],
         locked: false,
+        resultCount: 0,
       },
       {
         eventKind: "OPEN",
@@ -167,6 +169,7 @@ describe("Competition programme (integration, real DB)", () => {
         level: null,
         openLevels: ["Débutant", "Intermédiaire"],
         locked: false,
+        resultCount: 0,
       },
       {
         eventKind: "SOLO_TEAM",
@@ -177,6 +180,7 @@ describe("Competition programme (integration, real DB)", () => {
         level: "Débutant",
         openLevels: [],
         locked: false,
+        resultCount: 0,
       },
     ]);
     expect(body.schedule.map(({ id: _id, ...item }) => item)).toEqual([
@@ -238,7 +242,9 @@ describe("Competition programme (integration, real DB)", () => {
     expect(locked.events[0].locked).toBe(true);
 
     const withoutRegistered = {
-      events: others.map(({ locked: _locked, ...event }) => event),
+      events: others.map(
+        ({ locked: _locked, resultCount: _resultCount, ...event }) => event,
+      ),
       schedule: [],
     };
     const res = await put(clubAToken, competitionId, withoutRegistered).expect(
@@ -256,7 +262,7 @@ describe("Competition programme (integration, real DB)", () => {
     // Kept as is, it can still be reordered with the rest.
     const reordered = await put(clubAToken, competitionId, {
       events: [...others, registered].map(
-        ({ locked: _locked, ...event }) => event,
+        ({ locked: _locked, resultCount: _resultCount, ...event }) => event,
       ),
       schedule: [],
     }).expect(200);
@@ -291,7 +297,9 @@ describe("Competition programme (integration, real DB)", () => {
 
     const saved = (
       await put(clubAToken, ffd.id, {
-        events: before.events.map(({ locked: _locked, ...event }) => event),
+        events: before.events.map(
+          ({ locked: _locked, resultCount: _resultCount, ...event }) => event,
+        ),
         schedule: [],
       }).expect(200)
     ).body as ProgramBody;
