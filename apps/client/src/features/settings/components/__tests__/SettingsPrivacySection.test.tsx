@@ -2,6 +2,14 @@ import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
 import { SettingsPrivacySection } from "../SettingsPrivacySection";
 
+// The sections now render AppText, which reads the theme context.
+jest.mock("../../../../context/ThemeContext", () => ({
+  useTheme: () => ({
+    theme: { text: "#111111", textSecondary: "#555555" },
+    isDark: false,
+  }),
+}));
+
 const theme = {
   textSecondary: "#666",
   surface: "#fff",

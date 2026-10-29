@@ -270,6 +270,7 @@ export const PerformancePlayerScreen = () => {
               weight="bold"
               color={currentTheme.text}
               style={styles.displayText}
+              maxFontSizeMultiplier={CLOCK_MAX_FONT_SCALE}
             >
               {formatTime(timeRemaining)}
             </AppText>
@@ -307,6 +308,7 @@ export const PerformancePlayerScreen = () => {
               weight="bold"
               color={currentTheme.text}
               style={styles.displayText}
+              maxFontSizeMultiplier={CLOCK_MAX_FONT_SCALE}
             >
               {formatTime(timeRemaining)}
             </AppText>
@@ -350,6 +352,7 @@ export const PerformancePlayerScreen = () => {
               weight="bold"
               color={currentTheme.text}
               style={styles.displayText}
+              maxFontSizeMultiplier={CLOCK_MAX_FONT_SCALE}
             >
               {formatTime(timeRemaining)}
             </AppText>
@@ -430,6 +433,12 @@ export const PerformancePlayerScreen = () => {
   );
 };
 
+/**
+ * The clock is already 72pt inside a fixed circle: past this factor, larger
+ * system text sizes pushed it out of the circle.
+ */
+const CLOCK_MAX_FONT_SCALE = 1.2;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -491,7 +500,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 32,
-    height: 150, // Fixed height for controls area
+    minHeight: 150, // Controls area; grows rather than clipping
   },
   skipBtn: {
     width: 60,

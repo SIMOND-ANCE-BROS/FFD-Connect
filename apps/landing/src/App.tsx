@@ -30,10 +30,8 @@ import { PublicRoadmap } from './RoadmapSection';
 
 const modules: {
   id: DemoView;
-  n: string;
   name: string;
   icon: typeof Trophy;
-  phase: string;
   title: string;
   description: string;
   items: string[];
@@ -45,31 +43,31 @@ const modules: {
     access: 'Dans la bêta · selon votre profil',
     limitation:
       'Programme, résultats et inscriptions dépendent des données et des accès de chaque événement.',
-    n: '01',
     name: 'Compétitions',
     icon: Trophy,
-    phase: 'PRÉPARER SA SAISON',
-    title: 'Votre prochain départ.',
+    title: 'Le programme de chaque compétition',
     description:
-      'Du calendrier aux résultats, retrouvez les rendez-vous qui rythment votre saison de danse.',
-    items: ['Repérer les compétitions', 'Préparer ses inscriptions', 'Retrouver ses résultats'],
+      'Recherchez un événement, ouvrez sa fiche pour lire les épreuves et le timing de la journée, puis demandez votre inscription quand elle est ouverte.',
+    items: [
+      'Rechercher une compétition par nom ou par ville',
+      'Lire les épreuves et le timing de la journée',
+      'Demander son inscription et suivre sa validation',
+    ],
   },
   {
     id: 'licence',
     access: 'Dans la bêta · espace Danseur',
     limitation:
       'La carte et son pass Wallet ne sont pas encore acceptés en compétition. Conservez votre justificatif habituel.',
-    n: '02',
     name: 'Licence',
     icon: ScanLine,
-    phase: 'ARRIVER L’ESPRIT LIBRE',
-    title: 'L’essentiel, avec vous.',
+    title: 'Votre licence, même sans réseau',
     description:
-      'Une licence numérique et vos informations réunies, pour retrouver les repères de votre saison.',
+      'Votre carte de licence et son QR code restent consultables sans connexion une fois chargés. Sur iPhone, ajoutez-la à Apple Wallet quand l’option est proposée.',
     items: [
-      'Retrouver ses informations',
-      'Consulter sa licence numérique',
-      'Vérifier sa saison et son identité',
+      'Afficher sa carte et son QR code hors ligne',
+      'Vérifier sa saison et sa date de validité',
+      'Ajouter sa licence WDSF à côté de la licence FFD',
     ],
   },
   {
@@ -77,17 +75,15 @@ const modules: {
     access: 'Dans la bêta · Danseur et Admin',
     limitation:
       'La bibliothèque accessible dépend des titres disponibles et de vos droits. Aucun morceau réel n’est joué dans cet aperçu.',
-    n: '03',
     name: 'Musique',
     icon: Music2,
-    phase: 'ENTRER DANS LE RYTHME',
-    title: 'À chaque danse, son tempo.',
+    title: 'La musique d’entraînement, danse par danse',
     description:
-      'Retrouvez la bibliothèque de l’application : classement par danse, recherche et favoris pour préparer vos entraînements.',
+      'Cherchez un titre ou parcourez la bibliothèque par danse. Vos favoris sont téléchargés pour s’écouter sans réseau.',
     items: [
-      'Organiser sa bibliothèque audio',
-      'Préparer les morceaux',
-      'Accompagner la régie musicale',
+      'Parcourir les titres de chaque danse',
+      'Écouter ses favoris hors ligne',
+      'Enchaîner les danses d’un tour en mode compétition, avec annonces vocales',
     ],
   },
   {
@@ -95,63 +91,58 @@ const modules: {
     access: 'Dans la bêta · espace Club',
     limitation:
       'La gestion nécessite un compte Club habilité. Les inscriptions en attente dépendent du mode choisi par votre club.',
-    n: '04',
     name: 'Espace club',
     icon: Users,
-    phase: 'FAIRE VIVRE L’ÉVÉNEMENT',
-    title: 'Ensemble, en coulisses.',
+    title: 'Les membres et les inscriptions du club',
     description:
-      'Clubs, membres et équipes d’organisation : relier les informations utiles pour accompagner la vie du club et le jour J.',
+      'Avec un compte Club, retrouvez les membres rattachés à votre club, ses couples et ses équipes, et traitez les demandes d’inscription.',
     items: [
-      'Rassembler les membres du club',
-      'Suivre les inscriptions',
-      'Organiser l’accueil des participants',
+      'Ouvrir la fiche de chaque membre',
+      'Préparer les couples et les équipes solo',
+      'Valider ou refuser les inscriptions en attente',
     ],
   },
 ];
 
 const profiles = {
   danseur: {
-    n: '01',
     name: 'Danseur',
     icon: Trophy,
-    title: 'Concentrez-vous sur la piste.',
-    text: 'Une saison se prépare bien avant le premier passage. Le projet rassemble les repères utiles pour vous accompagner à chaque étape.',
+    title: 'Votre licence et vos compétitions au même endroit',
+    text: 'L’espace Danseur réunit votre licence, les compétitions, votre carrière et la bibliothèque musicale.',
     items: [
-      'Vos rendez-vous et vos résultats',
-      'Votre licence et vos informations',
-      'Votre musique pour vous préparer',
+      'Votre licence FFD (et WDSF), consultable hors ligne',
+      'Le programme des compétitions et vos inscriptions',
+      'Votre carrière et vos musiques favorites',
     ],
     module: 'competitions' as DemoView,
     link: 'Explorer le parcours compétition',
   },
   club: {
-    n: '02',
     name: 'Club',
     icon: Users,
-    title: 'Gardez le lien avec vos membres.',
-    text: 'Retrouver les informations de la structure, accompagner les inscriptions et suivre la saison : une vision commune pour la vie du club.',
+    title: 'Membres, couples et inscriptions',
+    text: 'L’espace Club, réservé aux comptes Club, sert à suivre les membres rattachés au club et leurs inscriptions aux compétitions.',
     items: [
-      'La structure et ses membres',
-      'Les inscriptions aux compétitions',
-      'Les informations à partager',
+      'Les fiches des membres',
+      'Les couples et les équipes solo',
+      'Les inscriptions en attente de validation',
     ],
     module: 'organisation' as DemoView,
-    link: 'Explorer les outils d’organisation',
+    link: 'Explorer l’espace club',
   },
   organisateur: {
-    n: '03',
     name: 'Organisateur',
     icon: ScanLine,
-    title: 'Faites place à la compétition.',
-    text: 'L’accueil, la musique, les annonces : les outils de terrain sont pensés pour accompagner les équipes pendant l’événement.',
+    title: 'Le contrôle des licences à l’accueil',
+    text: 'L’espace Staff donne accès au programme des compétitions et au scanner : lire le QR code d’une licence enregistre l’arrivée du participant, selon les autorisations de l’événement.',
     items: [
-      'Le contrôle des présences',
-      'La bibliothèque audio et la régie',
-      'Le suivi de l’événement',
+      'Le scanner de QR code des licences',
+      'Le résultat du contrôle : validé, déjà enregistré ou refusé',
+      'Les épreuves et le timing de la journée',
     ],
-    module: 'organisation' as DemoView,
-    link: 'Explorer les outils d’organisation',
+    module: 'competitions' as DemoView,
+    link: 'Explorer le programme d’une compétition',
   },
 };
 type Profile = keyof typeof profiles;
@@ -215,17 +206,17 @@ export default function App() {
           <div className="hero-copy">
             <p className="eyebrow">
               <span className="eyebrow-line" />
-              LA DANSE SPORTIVE, AU QUOTIDIEN
+              APPLICATION INDÉPENDANTE DE DANSE SPORTIVE
             </p>
             <h1 id="hero-title">
-              La danse,
+              Licence, compétitions
               <br />
-              <em>connectée.</em>
+              <em>et musique.</em>
             </h1>
-            <p className="hero-promise">Votre saison, de la préparation à la piste.</p>
+            <p className="hero-promise">Bêta ouverte sur iPhone et Android.</p>
             <p className="hero-lede">
-              Compétitions, licence, musique et vie de club : le projet d’app qui relie votre
-              quotidien de danseur.
+              Votre licence consultable sans réseau, le programme des compétitions, la musique
+              d’entraînement par danse et la gestion des membres de votre club.
             </p>
             <div className="hero-actions">
               <a className="button button-primary" href={betaUrl}>
@@ -252,10 +243,10 @@ export default function App() {
             </div>
             <MovementLine />
             <AppDemo view="audio" preview />
-            <p className="hero-product-caption">L’interface du projet, à découvrir ci-dessous.</p>
+            <p className="hero-product-caption">Écrans adaptés de l’app, à essayer ci-dessous.</p>
           </div>
           <div className="hero-audiences">
-            <span>UN PROJET POUR</span>
+            <span>CONÇUE POUR</span>
             {(Object.entries(profiles) as [Profile, (typeof profiles)[Profile]][]).map(
               ([id, p]) => (
                 <a href="#profils" key={id} onClick={() => setProfile(id)}>
@@ -280,17 +271,15 @@ export default function App() {
           <div className="section-width">
             <div className="section-heading" data-reveal>
               <div>
-                <p className="eyebrow">01 / L’APPLICATION</p>
                 <h2 id="modules-title">
-                  Tous les temps
+                  Ce que fait l’app
                   <br />
-                  <em>de votre saison.</em>
+                  <em>aujourd’hui.</em>
                 </h2>
               </div>
               <p>
-                Une fenêtre sur FFD Connect.
-                <br />
-                Naviguez dans les écrans adaptés du projet.
+                Quatre modules de la bêta,
+                <br />à essayer ici sur des données fictives.
               </p>
             </div>
             <Tabs
@@ -301,9 +290,6 @@ export default function App() {
               <TabsList className="module-nav" aria-label="Explorer les modules">
                 {modules.map((module) => (
                   <TabsTrigger value={module.id} key={module.id}>
-                    <span className="module-tab-number" aria-hidden="true">
-                      {module.n}
-                    </span>
                     <module.icon size={20} />
                     <span>{module.name}</span>
                   </TabsTrigger>
@@ -315,7 +301,6 @@ export default function App() {
                     <MovementLine />
                     <div className="demo-stage-label">
                       <span>APERÇU NAVIGABLE</span>
-                      <span aria-hidden="true">{module.n} / 04</span>
                     </div>
                     <AppDemo
                       view={module.id}
@@ -334,10 +319,6 @@ export default function App() {
                     </p>
                   </div>
                   <div className="module-story">
-                    <p className="eyebrow">
-                      <span className="step-dot" aria-hidden="true" />
-                      {module.phase}
-                    </p>
                     <h3>{module.title}</h3>
                     <p className="module-description">{module.description}</p>
                     <div className="module-availability">
@@ -438,17 +419,16 @@ export default function App() {
           <div className="section-width">
             <div className="profile-heading" data-reveal>
               <div>
-                <p className="eyebrow">02 / VOTRE PLACE DANS LE PROJET</p>
                 <h2 id="profiles-title">
-                  Chacun son rôle.
+                  Un espace
                   <br />
-                  <em>Le même élan.</em>
+                  <em>pour chaque rôle.</em>
                 </h2>
               </div>
               <p>
-                Un projet commun, pensé depuis
+                L’app affiche les onglets de votre rôle.
                 <br />
-                les deux côtés de la piste.
+                Vous en avez plusieurs ? Changez d’espace dans Réglages.
               </p>
               <MovementLine />
             </div>
@@ -463,9 +443,6 @@ export default function App() {
                     <TabsTrigger value={id} key={id}>
                       <p.icon size={20} />
                       <span>{p.name}</span>
-                      <span className="profile-tab-index" aria-hidden="true">
-                        {p.n}
-                      </span>
                     </TabsTrigger>
                   ),
                 )}
@@ -474,9 +451,6 @@ export default function App() {
                 ([id, p]) => (
                   <TabsContent value={id} key={id} className="profile-panel">
                     <div className="profile-title">
-                      <span className="profile-large-number" aria-hidden="true">
-                        {p.n}
-                      </span>
                       <h3>{p.title}</h3>
                     </div>
                     <div className="profile-details">
@@ -512,25 +486,29 @@ export default function App() {
         >
           <div className="project-grid">
             <div className="project-intro" data-reveal>
-              <p className="eyebrow">03 / LE PROJET</p>
               <h2 id="project-title">
-                La suite
+                Les prochaines
                 <br />
-                <em>s’écrit ensemble.</em>
+                <em>évolutions.</em>
               </h2>
               <span className="project-status">
                 <CodeMark />
-                Prototype en développement
+                Bêta ouverte · en développement
               </span>
               <p>
-                Conçu par Gabin Simond, FFD Connect explore une façon plus simple de relier les
-                usages de la danse sportive.
+                FFD Connect est une application indépendante, conçue et développée par Gabin Simond.
+                La bêta est ouverte sur iPhone via TestFlight et sur Android via le test fermé
+                Google Play. L’app n’est pas encore publiée sur l’App Store ni sur Google Play.
               </p>
               <p>
-                Les avancées, les limites connues et les sujets en cours sont documentés dans le
-                dépôt du projet.
+                La liste ci-contre reprend les tickets GitHub en cours ; elle ne garantit aucune
+                date. Les limites connues de la bêta sont décrites dans la documentation.
               </p>
               <div className="project-links">
+                <a className="text-link" href={betaUrl}>
+                  <ArrowUpRight size={17} />
+                  Rejoindre la bêta
+                </a>
                 <a className="text-link" href={sitePath('documentation')}>
                   <BookOpen size={17} />
                   Consulter la documentation
@@ -567,11 +545,10 @@ export default function App() {
           </div>
           <div className="contribute-banner" data-reveal>
             <div>
-              <p className="eyebrow">VOTRE EXPÉRIENCE COMPTE</p>
               <h3>
-                Vous connaissez le terrain.
+                Un bug, une idée ?
                 <br />
-                Faisons évoluer les usages.
+                Proposez-la sur GitHub.
               </h3>
             </div>
             <a
@@ -588,10 +565,9 @@ export default function App() {
 
         <section className="faq-section section-width" aria-labelledby="faq-title">
           <div data-reveal>
-            <p className="eyebrow">QUELQUES REPÈRES</p>
             <h2 id="faq-title">
-              Avant de
-              <br /> commencer.
+              Questions
+              <br /> fréquentes.
             </h2>
           </div>
           <Accordion type="single" collapsible className="faq-list" data-reveal>
@@ -602,7 +578,7 @@ export default function App() {
               },
               {
                 q: 'Puis-je télécharger l’application ?',
-                a: 'Oui, une bêta est proposée sur iPhone et iPad via TestFlight, et sur Android via le test fermé Google Play. La page d’inscription détaille les étapes pour chaque plateforme. Il s’agit d’une version de test susceptible de contenir des bugs.',
+                a: 'Oui, une bêta est proposée sur iPhone et iPad via TestFlight, et sur Android via le test fermé Google Play. La page d’inscription détaille les étapes pour chaque plateforme. Il s’agit d’une version de test susceptible de contenir des bugs. L’app n’est pas encore publiée sur l’App Store ni sur Google Play.',
                 link: true,
               },
               {

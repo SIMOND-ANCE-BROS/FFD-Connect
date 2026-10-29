@@ -7,6 +7,14 @@ import { SettingsProfileSection } from "../SettingsProfileSection";
 import { SettingsSecuritySection } from "../SettingsSecuritySection";
 import { SettingsTechnicalSection } from "../SettingsTechnicalSection";
 
+// The sections now render AppText, which reads the theme context.
+jest.mock("../../../../context/ThemeContext", () => ({
+  useTheme: () => ({
+    theme: { text: "#111111", textSecondary: "#555555" },
+    isDark: false,
+  }),
+}));
+
 // Screen-reader contract of the settings sections (RGAA, issue #22).
 
 const theme = {

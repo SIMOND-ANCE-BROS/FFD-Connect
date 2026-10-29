@@ -11,6 +11,13 @@ import type { LicenseUser } from "./LicenseCard";
 export const ADD_TO_APPLE_WALLET_LABEL = "Ajouter à Apple Wallet";
 export const APPLE_WALLET_OFFLINE_HINT =
   "L'ajout à Apple Wallet nécessite une connexion. Votre E-Licence reste utilisable hors ligne dans l'app.";
+/**
+ * The pass does not update itself yet (no PassKit web service, #167): a pass
+ * added before a licence change keeps the old values until it is re-added
+ * (#552).
+ */
+export const APPLE_WALLET_REFRESH_HINT =
+  "Votre pass ne se met pas à jour tout seul : après un changement de licence ou de discipline, supprimez-le de Wallet puis ajoutez-le de nouveau.";
 
 interface AddToAppleWalletButtonProps {
   /** The FFD license shown on the screen. */
@@ -76,7 +83,17 @@ export const AddToAppleWalletButton: React.FC<AddToAppleWalletButtonProps> = ({
         >
           {APPLE_WALLET_OFFLINE_HINT}
         </AppText>
-      ) : null}
+      ) : (
+        <AppText
+          variant="caption"
+          color={theme.textSecondary}
+          align="center"
+          style={styles.message}
+          testID="license-apple-wallet-refresh-hint"
+        >
+          {APPLE_WALLET_REFRESH_HINT}
+        </AppText>
+      )}
       {!state.offline && state.error ? (
         <AppText
           variant="caption"

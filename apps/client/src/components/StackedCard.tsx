@@ -89,6 +89,12 @@ interface StackedCardProps {
    * then a single button that brings it forward.
    */
   backCardLabel?: string;
+  /**
+   * Animate stack moves. Pass `useMotionEnabled()`: false when the in-app
+   * "Animations" toggle is off (the OS setting is already honoured by
+   * `ReduceMotion.System`). Defaults to true.
+   */
+  animated?: boolean;
   children: React.ReactNode;
   testID?: string;
 }
@@ -118,6 +124,7 @@ export const StackedCard = React.forwardRef<View, StackedCardProps>(
       isPullable,
       onPress,
       backCardLabel,
+      animated = true,
       children,
       testID,
     },
@@ -127,8 +134,8 @@ export const StackedCard = React.forwardRef<View, StackedCardProps>(
     const translateY = useSharedValue(offset);
 
     useEffect(() => {
-      translateY.value = withTiming(offset, MOVE_CONFIG);
-    }, [offset, translateY]);
+      translateY.value = animated ? withTiming(offset, MOVE_CONFIG) : offset;
+    }, [animated, offset, translateY]);
 
     const animatedStyle = useAnimatedStyle(() => ({
       transform: [

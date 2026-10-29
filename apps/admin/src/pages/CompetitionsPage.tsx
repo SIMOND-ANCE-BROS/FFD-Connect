@@ -1,7 +1,8 @@
 import { Anchor, Badge, Pagination, Stack, Text } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
-import { competitionsQuery } from '../api/queries';
+import type { CompetitionResultsStatusDto } from '../api/generated/types.gen';
+import { competitionsQuery, competitionsResultsStatusQuery } from '../api/queries';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { EmptyState } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
@@ -10,6 +11,8 @@ import { apiErrorMessage } from '../lib/apiError';
 import {
   COMPETITION_STATUS_BADGES,
   competitionDates,
+  RESULTS_STATUS_BADGES,
+  resultsStatusDetail,
   type CompetitionSummary,
 } from '../lib/competitions';
 import { useListParams } from '../lib/useListParams';
@@ -38,6 +41,21 @@ function StatusBadge({ status }: { status: string | null }) {
   );
 }
 
+/** « Importés / Partiels / Aucun » (#846); nothing while unknown. */
+function ResultsBadge({ status }: { status: CompetitionResultsStatusDto | undefined }) {
+  if (!status) return null;
+  const badge = RESULTS_STATUS_BADGES[status.resultsStatus];
+  const detail = resultsStatusDetail(status);
+  const counts =
+    status.resultsStatus === 'PARTIAL' ? ` ${status.eventsWithResults}/${status.eventCount}` : '';
+  return (
+    <Badge variant="light" color={badge.color} title={detail}>
+      {badge.label}
+      {counts}
+    </Badge>
+  );
+}
+
 export function CompetitionsPage() {
   const [state, update] = useListParams(readParams, writeParams);
   const list = useQuery({
@@ -46,6 +64,11 @@ export function CompetitionsPage() {
   });
   const total = list.data?.total ?? 0;
   const rows = list.data?.rows ?? [];
+  const results = useQuery({
+    ...competitionsResultsStatusQuery(rows.map((c) => c.id)),
+    placeholderData: keepPreviousData,
+  });
+  const resultsOf = (c: CompetitionSummary) => results.data?.get(c.id);
 
   const columns: DataTableColumn<CompetitionSummary>[] = [
     {
@@ -75,6 +98,13 @@ export function CompetitionsPage() {
       priority: 2,
       label: 'Statut',
       cell: (c) => <StatusBadge status={c.status} />,
+    },
+    {
+      key: 'results',
+      minWidth: 110,
+      priority: 2,
+      label: 'Résultats',
+      cell: (c) => <ResultsBadge status={resultsOf(c)} />,
     },
   ];
 
@@ -110,6 +140,11 @@ export function CompetitionsPage() {
           >
             <RecordLine label="Dates">{competitionDates(c)}</RecordLine>
             {c.place && <RecordLine label="Lieu">{c.place}</RecordLine>}
+            {resultsOf(c) && (
+              <RecordLine label="Résultats">
+                <ResultsBadge status={resultsOf(c)} />
+              </RecordLine>
+            )}
           </RecordCard>
         )}
       />

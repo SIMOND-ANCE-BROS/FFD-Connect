@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Modal, ScrollView, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppButton } from "../../components/AppButton";
 import { AppText } from "../../components/AppText";
 import { useTheme } from "../../context/ThemeContext";
@@ -16,6 +17,7 @@ import { LEGAL_DOCUMENTS } from "./legalContent";
  */
 export const CguAcceptanceModal = () => {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   // null = état inconnu (lecture AsyncStorage en cours) → ne rien afficher.
   const [accepted, setAccepted] = useState<boolean | null>(null);
 
@@ -38,7 +40,14 @@ export const CguAcceptanceModal = () => {
     <Modal visible transparent animationType="slide">
       <View style={styles.backdrop}>
         <View
-          style={[styles.card, { backgroundColor: theme.surface }]}
+          style={[
+            styles.card,
+            {
+              backgroundColor: theme.surface,
+              // The accept button stays above the home indicator.
+              paddingBottom: Math.max(32, insets.bottom + 20),
+            },
+          ]}
           accessibilityViewIsModal
         >
           <AppText
@@ -101,7 +110,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
-    paddingBottom: 32,
   },
   title: { marginBottom: 4 },
   scroll: { marginVertical: 14 },

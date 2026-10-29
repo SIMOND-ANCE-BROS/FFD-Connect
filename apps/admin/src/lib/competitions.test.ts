@@ -1,4 +1,11 @@
-import { competitionDates, eventLabel, toCompetitionSummary } from './competitions';
+import {
+  competitionDates,
+  eventLabel,
+  RESULTS_STATUS_BADGES,
+  resultCountLabel,
+  resultsStatusDetail,
+  toCompetitionSummary,
+} from './competitions';
 
 describe('competition helpers', () => {
   it('maps the API fields to a summary', () => {
@@ -61,5 +68,31 @@ describe('competition helpers', () => {
     expect(eventLabel({ category: 'Standard', ageGroup: 'Juniors', level: null })).toBe(
       'Standards Juniors',
     );
+  });
+
+  it('labels the results import status (#846), red kept for errors', () => {
+    expect(RESULTS_STATUS_BADGES.COMPLETE.label).toBe('Importés');
+    expect(RESULTS_STATUS_BADGES.PARTIAL.label).toBe('Partiels');
+    expect(RESULTS_STATUS_BADGES.NONE.label).toBe('Aucun');
+    expect(Object.values(RESULTS_STATUS_BADGES).map((b) => b.color)).not.toContain('red');
+  });
+
+  it('details how many events have results', () => {
+    expect(resultsStatusDetail({ eventCount: 0, eventsWithResults: 0 })).toBe('Aucune épreuve');
+    expect(resultsStatusDetail({ eventCount: 1, eventsWithResults: 1 })).toBe(
+      '1 épreuve sur 1 avec résultats',
+    );
+    expect(resultsStatusDetail({ eventCount: 3, eventsWithResults: 0 })).toBe(
+      '0 épreuve sur 3 avec résultats',
+    );
+    expect(resultsStatusDetail({ eventCount: 5, eventsWithResults: 2 })).toBe(
+      '2 épreuves sur 5 avec résultats',
+    );
+  });
+
+  it('counts the results of an event', () => {
+    expect(resultCountLabel(0)).toBe('Aucun résultat');
+    expect(resultCountLabel(1)).toBe('1 résultat');
+    expect(resultCountLabel(12)).toBe('12 résultats');
   });
 });

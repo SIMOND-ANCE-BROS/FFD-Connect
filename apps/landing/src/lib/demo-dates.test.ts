@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { demoDate, demoDayMonth, demoSeason, demoSeasonEnd } from './demo-dates';
+import {
+  demoDate,
+  demoDayMonth,
+  demoSeason,
+  demoSeasonEnd,
+  demoSeasonOf,
+  demoStatus,
+} from './demo-dates';
 
 describe('demo dates', () => {
   const today = new Date(2026, 9, 28); // 28 October 2026
@@ -16,6 +23,21 @@ describe('demo dates', () => {
 
   it('crosses the end of the year', () => {
     expect(demoDate(5, new Date(2026, 11, 30))).toBe('4 janvier 2027');
+  });
+
+  it('derives the status of a one-day event from its offset', () => {
+    expect(demoStatus(26)).toBe('À venir');
+    expect(demoStatus(0)).toBe('En cours');
+    expect(demoStatus(-46)).toBe('Passées');
+  });
+
+  it('names the season of the shifted date, whatever the day of the year', () => {
+    expect(demoSeasonOf(0, today)).toBe('d’automne');
+    expect(demoSeasonOf(-46, today)).toBe('d’automne');
+    expect(demoSeasonOf(0, new Date(2027, 3, 15))).toBe('de printemps');
+    expect(demoSeasonOf(-46, new Date(2027, 3, 15))).toBe('d’hiver');
+    expect(demoSeasonOf(0, new Date(2027, 6, 1))).toBe('d’été');
+    expect(demoSeasonOf(0, new Date(2027, 11, 1))).toBe('d’hiver');
   });
 
   it('starts the season in September', () => {

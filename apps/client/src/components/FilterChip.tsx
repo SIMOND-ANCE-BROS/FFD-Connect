@@ -11,6 +11,8 @@ interface FilterChipProps {
   testID?: string;
 }
 
+const CHIP_HIT_SLOP = { top: 6, bottom: 6, left: 4, right: 4 };
+
 /** Puce de filtre à bascule (sélectionnée = pleine, couleur primaire). */
 export const FilterChip = ({
   label,
@@ -27,6 +29,9 @@ export const FilterChip = ({
       accessibilityLabel={label}
       accessibilityHint="Active ou retire ce filtre"
       testID={testID}
+      // The chip draws ~34pt tall (caption + 8pt padding): extend the touch
+      // area to the 44pt minimum without changing the layout.
+      hitSlop={CHIP_HIT_SLOP}
       style={[
         styles.chip,
         {

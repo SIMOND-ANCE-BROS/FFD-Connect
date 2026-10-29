@@ -210,7 +210,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 10,
     right: 10,
-    height: 60,
+    // minHeight: title + artist grow with large text instead of clipping.
+    minHeight: 60,
     borderRadius: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },

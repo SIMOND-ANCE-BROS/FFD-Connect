@@ -7,6 +7,7 @@ import { AdminAuditModule } from "../admin/admin-audit.module";
 import { ClubsModule } from "../clubs/clubs.module";
 import { LicenseQrModule } from "../licenses/qr/license-qr.module";
 import { RedisModule } from "../redis/redis.module";
+import { AdminCompetitionsController } from "./admin-competitions.controller";
 import { AdminTopTurnierController } from "./admin-topturnier.controller";
 import { CompetitionsController } from "./competitions.controller";
 import { LiveGateway } from "./live.gateway";
@@ -19,6 +20,7 @@ import { CompetitionQueryService } from "./services/competition-query.service";
 import { CompetitionRegistrationService } from "./services/competition-registration.service";
 import { CompetitionResultsService } from "./services/competition-results.service";
 import { CompetitionResultsImportService } from "./services/competition-results-import.service";
+import { CompetitionResultsStatusQueryService } from "./services/competition-results-status-query.service";
 import { CompetitionTopTurnierIndexQueryService } from "./services/competition-topturnier-index-query.service";
 import { CompetitionTopTurnierImportService } from "./services/competition-topturnier-import.service";
 import { CompetitionTopTurnierUrlImportService } from "./services/competition-topturnier-url-import.service";
@@ -45,7 +47,11 @@ import { SyncProcessor } from "./sync.processor";
     }),
     BullModule.registerQueue(ffdSyncQueueOptions),
   ],
-  controllers: [CompetitionsController, AdminTopTurnierController],
+  controllers: [
+    CompetitionsController,
+    AdminTopTurnierController,
+    AdminCompetitionsController,
+  ],
   providers: [
     CompetitionAccessService,
     CompetitionManagementService,
@@ -55,6 +61,7 @@ import { SyncProcessor } from "./sync.processor";
     CompetitionRegistrationService,
     CompetitionResultsService,
     CompetitionResultsImportService,
+    CompetitionResultsStatusQueryService,
     CompetitionTopTurnierImportService,
     CompetitionTopTurnierUrlImportService,
     CompetitionTopTurnierIndexQueryService,

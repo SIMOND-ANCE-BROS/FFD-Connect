@@ -288,6 +288,8 @@ export const PasoClashEditorModal = ({
                     accessibilityLabel={`Supprimer l'appel ${i + 1}`}
                     accessibilityHint="Retire cet appel de la liste"
                     testID={`paso-remove-point-${i}`}
+                    // Bare 18pt icon: extend the touch area to 44pt.
+                    hitSlop={13}
                   >
                     <Trash2 size={18} color="#e74c3c" />
                   </TouchableOpacity>
@@ -397,6 +399,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 8,
+    // Same height as the play button: 44pt touch target.
+    minHeight: 44,
+    justifyContent: "center",
   },
   playBtn: {
     width: 44,
