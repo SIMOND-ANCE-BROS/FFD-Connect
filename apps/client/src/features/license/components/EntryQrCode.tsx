@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { AppText } from "../../../components/AppText";
+import { theme } from "../../../theme";
 import { currentEntryQr, type EntryQrBatch } from "../utils/entryQr";
 import { QRCodeView } from "./QRCodeView.native";
 
@@ -51,6 +52,10 @@ export function EntryQrCode({
         <AppText
           variant="caption"
           align="center"
+          // The QR always sits on a white plate (scanners need dark on
+          // light): a fixed slate ink, not the theme's textSecondary, which
+          // fell to ~2.6:1 on that plate in dark mode.
+          color={theme.colors.slate600}
           style={styles.caption}
           testID="entry-qr-countdown"
           // The visible countdown ticks every second: the reader gets a

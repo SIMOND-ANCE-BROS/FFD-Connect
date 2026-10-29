@@ -17,7 +17,7 @@
   width: 1.1rem;
   height: 1.1rem;
   margin-top: 0.15rem;
-  accent-color: var(--accent);
+  accent-color: var(--primary);
 }
 
 .consent__revoke {
@@ -25,9 +25,9 @@
 }
 
 .consent__revoke-btn {
-  border: 1px solid var(--ffd-red);
+  border: 1px solid var(--destructive);
   background: transparent;
-  color: var(--ffd-red);
+  color: var(--destructive);
 }
 
 .consent__revoke-btn:disabled {

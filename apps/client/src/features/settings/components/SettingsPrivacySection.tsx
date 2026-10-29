@@ -173,10 +173,13 @@ export const SettingsPrivacySection: React.FC<SettingsPrivacySectionProps> = ({
           accessibilityHint="Supprime définitivement votre compte et vos données (irréversible)"
         >
           <View style={styles.rowLeft}>
-            <View style={[styles.iconBox, { backgroundColor: "#e74c3c20" }]}>
-              <Trash2 size={20} color="#e74c3c" />
+            {/* Danger tokens: #e74c3c was 3.8:1 as text on white. */}
+            <View
+              style={[styles.iconBox, { backgroundColor: `${theme.danger}20` }]}
+            >
+              <Trash2 size={20} color={theme.dangerText} />
             </View>
-            <Text style={[styles.rowLabel, { color: "#e74c3c" }]}>
+            <Text style={[styles.rowLabel, { color: theme.dangerText }]}>
               Supprimer mon compte
             </Text>
           </View>

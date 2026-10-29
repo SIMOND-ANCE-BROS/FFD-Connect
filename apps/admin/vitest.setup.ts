@@ -19,11 +19,17 @@ afterEach(() => {
   useListReturn.setState({ searches: {} });
 });
 
-// Mantine needs matchMedia and ResizeObserver in jsdom.
+// Mantine needs matchMedia and ResizeObserver in jsdom. The stub is a desktop
+// that asks for reduced motion: with `respectReducedMotion` (src/test/render.tsx)
+// every Mantine transition then runs with a zero duration, synchronously.
+// Otherwise a transition schedules requestAnimationFrame + setTimeout, and one
+// started as the page unmounts (a dialog closing while the page navigates away)
+// escaped the unmount cleanup: its timer fired after jsdom was torn down and
+// failed the run with « ReferenceError: window is not defined » (#660, #803).
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string) => ({
-    matches: false,
+    matches: query === '(prefers-reduced-motion: reduce)',
     media: query,
     onchange: null,
     addEventListener: () => {},

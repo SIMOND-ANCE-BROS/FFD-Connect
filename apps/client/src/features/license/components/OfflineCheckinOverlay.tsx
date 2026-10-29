@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { AppText } from "../../../components/AppText";
 import type { ThemeContextType } from "../../../context/ThemeContext";
+import { theme } from "../../../theme";
 import { announce } from "../../../utils/announce";
 import { offlineCheckinAnnouncement } from "../utils/scanAnnouncement";
 import {
@@ -9,8 +10,13 @@ import {
   type OfflineCheckinResult,
 } from "../services/offlineCheckin";
 
-const GREEN = "#4CAF50";
-const ORANGE = "#FF9800";
+// The verdict header carries white text: deep tones keep it AA (#4CAF50 was
+// 2.8:1, #FF9800 2.2:1).
+const GREEN = theme.colors.successDeep;
+const ORANGE = theme.colors.warningDeep;
+// Same reason for the red: the dark theme's bright danger is 3.76:1 under
+// white, the deep red 4.83:1 in both themes.
+const RED = theme.colors.error;
 
 interface Verdict {
   title: string;
@@ -78,7 +84,7 @@ export function OfflineCheckinOverlay({
   onClose: () => void;
   currentTheme: ThemeContextType["theme"];
 }) {
-  const { danger } = currentTheme;
+  const danger = RED;
   // The verdict is only shown over the camera: speak it once per scan (#22).
   useEffect(() => {
     if (!result) return;
@@ -87,7 +93,7 @@ export function OfflineCheckinOverlay({
   }, [result, danger]);
 
   if (!result) return null;
-  const verdict = offlineCheckinVerdict(result, currentTheme.danger);
+  const verdict = offlineCheckinVerdict(result, danger);
 
   return (
     <View

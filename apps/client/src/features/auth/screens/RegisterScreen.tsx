@@ -426,7 +426,9 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                     {
                       borderColor: state.cguAccepted
                         ? currentTheme.primaryFill
-                        : currentTheme.border,
+                        : // The border token is ~1.2:1: the unchecked
+                          // box must read as a control (3:1).
+                          currentTheme.textSecondary,
                       backgroundColor: state.cguAccepted
                         ? currentTheme.primaryFill
                         : "transparent",

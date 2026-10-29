@@ -255,7 +255,14 @@ export const PerformancePlayerScreen = () => {
               isDark ? styles.bgDarkPrepare : styles.bgLightPrepare,
             ]}
           >
-            <AppText variant="h2" weight="bold" style={styles.preparationText}>
+            <AppText
+              variant="h2"
+              weight="bold"
+              style={[
+                styles.preparationText,
+                !isDark && { color: currentTheme.primary },
+              ]}
+            >
               PRÉPARATION
             </AppText>
             <AppText
@@ -285,7 +292,14 @@ export const PerformancePlayerScreen = () => {
               isDark ? styles.bgDarkPause : styles.bgLightPause,
             ]}
           >
-            <AppText variant="h2" weight="bold" style={styles.pauseText}>
+            <AppText
+              variant="h2"
+              weight="bold"
+              style={[
+                styles.pauseText,
+                !isDark && { color: currentTheme.warningText },
+              ]}
+            >
               PAUSE
             </AppText>
             <AppText
@@ -313,7 +327,14 @@ export const PerformancePlayerScreen = () => {
               isDark ? styles.bgDarkInProgress : styles.bgLightInProgress,
             ]}
           >
-            <AppText variant="h2" weight="bold" style={styles.inProgressText}>
+            <AppText
+              variant="h2"
+              weight="bold"
+              style={[
+                styles.inProgressText,
+                !isDark && { color: currentTheme.successText },
+              ]}
+            >
               EN COURS
             </AppText>
             <AppText
@@ -501,6 +522,8 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     marginBottom: 20,
   },
+  // Phase titles: these bright hues read on the dark tints; light mode swaps
+  // in AA text tokens (they were 1.5-2.7:1 on the pale tints).
   preparationText: {
     color: "#2196F3",
     letterSpacing: 2,

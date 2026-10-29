@@ -1,7 +1,15 @@
-import React from "react";
-import { ActivityIndicator, Modal, StyleSheet, Text, View } from "react-native";
+import React, { useEffect } from "react";
+import { ActivityIndicator, Modal, StyleSheet, View } from "react-native";
 import { useTheme } from "../context/ThemeContext";
 import { useWakeStore } from "../stores/wake.store";
+import { announce } from "../utils/announce";
+import { AppText } from "./AppText";
+
+/** Spoken once when the overlay appears (the per-second timer stays silent). */
+export const WAKE_OVERLAY_ANNOUNCEMENT =
+  "Réveil du serveur, merci de patienter";
+
+const noop = () => {};
 
 /**
  * Overlay plein écran affiché pendant le réveil du backend (Container App
@@ -13,24 +21,62 @@ export const WakeOverlay = (): React.JSX.Element | null => {
   const waking = useWakeStore((s) => s.waking);
   const visible = useWakeStore((s) => s.visible);
   const elapsed = useWakeStore((s) => s.elapsed);
+  const shown = waking && visible;
 
-  if (!waking || !visible) return null;
+  // Screen readers get one sentence when the wait starts, not the ticking
+  // counter (no live region on it).
+  useEffect(() => {
+    if (shown) announce(WAKE_OVERLAY_ANNOUNCEMENT);
+  }, [shown]);
+
+  if (!shown) return null;
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent>
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      // The wait cannot be skipped: Android back does nothing (and RN warns
+      // when a Modal has no handler).
+      onRequestClose={noop}
+    >
       <View style={styles.backdrop}>
-        <View style={[styles.card, { backgroundColor: theme.surface }]}>
-          <ActivityIndicator size="large" color={theme.primary} />
-          <Text style={[styles.title, { color: theme.text }]}>
+        <View
+          style={[styles.card, { backgroundColor: theme.surface }]}
+          accessibilityViewIsModal
+        >
+          <ActivityIndicator
+            size="large"
+            color={theme.primary}
+            accessibilityLabel="Chargement"
+            accessibilityHint="Le serveur redémarre"
+          />
+          <AppText
+            variant="h3"
+            weight="bold"
+            accessibilityRole="header"
+            color={theme.text}
+            style={styles.title}
+          >
             Réveil du serveur…
-          </Text>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+          </AppText>
+          <AppText
+            variant="body"
+            color={theme.textSecondary}
+            style={styles.subtitle}
+          >
             Le serveur démarre, ça prend environ 90 secondes. Merci de
             patienter.
-          </Text>
-          <Text style={[styles.timer, { color: theme.textSecondary }]}>
+          </AppText>
+          <AppText
+            variant="caption"
+            weight="600"
+            color={theme.textSecondary}
+            style={styles.timer}
+          >
             {elapsed}s
-          </Text>
+          </AppText>
         </View>
       </View>
     </Modal>
@@ -56,7 +102,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 18,
-    fontWeight: "700",
+    marginBottom: 0,
     textAlign: "center",
   },
   subtitle: {
@@ -65,8 +111,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   timer: {
-    fontSize: 13,
-    fontWeight: "600",
     marginTop: 4,
+    fontVariant: ["tabular-nums"],
   },
 });

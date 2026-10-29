@@ -53,7 +53,14 @@ export async function pickOption(user: UserEvent, input: HTMLElement, name: stri
  * open a select before picking an option, which mounts its dropdown, so only
  * closed dropdowns leave the DOM.
  */
-const testTheme = createTheme({
+export const testTheme = createTheme({
+  // `env="test"` only skips the transition styles: the transition hook still
+  // schedules a requestAnimationFrame + setTimeout on every open/close, and one
+  // started as the page unmounted outlived the test and threw « window is not
+  // defined » after jsdom teardown (#660, #803). Honouring the reduced-motion
+  // preference that the matchMedia stub reports (vitest.setup.ts) makes every
+  // transition zero-length and synchronous: no timer is ever left behind.
+  respectReducedMotion: true,
   components: {
     Combobox: Combobox.extend({ defaultProps: { keepMounted: false } }),
   },

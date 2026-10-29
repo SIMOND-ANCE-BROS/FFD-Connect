@@ -287,7 +287,9 @@ export function NewUserPage() {
           )}
           {role === 'LICENSEE' && ref.data && (
             <>
-              <Title order={4}>Profil (facultatif)</Title>
+              <Title order={2} size="h4">
+                Profil (facultatif)
+              </Title>
               <SimpleGrid cols={{ base: 1, sm: 2 }}>
                 <Select
                   label="Catégorie"

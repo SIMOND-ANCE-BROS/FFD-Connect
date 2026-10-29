@@ -35,6 +35,7 @@ import { FilterSheet } from "../../../components/FilterSheet";
 import { useRestoreFocusOnClose } from "../../../utils/a11yFocus";
 import { FilterChip } from "../../../components/FilterChip";
 import { useTheme } from "../../../context/ThemeContext";
+import { theme as themeTokens } from "../../../theme";
 import { RootStackParamList } from "../../../navigation/types";
 import { useWakeStore } from "../../../stores/wake.store";
 import { Competition } from "../context/CompetitionContext";
@@ -1034,11 +1035,13 @@ function statusBadgeLabel(status: string): string {
 
 const StatusBadge = ({ status }: { status: string }) => {
   const { theme } = useTheme(); // Hook usage inside component
-  let color = theme.textSecondary;
+  // Fills under white text, AA in both themes: textSecondary (2.56:1 in dark)
+  // and the dark theme's bright danger (3.76:1) were not.
+  let color = theme.mutedFill;
   const label = statusBadgeLabel(status);
 
   if (status === "LIVE") {
-    color = theme.danger;
+    color = themeTokens.colors.error;
   } else if (status === "UPCOMING") {
     color = theme.secondary;
   }

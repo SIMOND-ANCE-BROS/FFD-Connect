@@ -10,3 +10,7 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+# Plan files embed a full state snapshot, secret values included (#779)
+*.tfplan
+*.tfplan.json
+terraform.tfstate.backup

@@ -102,10 +102,14 @@ export const LicenseCardHeader: React.FC<LicenseCardHeaderProps> = ({
           {user.type}
         </AppText>
         {user.season ? (
+          // Header ink, not the red/gold highlight: red on the FFD blue was
+          // 2:1 (2.8:1 in dark), gold on the light WDSF grey 2.6:1. The
+          // season is what the door staff read: it must stay legible.
           <AppText
             variant="body"
             weight="bold"
-            style={[styles.seasonLabel, { color: config.highlightColor }]}
+            maxFontSizeMultiplier={LICENSE_CARD_TEXT_MAX_SCALE}
+            style={[styles.seasonLabel, { color: config.headerTextColor }]}
           >
             {user.season}
           </AppText>
@@ -117,7 +121,8 @@ export const LicenseCardHeader: React.FC<LicenseCardHeaderProps> = ({
               variant="caption"
               weight="bold"
               numberOfLines={1}
-              style={{ color: config.highlightColor }}
+              maxFontSizeMultiplier={LICENSE_CARD_TEXT_MAX_SCALE}
+              style={{ color: config.headerTextColor }}
             >
               {user.status.toUpperCase()}
             </AppText>

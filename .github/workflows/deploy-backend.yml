@@ -899,6 +899,44 @@ jobs:
             echo "Post-deploy logs look clean"
           fi
 
+      # #784: ci-staging holds AcrDelete on the shared registry, so a staging
+      # job could delete the digest prod runs. That digest is locked
+      # (`--delete-enabled false`) BY HAND after a prod deploy (runbook
+      # deploiement-azure.md, "Verrou de l'image prod"): ci-prod gets no right
+      # to change image attributes, and acr-purge.sh never touches a locked
+      # manifest. The deployed digest is a buildx INDEX: a lock on it does not
+      # cover its children (the linux/amd64 image, the attestation), which
+      # must be locked too or deleting them still breaks the pull (#681).
+      # Read-only check (AcrPull): warn when any lock is missing.
+      - name: Check the prod image lock (#784)
+        if: success()
+        continue-on-error: true
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+          IMAGE_DIGEST: ${{ needs.gate.outputs.image_digest }}
+        run: |
+          set -eu
+          REPO=ffd-connect-backend
+          if ! CHILDREN=$(az acr manifest show -r "$ACR_NAME" -n "${REPO}@${IMAGE_DIGEST}" \
+            --query "manifests[].digest" -o tsv 2>/dev/null); then
+            echo "::warning::Cannot read the prod image manifest ${IMAGE_DIGEST}"
+            exit 0
+          fi
+          UNLOCKED=""
+          for D in "$IMAGE_DIGEST" $CHILDREN; do
+            if ! LOCK=$(az acr manifest show-metadata -r "$ACR_NAME" -n "${REPO}@${D}" \
+              --query changeableAttributes.deleteEnabled -o tsv 2>/dev/null); then
+              echo "::warning::Cannot read the lock state of ${D}"
+              exit 0
+            fi
+            [ "$LOCK" = "false" ] || UNLOCKED="$UNLOCKED $D"
+          done
+          if [ -z "$UNLOCKED" ]; then
+            echo "Prod image ${IMAGE_DIGEST} and its children are locked against deletion"
+          else
+            echo "::warning::Prod image NOT fully locked (unlocked:${UNLOCKED}): a staging job could delete it. Lock the index AND its children by hand (runbook deploiement-azure.md, Verrou de l'image prod, #784)."
+          fi
+
       # ACR Basic has no retention policy (see infra/terraform/acr.tf), so we
       # prune here — but NEVER blindly (incident #681: a "keep newest 15" purge
       # deleted prod's image, and every backend-prod revision then sat in

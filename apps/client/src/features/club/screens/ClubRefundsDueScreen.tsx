@@ -120,8 +120,14 @@ export const ClubRefundsDueScreen = () => {
           accessibilityHint="À rembourser depuis votre espace HelloAsso"
         >
           <View style={styles.cardHeader}>
-            <View style={styles.badge}>
-              <AppText variant="caption" style={styles.badgeText}>
+            {/* Danger text token on a themed tint (#F44336 was 3.1:1). */}
+            <View
+              style={[styles.badge, { backgroundColor: `${theme.danger}1A` }]}
+            >
+              <AppText
+                variant="caption"
+                style={[styles.badgeText, { color: theme.dangerText }]}
+              >
                 À REMBOURSER
               </AppText>
             </View>
@@ -283,9 +289,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: "rgba(244, 67, 54, 0.1)",
   },
-  badgeText: { color: "#F44336", fontWeight: "bold" },
+  badgeText: { fontWeight: "bold" },
   emptyContainer: {
     alignItems: "center",
     justifyContent: "center",

@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText } from "../../../components/AppText";
 import { ThemeContextType, useTheme } from "../../../context/ThemeContext";
+import { theme } from "../../../theme";
 import { RootStackParamList } from "../../../navigation/types";
 import { useScannerLogic } from "../hooks/useScannerLogic";
 import { OfflineCheckinOverlay } from "../components/OfflineCheckinOverlay";
@@ -51,8 +52,10 @@ const CheckinResultOverlay = ({
   let color = currentTheme.primaryFill;
   let content = null;
 
+  // Verdict fills carry white text: the deep tones keep it AA in both themes
+  // (the bright danger of dark mode was 3.76:1, #4CAF50 2.8:1).
   if (error) {
-    color = currentTheme.danger;
+    color = theme.colors.error;
     content = (
       <AppText
         variant="body"
@@ -63,9 +66,9 @@ const CheckinResultOverlay = ({
     );
   } else if (result) {
     if (outcome === "DENIED") {
-      color = currentTheme.danger;
+      color = theme.colors.error;
     } else if (outcome === "SUCCESS") {
-      color = "#4CAF50"; // Success Green
+      color = theme.colors.successDeep;
     }
 
     content = (
@@ -126,7 +129,7 @@ const CheckinResultOverlay = ({
                 <View
                   style={[
                     styles.badge,
-                    { backgroundColor: currentTheme.danger },
+                    { backgroundColor: theme.colors.error },
                   ]}
                 >
                   <AppText variant="caption" style={styles.whiteText}>
@@ -255,7 +258,7 @@ export const ScannerScreen = ({ navigation, route }: ScannerScreenProps) => {
           }
           accessibilityHint="Autoriser l'accès à la caméra pour scanner les licences"
           onPress={onPressAllow}
-          style={styles.mt20}
+          style={styles.permissionButton}
         >
           <AppText variant="button" style={{ color: currentTheme.primary }}>
             {canAskAgain ? "Autoriser" : "Ouvrir les Réglages"}
@@ -465,13 +468,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   whiteText: {
-    color: "#fff",
+    color: theme.colors.white,
   },
   successBadge: {
-    backgroundColor: "#4CAF50",
+    backgroundColor: theme.colors.successDeep,
   },
   warningBadge: {
-    backgroundColor: "#FF9800",
+    backgroundColor: theme.colors.warningDeep,
   },
   qrWarning: {
     alignSelf: "center",
@@ -485,8 +488,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  mt20: {
+  // The only action of the permission screen: a full 44 pt target.
+  permissionButton: {
     marginTop: 20,
+    minHeight: 44,
+    paddingHorizontal: 24,
+    justifyContent: "center",
+    alignItems: "center",
   },
   permissionHint: {
     marginTop: 8,

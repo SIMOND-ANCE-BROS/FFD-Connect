@@ -23,6 +23,13 @@ type Props = NativeStackScreenProps<RootStackParamList, "LiveResults">;
 /** The rank badge is a fixed 44pt circle: cap the system text scaling. */
 const BADGE_TEXT_MAX_SCALE = 1.3;
 
+/**
+ * Trophy ink on the metallic podium fills: the dark ink getPodiumStyle gives
+ * (white was 1.4:1 on gold, 1.8:1 on silver). Same in CareerScreen and
+ * ViewCareerScreen, which mirror this badge.
+ */
+const PODIUM_INK = getPodiumStyle(1, "").textColor;
+
 /** Spoken rank: "1re place", "5e place". */
 export function spokenRank(rank: number): string {
   return rank === 1 ? "1re place" : `${rank}e place`;
@@ -202,7 +209,7 @@ export const LiveResultsScreen = ({ route, navigation }: Props) => {
           ]}
         >
           {isPodium ? (
-            <Trophy size={20} color="white" fill="white" />
+            <Trophy size={20} color={PODIUM_INK} fill={PODIUM_INK} />
           ) : isQualified ? (
             <AppText
               weight="bold"
@@ -265,7 +272,8 @@ export const LiveResultsScreen = ({ route, navigation }: Props) => {
                   <AppText
                     variant="caption"
                     weight="bold"
-                    style={{ color: theme.danger }}
+                    // Text token: the danger fill was ~4:1 on its tint.
+                    style={{ color: theme.dangerText }}
                   >
                     ÉLIMINÉ
                   </AppText>
@@ -274,7 +282,7 @@ export const LiveResultsScreen = ({ route, navigation }: Props) => {
                       variant="caption"
                       style={[
                         styles.eliminatedMarksText,
-                        { color: theme.danger },
+                        { color: theme.dangerText },
                       ]}
                     >
                       {marks} {marks > 1 ? "croix" : "croix"}
@@ -283,10 +291,12 @@ export const LiveResultsScreen = ({ route, navigation }: Props) => {
                 </View>
               )}
               {!status && isPodium && (
+                // Text ink: the medal colour as text was 1.4:1 (gold on
+                // white); the medal stays on the badge next to it.
                 <AppText
                   variant="h3"
                   weight="bold"
-                  style={{ color: statusColor }}
+                  style={{ color: theme.text }}
                 >
                   {item.ranking}
                 </AppText>

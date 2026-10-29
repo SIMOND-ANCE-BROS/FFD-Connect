@@ -117,7 +117,9 @@ export function LoginPage() {
         <Paper maw={400} mx="auto" p={{ base: 'lg', sm: 'xl' }} withBorder shadow="md">
           <form onSubmit={onSubmit}>
             <Stack>
-              <Title order={2}>Connexion</Title>
+              <Title order={1} size="h2">
+                Connexion
+              </Title>
               {!awake && (
                 <Group gap="xs" wrap="nowrap">
                   <Loader size="xs" />
@@ -139,6 +141,9 @@ export function LoginPage() {
                 label="Mot de passe"
                 autoComplete="current-password"
                 required
+                visibilityToggleButtonProps={{
+                  'aria-label': 'Afficher ou masquer le mot de passe',
+                }}
                 {...form.getInputProps('password')}
               />
               <Button type="submit" fullWidth mt="xs" loading={submitting} disabled={!awake}>

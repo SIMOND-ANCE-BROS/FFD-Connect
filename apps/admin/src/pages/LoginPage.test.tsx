@@ -4,13 +4,14 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { testTheme } from '../test/render';
 import { API_ORIGIN } from '../config';
 import { useSession } from '../session/sessionStore';
 import { LoginPage } from './LoginPage';
 
 function renderLogin() {
   return render(
-    <MantineProvider>
+    <MantineProvider theme={testTheme}>
       <MemoryRouter initialEntries={['/login']}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -23,7 +24,7 @@ function renderLogin() {
 
 async function submit() {
   await userEvent.type(await screen.findByLabelText(/email/i), 'a@x.fr');
-  await userEvent.type(screen.getByLabelText(/mot de passe/i), 'secret');
+  await userEvent.type(screen.getByLabelText(/mot de passe/i, { selector: 'input' }), 'secret');
   await userEvent.click(screen.getByRole('button', { name: /se connecter/i }));
 }
 
@@ -118,6 +119,13 @@ describe('LoginPage', () => {
       await screen.findByText('Serveur injoignable, réessayez dans un instant.'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/identifiants incorrects/i)).toBeNull();
+  });
+
+  it('names the password visibility toggle for assistive tech', async () => {
+    renderLogin();
+    expect(
+      await screen.findByRole('button', { name: 'Afficher ou masquer le mot de passe' }),
+    ).toBeInTheDocument();
   });
 
   it('wakes the backend on the origin /health, outside the /api/v1 prefix', async () => {

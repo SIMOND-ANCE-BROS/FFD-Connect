@@ -83,6 +83,8 @@ describe('CompetitionDetailPage', () => {
     expect(await screen.findByRole('heading', { name: 'Open de Lyon' })).toBeInTheDocument();
     expect(screen.getByText('Terminée')).toBeInTheDocument();
     expect(screen.getByText('Lieu : Lyon')).toBeInTheDocument();
+    // The column reference is folded above the text area.
+    await user.click(screen.getByRole('button', { name: 'Colonnes du fichier' }));
     expect(screen.getByText('licences')).toBeInTheDocument();
     expect(await screen.findByText('Latines Adultes Avancé')).toBeInTheDocument();
     expect(screen.getByText('ev-lat')).toBeInTheDocument();

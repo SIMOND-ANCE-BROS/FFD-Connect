@@ -40,7 +40,9 @@ export function ItemPopupModal({
   const popupHintStyle = [styles.popupHintText, textSecondaryStyle];
   const popupHint2Style = [styles.popupHintText2, textSecondaryStyle];
   const popupRowLabelStyle = [styles.popupRowLabel, textSecondaryStyle];
-  const seatLabelStyle = [styles.seatLabel, { color: theme.surface }];
+  // Seats are drawn on primaryFill: onPrimary keeps the number AA (the dark
+  // surface colour was 3.7:1 on it).
+  const seatLabelStyle = [styles.seatLabel, { color: theme.onPrimary }];
   const closeButtonLabelStyle = { color: theme.text };
 
   return (

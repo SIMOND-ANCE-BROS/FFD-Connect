@@ -66,7 +66,7 @@ describe("OfflineCheckinOverlay (#24)", () => {
       false,
       "LICENCE VÉRIFIÉE (HORS LIGNE)",
       "VALID_NOT_QUEUED",
-      "#4CAF50",
+      "#047857",
     ],
     ["STALE", false, "QR PÉRIMÉ", "STALE", "#f00"],
     ["INVALID_SIGNATURE", false, "QR INVALIDE", "INVALID_SIGNATURE", "#f00"],
@@ -75,9 +75,9 @@ describe("OfflineCheckinOverlay (#24)", () => {
       false,
       "VÉRIFICATION EN LIGNE REQUISE",
       "NOT_ENTRY_QR",
-      "#FF9800",
+      "#AD4E08",
     ],
-    ["NO_KEYS", false, "VÉRIFICATION IMPOSSIBLE", "NO_KEYS", "#FF9800"],
+    ["NO_KEYS", false, "VÉRIFICATION IMPOSSIBLE", "NO_KEYS", "#AD4E08"],
     // Rotating QR mandatory for the competition (#668).
     [
       "STATIC_QR_REFUSED",

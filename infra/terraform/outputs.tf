@@ -55,11 +55,6 @@ output "acr_login_server" {
 
 # ── CI/CD — values for GitHub Actions secrets ──
 
-output "ci_client_id" {
-  description = "LEGACY shared CI identity (#778) — kept for the migration runbook only; the workflows use ci_staging_client_id / ci_prod_client_id"
-  value       = azuread_application.ci.client_id
-}
-
 output "ci_image_push_client_id" {
   description = "Client ID of ci-image-push (#778) — set as repository variable AZURE_IMAGE_PUSH_CLIENT_ID (ci.yml build-image). Not a secret."
   value       = azuread_application.ci_env["image-push"].client_id
