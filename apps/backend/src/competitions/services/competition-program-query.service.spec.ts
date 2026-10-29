@@ -96,6 +96,7 @@ describe("CompetitionProgramQueryService (#442)", () => {
           level: null,
           openLevels: ["Débutant"],
           locked: false,
+          resultCount: 0,
         },
         {
           id: "ev-2",
@@ -107,6 +108,7 @@ describe("CompetitionProgramQueryService (#442)", () => {
           level: null,
           openLevels: [],
           locked: true,
+          resultCount: 4,
         },
       ],
       schedule: [

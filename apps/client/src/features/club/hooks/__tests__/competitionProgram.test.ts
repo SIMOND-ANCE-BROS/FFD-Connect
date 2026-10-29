@@ -22,6 +22,7 @@ const program: CompetitionProgramDto = {
       level: "Avancé",
       openLevels: [],
       locked: false,
+      resultCount: 0,
     },
   ],
   schedule: [

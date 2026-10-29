@@ -38,6 +38,7 @@ export function toProgramEventDto(row: ProgramEventRow): ProgramEventDto {
     level: row.level,
     openLevels: row.openLevels,
     locked: row._count.registrations > 0 || row._count.results > 0,
+    resultCount: row._count.results,
   };
 }
 

@@ -556,6 +556,7 @@ describe("useClubCompetitionEditorLogic", () => {
           level: null,
           openLevels: ["Débutant"],
           locked: false,
+          resultCount: 0,
         },
         {
           id: "ev-ffd",
@@ -567,6 +568,7 @@ describe("useClubCompetitionEditorLogic", () => {
           level: null,
           openLevels: [],
           locked: true,
+          resultCount: 0,
         },
       ],
       schedule: [

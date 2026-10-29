@@ -201,6 +201,13 @@ export class ProgramEventDto {
       "L'épreuve a des inscriptions ou des résultats : elle ne peut être ni modifiée ni supprimée.",
   })
   locked!: boolean;
+
+  @ApiProperty({
+    description:
+      "Nombre de résultats importés pour l'épreuve (0 : aucun résultat).",
+    example: 0,
+  })
+  resultCount!: number;
 }
 
 export class ProgramScheduleItemDto {

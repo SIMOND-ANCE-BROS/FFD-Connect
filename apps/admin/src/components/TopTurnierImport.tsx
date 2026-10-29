@@ -2,7 +2,7 @@ import { Alert, Badge, Button, FileButton, Group, Stack, Table, Text } from '@ma
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
 import { competitionsControllerImportTopTurnierResults } from '../api/generated/sdk.gen';
-import { competitionProgramQuery, unwrap } from '../api/queries';
+import { invalidateCompetitionResults, unwrap } from '../api/queries';
 import type { ImportReportCounts } from '../lib/resultsImport';
 import {
   archiveSizeError,
@@ -82,7 +82,7 @@ export function TopTurnierImport({ competitionId, renderReport, renderError }: P
   const save = useMutation({
     mutationFn: (archive: File) => send(archive, false),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: competitionProgramQuery(competitionId).queryKey });
+      invalidateCompetitionResults(qc, competitionId);
       void qc.invalidateQueries({ queryKey: ['admin', 'audit'] });
     },
   });

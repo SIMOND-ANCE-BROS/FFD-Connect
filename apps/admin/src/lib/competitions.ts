@@ -1,5 +1,9 @@
 import dayjs from 'dayjs';
-import type { CompetitionListItemDto, ProgramEventDto } from '../api/generated/types.gen';
+import type {
+  CompetitionListItemDto,
+  CompetitionResultsStatusDto,
+  ProgramEventDto,
+} from '../api/generated/types.gen';
 import { formatDiscipline } from './discipline';
 
 /** A competition as the back-office lists it. */
@@ -55,4 +59,31 @@ export function eventLabel(
   return [formatDiscipline(event.category), event.ageGroup, event.level]
     .filter((part): part is string => Boolean(part))
     .join(' ');
+}
+
+export type ResultsStatus = CompetitionResultsStatusDto['resultsStatus'];
+
+/**
+ * Whether the results of a competition are imported (#846). Red stays for
+ * errors: a competition without results is not one.
+ */
+export const RESULTS_STATUS_BADGES: Record<ResultsStatus, { label: string; color: string }> = {
+  COMPLETE: { label: 'Importés', color: 'green' },
+  PARTIAL: { label: 'Partiels', color: 'yellow' },
+  NONE: { label: 'Aucun', color: 'gray' },
+};
+
+/** « 2 épreuves sur 5 avec résultats », under the badge's label. */
+export function resultsStatusDetail(
+  s: Pick<CompetitionResultsStatusDto, 'eventCount' | 'eventsWithResults'>,
+): string {
+  if (s.eventCount === 0) return 'Aucune épreuve';
+  const events = s.eventsWithResults > 1 ? 'épreuves' : 'épreuve';
+  return `${s.eventsWithResults} ${events} sur ${s.eventCount} avec résultats`;
+}
+
+/** « Aucun résultat », « 1 résultat », « 12 résultats » (one event). */
+export function resultCountLabel(count: number): string {
+  if (count === 0) return 'Aucun résultat';
+  return `${count} résultat${count > 1 ? 's' : ''}`;
 }

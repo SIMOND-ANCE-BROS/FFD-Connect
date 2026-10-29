@@ -21,6 +21,13 @@ const page = (data: object[], total = data.length) => ({
   error: undefined,
 });
 
+const statuses = (rows: object[]) => ({ data: rows, error: undefined });
+
+const mockStatuses = (rows: object[] = []) =>
+  vi
+    .spyOn(sdk, 'adminCompetitionsControllerResultsStatusList')
+    .mockResolvedValue(statuses(rows) as never);
+
 function renderPage(path = '/competitions') {
   return renderWithProviders(
     <Routes>
@@ -31,7 +38,10 @@ function renderPage(path = '/competitions') {
 }
 
 describe('CompetitionsPage', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockStatuses();
+  });
 
   it('lists the competitions with a link to each page', async () => {
     const list = vi
@@ -66,5 +76,45 @@ describe('CompetitionsPage', () => {
     } as never);
     renderPage();
     expect(await screen.findByText('Erreur serveur')).toBeInTheDocument();
+  });
+
+  it('shows whether the results are imported, in one request per page (#846)', async () => {
+    vi.spyOn(sdk, 'competitionsControllerFindAll').mockResolvedValue(
+      page([
+        competition(),
+        competition({ id: 'c2', title: 'Coupe de Paris' }),
+        competition({ id: 'c3', title: 'Trophée de Nantes' }),
+        competition({ id: 'c4', title: 'Gala de Lille' }),
+      ]) as never,
+    );
+    const status = mockStatuses([
+      { competitionId: 'c1', eventCount: 3, eventsWithResults: 3, resultsStatus: 'COMPLETE' },
+      { competitionId: 'c2', eventCount: 5, eventsWithResults: 2, resultsStatus: 'PARTIAL' },
+      { competitionId: 'c3', eventCount: 4, eventsWithResults: 0, resultsStatus: 'NONE' },
+    ]);
+    renderPage();
+    const table = await screen.findByRole('table');
+    expect(within(table).getByRole('columnheader', { name: 'Résultats' })).toBeInTheDocument();
+    expect((await within(table).findByText('Importés')).closest('[title]')).toHaveAttribute(
+      'title',
+      '3 épreuves sur 3 avec résultats',
+    );
+    expect(within(table).getByText('Partiels 2/5')).toBeInTheDocument();
+    expect(within(table).getByText('Aucun')).toBeInTheDocument();
+    expect(status).toHaveBeenCalledTimes(1);
+    expect(status).toHaveBeenCalledWith({ query: { ids: ['c1', 'c2', 'c3', 'c4'] } });
+  });
+
+  it('still lists the competitions when the results status cannot be loaded', async () => {
+    vi.spyOn(sdk, 'competitionsControllerFindAll').mockResolvedValue(
+      page([competition()]) as never,
+    );
+    vi.spyOn(sdk, 'adminCompetitionsControllerResultsStatusList').mockResolvedValue({
+      data: undefined,
+      error: { message: 'Erreur serveur' },
+    } as never);
+    renderPage();
+    expect(await screen.findByRole('link', { name: 'Open de Lyon' })).toBeInTheDocument();
+    expect(screen.queryByText('Importés')).not.toBeInTheDocument();
   });
 });

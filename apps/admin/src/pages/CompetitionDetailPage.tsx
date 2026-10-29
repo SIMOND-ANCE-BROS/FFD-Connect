@@ -24,7 +24,12 @@ import {
   competitionsControllerImportResults,
 } from '../api/generated/sdk.gen';
 import type { ProgramEventDto } from '../api/generated/types.gen';
-import { competitionProgramQuery, competitionQuery, unwrap } from '../api/queries';
+import {
+  competitionProgramQuery,
+  competitionQuery,
+  invalidateCompetitionResults,
+  unwrap,
+} from '../api/queries';
 import { BackToList } from '../components/BackToList';
 import { ListSkeleton } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
@@ -32,7 +37,13 @@ import { ImportError, ReportTable } from '../components/ResultsImportReport';
 import { TopTurnierImport } from '../components/TopTurnierImport';
 import { TopTurnierUrlImport } from '../components/TopTurnierUrlImport';
 import { apiErrorMessage } from '../lib/apiError';
-import { COMPETITION_STATUS_BADGES, competitionDates, eventLabel } from '../lib/competitions';
+import {
+  COMPETITION_STATUS_BADGES,
+  competitionDates,
+  eventLabel,
+  resultCountLabel,
+  resultsStatusDetail,
+} from '../lib/competitions';
 import { readText } from '../lib/files';
 import { csvLengthError, deletionSummary, RESULTS_CSV_COLUMNS } from '../lib/resultsImport';
 
@@ -95,7 +106,7 @@ function CsvResultsImport({ competitionId }: { competitionId: string }) {
     mutationFn: (text: string) => send(text, false),
     onSuccess: () => {
       // An event with results is locked in the programme; the import is audited.
-      void qc.invalidateQueries({ queryKey: competitionProgramQuery(competitionId).queryKey });
+      invalidateCompetitionResults(qc, competitionId);
       void qc.invalidateQueries({ queryKey: ['admin', 'audit'] });
     },
   });
@@ -238,7 +249,7 @@ function EventsResults({ competitionId }: { competitionId: string }) {
     onSuccess: (report, event) => {
       setDone({ eventId: event.id, label: eventLabel(event), summary: deletionSummary(report) });
       setTarget(null);
-      void qc.invalidateQueries({ queryKey: competitionProgramQuery(competitionId).queryKey });
+      invalidateCompetitionResults(qc, competitionId);
       void qc.invalidateQueries({ queryKey: ['admin', 'audit'] });
     },
   });
@@ -277,6 +288,14 @@ function EventsResults({ competitionId }: { competitionId: string }) {
         {program.data && program.data.events.length === 0 && (
           <Text size="sm">Cette compétition n'a aucune épreuve.</Text>
         )}
+        {program.data && program.data.events.length > 0 && (
+          <Text size="sm" fw={500}>
+            {resultsStatusDetail({
+              eventCount: program.data.events.length,
+              eventsWithResults: program.data.events.filter((e) => e.resultCount > 0).length,
+            })}
+          </Text>
+        )}
         {program.data?.events.map((event) => (
           // Rows of the card, separated by a rule: not a card inside the card.
           <Box
@@ -288,6 +307,9 @@ function EventsResults({ competitionId }: { competitionId: string }) {
               <Stack gap={2} miw={0}>
                 <Group gap="xs">
                   <Text fw={500}>{eventLabel(event)}</Text>
+                  <Badge variant="light" color={event.resultCount > 0 ? 'green' : 'gray'}>
+                    {resultCountLabel(event.resultCount)}
+                  </Badge>
                   {event.locked && (
                     <Badge size="xs" variant="light" color="gray">
                       Inscriptions ou résultats

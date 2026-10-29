@@ -4,7 +4,7 @@ import { Route, Routes } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
 import { MAX_RESULTS_CSV_LENGTH } from '../lib/resultsImport';
-import { fill, renderWithProviders, setupUser } from '../test/render';
+import { createTestQueryClient, fill, renderWithProviders, setupUser } from '../test/render';
 import { CompetitionDetailPage } from './CompetitionDetailPage';
 
 const CSV = 'epreuve;tour;classement;couple\nLatines Adultes Avancé;Finale;1;Martin / Durand';
@@ -31,10 +31,15 @@ const event = (overrides: Record<string, unknown> = {}) => ({
   level: 'Avancé',
   openLevels: [],
   locked: true,
+  resultCount: 12,
   ...overrides,
 });
 
 const ok = (data: unknown) => ({ data, error: undefined });
+
+/** The list's import status (#846) is refreshed with the programme. */
+const RESULTS_STATUS_KEY = { queryKey: ['admin', 'competitions', 'results-status'] };
+const PROGRAM_KEY = { queryKey: ['admin', 'competitions', 'program', 'comp-1'] };
 
 let user: UserEvent;
 
@@ -55,17 +60,28 @@ function renderPage() {
       syncedFromFfd: true,
       eventsSource: null,
       programEditedAt: null,
-      events: [event(), event({ id: 'ev-std', category: 'Standard', level: null, locked: false })],
+      events: [
+        event(),
+        event({
+          id: 'ev-std',
+          category: 'Standard',
+          level: null,
+          locked: false,
+          resultCount: 0,
+        }),
+      ],
       schedule: [],
     }) as never,
   );
+  const queryClient = createTestQueryClient();
+  const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
   renderWithProviders(
     <Routes>
       <Route path="/competitions/:id" element={<CompetitionDetailPage />} />
     </Routes>,
-    { route: '/competitions/comp-1' },
+    { route: '/competitions/comp-1', queryClient },
   );
-  return { program };
+  return { program, invalidate };
 }
 
 const csvInput = () => screen.getByRole('textbox', { name: 'Contenu CSV' });
@@ -89,12 +105,16 @@ describe('CompetitionDetailPage', () => {
     expect(await screen.findByText('Latines Adultes Avancé')).toBeInTheDocument();
     expect(screen.getByText('ev-lat')).toBeInTheDocument();
     expect(screen.getByText('Standards Adultes')).toBeInTheDocument();
+    // Results already imported, per event and in all (#846).
+    expect(screen.getByText('12 résultats')).toBeInTheDocument();
+    expect(screen.getByText('Aucun résultat')).toBeInTheDocument();
+    expect(screen.getByText('1 épreuve sur 2 avec résultats')).toBeInTheDocument();
     expect(checkButton()).toBeDisabled();
     expect(importButton()).toBeDisabled();
   });
 
   it('previews a valid file, then imports it and shows the report', async () => {
-    renderPage();
+    const { invalidate } = renderPage();
     const send = vi
       .spyOn(sdk, 'competitionsControllerImportResults')
       .mockResolvedValueOnce(ok(report()) as never)
@@ -113,6 +133,7 @@ describe('CompetitionDetailPage', () => {
       query: { dryRun: true },
       body: { csv: CSV },
     });
+    expect(invalidate).not.toHaveBeenCalledWith(RESULTS_STATUS_KEY);
 
     await user.click(importButton());
     const final = await screen.findByRole('table', { name: "Bilan de l'import" });
@@ -127,6 +148,9 @@ describe('CompetitionDetailPage', () => {
     });
     expect(screen.queryByRole('table', { name: "Aperçu de l'import" })).not.toBeInTheDocument();
     expect(importButton()).toBeDisabled();
+    // The import refreshes the counts per event and the status of the list.
+    expect(invalidate).toHaveBeenCalledWith(PROGRAM_KEY);
+    expect(invalidate).toHaveBeenCalledWith(RESULTS_STATUS_KEY);
   });
 
   it('needs a new dry run once the text changes', async () => {
@@ -209,7 +233,7 @@ describe('CompetitionDetailPage', () => {
   });
 
   it('deletes the imported results of an event after confirmation', async () => {
-    const { program } = renderPage();
+    const { program, invalidate } = renderPage();
     const remove = vi
       .spyOn(sdk, 'competitionsControllerDeleteEventResults')
       .mockResolvedValue(ok({ deleted: 4, anonymisedKept: 1 }) as never);
@@ -235,6 +259,7 @@ describe('CompetitionDetailPage', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     // The programme is reloaded: an event without results is no longer locked.
     await waitFor(() => expect(program).toHaveBeenCalledTimes(2));
+    expect(invalidate).toHaveBeenCalledWith(RESULTS_STATUS_KEY);
   });
 
   it('cancels a deletion without calling the API', async () => {
