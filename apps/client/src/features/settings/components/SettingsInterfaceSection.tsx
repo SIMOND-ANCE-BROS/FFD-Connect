@@ -1,6 +1,7 @@
 import { Moon, Zap } from "lucide-react-native";
 import React from "react";
-import { Switch, Text, View } from "react-native";
+import { Switch, View } from "react-native";
+import { AppText } from "../../../components/AppText";
 import { FluidSegmentedTab } from "../../../components/FluidSegmentedTab";
 import { AppTheme, ThemePreference } from "../../../context/ThemeContext";
 import { styles } from "./settings.styles";
@@ -31,12 +32,13 @@ export const SettingsInterfaceSection: React.FC<
 }) => (
   <>
     <View style={styles.sectionTitleContainer}>
-      <Text
+      <AppText
+        variant="caption"
         accessibilityRole="header"
         style={[styles.sectionTitle, { color: theme.textSecondary }]}
       >
         Interface
-      </Text>
+      </AppText>
     </View>
 
     <View style={[styles.card, { backgroundColor: theme.surface }]}>
@@ -53,9 +55,12 @@ export const SettingsInterfaceSection: React.FC<
           >
             <Moon size={18} color={theme.text} />
           </View>
-          <Text style={[styles.rowLabel, { color: theme.text }]}>
+          <AppText
+            variant="body"
+            style={[styles.rowLabel, { color: theme.text }]}
+          >
             Thème de l'application
-          </Text>
+          </AppText>
         </View>
       </View>
 
@@ -82,9 +87,12 @@ export const SettingsInterfaceSection: React.FC<
           <View style={[styles.iconBox, styles.animationsIconBox]}>
             <Zap size={18} color="#9747FF" />
           </View>
-          <Text style={[styles.rowLabel, { color: theme.text }]}>
+          <AppText
+            variant="body"
+            style={[styles.rowLabel, { color: theme.text }]}
+          >
             Animations
-          </Text>
+          </AppText>
         </View>
         <Switch
           trackColor={{ false: "#767577", true: theme.primary }}

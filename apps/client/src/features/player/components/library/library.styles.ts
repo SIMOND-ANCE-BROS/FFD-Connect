@@ -155,8 +155,9 @@ export const libraryStyles = StyleSheet.create({
     borderRadius: 4,
     marginTop: 4,
   },
+  // DESIGN.md floor: never below 13pt (was 10).
   styleText: {
-    fontSize: 10,
+    fontSize: 13,
     textTransform: "uppercase",
   },
   rightActions: {
@@ -172,8 +173,9 @@ export const libraryStyles = StyleSheet.create({
     borderRadius: 8,
     minWidth: 44,
   },
+  // Was 8pt: unreadable. 13pt is the DESIGN.md floor.
   bpmLabel: {
-    fontSize: 8,
+    fontSize: 13,
     textTransform: "uppercase",
   },
 

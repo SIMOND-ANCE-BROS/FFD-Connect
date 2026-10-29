@@ -202,7 +202,10 @@ export const MainTabs = ({ route }: MainTabsProps) => {
             component={ClubDashboardScreenWithTransition}
             options={{
               tabBarIcon: renderClubTabIcon,
-              tabBarLabel: "Espace club",
+              tabBarLabel: "Club",
+              // Short visible label so it fits a 5-tab bar at a readable size;
+              // screen readers keep the full name.
+              tabBarAccessibilityLabel: "Espace club",
               // @ts-expect-error: tabBarTestID is a custom property used by CurvedTabBar
               tabBarTestID: "tab-club",
             }}
@@ -243,7 +246,10 @@ export const MainTabs = ({ route }: MainTabsProps) => {
             component={LibraryScreenWithTransition}
             options={{
               tabBarIcon: getTabIcon(ListMusic, currentTheme),
-              tabBarLabel: "Bibliothèque",
+              tabBarLabel: "Biblio",
+              // Short visible label so it fits a 5-tab bar at a readable size;
+              // screen readers keep the full name.
+              tabBarAccessibilityLabel: "Bibliothèque",
               // @ts-expect-error: tabBarTestID is a custom property used by CurvedTabBar
               tabBarTestID: "tab-library",
             }}
@@ -255,7 +261,10 @@ export const MainTabs = ({ route }: MainTabsProps) => {
           component={CompetitionsScreenWithTransition}
           options={{
             tabBarIcon: getTabIcon(Trophy, currentTheme),
-            tabBarLabel: "Compétitions",
+            tabBarLabel: "Compét",
+            // Short visible label so it fits a 5-tab bar at a readable size;
+            // screen readers keep the full name.
+            tabBarAccessibilityLabel: "Compétitions",
             // @ts-expect-error: tabBarTestID is a custom property used by CurvedTabBar
             tabBarTestID: "tab-competitions",
           }}

@@ -8,12 +8,13 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
+import { useMotionEnabled } from "../../../hooks/useReducedMotion";
 import { announce } from "../../../utils/announce";
 import { BackendService } from "../../../services/BackendService";
 import { useLibrary } from "../context/LibraryContext";
@@ -53,6 +54,7 @@ export const AddTrackModal = ({
   editTrack,
 }: AddTrackModalProps) => {
   const { theme: currentTheme, isDark } = useTheme();
+  const motionEnabled = useMotionEnabled();
   const { reloadLibrary } = useLibrary();
 
   const [saving, setSaving] = useState(false);
@@ -78,7 +80,12 @@ export const AddTrackModal = ({
   const editedStyleRef = useRef(false);
 
   useEffect(() => {
-    if (visible) {
+    if (visible && !motionEnabled) {
+      // Reduce motion: show the card in place, no fade or slide.
+      overlayOpacity.setValue(1);
+      cardTranslateY.setValue(0);
+      cardScale.setValue(1);
+    } else if (visible) {
       cardTranslateY.setValue(20);
       cardScale.setValue(0.98);
       Animated.parallel([
@@ -103,7 +110,7 @@ export const AddTrackModal = ({
       cardTranslateY.setValue(20);
       cardScale.setValue(0.98);
     }
-  }, [visible, overlayOpacity, cardTranslateY, cardScale]);
+  }, [visible, motionEnabled, overlayOpacity, cardTranslateY, cardScale]);
 
   // Prefill the form from the edited track each time it opens.
   useEffect(() => {
@@ -236,12 +243,13 @@ export const AddTrackModal = ({
           <View
             style={[styles.header, { borderBottomColor: currentTheme.border }]}
           >
-            <Text
+            <AppText
+              variant="body"
               style={[styles.headerTitle, { color: currentTheme.text }]}
               accessibilityRole="header"
             >
               Modifier la musique
-            </Text>
+            </AppText>
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel="Fermer"
@@ -250,18 +258,24 @@ export const AddTrackModal = ({
               hitSlop={12}
               style={styles.closeButton}
             >
-              <Text style={[styles.closeText, { color: currentTheme.text }]}>
+              <AppText
+                variant="body"
+                style={[styles.closeText, { color: currentTheme.text }]}
+              >
                 ×
-              </Text>
+              </AppText>
             </TouchableOpacity>
           </View>
 
           {saving ? (
             <View style={styles.loadingContent}>
               <ActivityIndicator size="large" color={currentTheme.primary} />
-              <Text style={[styles.loadingText, { color: currentTheme.text }]}>
+              <AppText
+                variant="body"
+                style={[styles.loadingText, { color: currentTheme.text }]}
+              >
                 Enregistrement...
-              </Text>
+              </AppText>
             </View>
           ) : (
             <ScrollView
@@ -271,13 +285,14 @@ export const AddTrackModal = ({
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
             >
-              <Text
+              <AppText
+                variant="caption"
                 style={[styles.label, { color: currentTheme.textSecondary }]}
                 accessibilityElementsHidden
                 importantForAccessibility="no"
               >
                 Titre
-              </Text>
+              </AppText>
               <TextInput
                 accessibilityLabel="Titre de la musique"
                 accessibilityHint="Modifiez le titre de la musique"
@@ -297,13 +312,14 @@ export const AddTrackModal = ({
                 }}
               />
 
-              <Text
+              <AppText
+                variant="caption"
                 style={[styles.label, { color: currentTheme.textSecondary }]}
                 accessibilityElementsHidden
                 importantForAccessibility="no"
               >
                 Artiste
-              </Text>
+              </AppText>
               <TextInput
                 accessibilityLabel="Nom de l'artiste"
                 accessibilityHint="Modifiez le nom de l'artiste"
@@ -323,13 +339,14 @@ export const AddTrackModal = ({
                 }}
               />
 
-              <Text
+              <AppText
+                variant="caption"
                 style={[styles.label, { color: currentTheme.textSecondary }]}
                 accessibilityElementsHidden
                 importantForAccessibility="no"
               >
                 MPM (mesures/min)
-              </Text>
+              </AppText>
               <TextInput
                 accessibilityLabel="Cadence en MPM (mesures par minute)"
                 accessibilityHint="Modifiez la cadence en MPM"
@@ -350,22 +367,24 @@ export const AddTrackModal = ({
                 testID="add-track-bpm-input"
               />
 
-              <Text
+              <AppText
+                variant="caption"
                 style={[styles.label, { color: currentTheme.textSecondary }]}
                 accessibilityRole="header"
               >
                 Danse
-              </Text>
+              </AppText>
               {DANCE_GROUPS.map((group) => (
                 <View key={group.label}>
-                  <Text
+                  <AppText
+                    variant="caption"
                     style={[
                       styles.groupLabel,
                       { color: currentTheme.textSecondary },
                     ]}
                   >
                     {formatDiscipline(group.label)}
-                  </Text>
+                  </AppText>
                   <View style={styles.styleGrid}>
                     {group.dances.map((s) => (
                       <TouchableOpacity
@@ -392,7 +411,8 @@ export const AddTrackModal = ({
                           applyAutoMpm(s);
                         }}
                       >
-                        <Text
+                        <AppText
+                          variant="caption"
                           style={[
                             styles.styleChipText,
                             { color: currentTheme.textSecondary },
@@ -403,7 +423,7 @@ export const AddTrackModal = ({
                           ]}
                         >
                           {s}
-                        </Text>
+                        </AppText>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -423,11 +443,12 @@ export const AddTrackModal = ({
                 }}
                 testID="add-track-save-button"
               >
-                <Text
+                <AppText
+                  variant="body"
                   style={[styles.buttonText, { color: currentTheme.onPrimary }]}
                 >
                   Enregistrer les modifications
-                </Text>
+                </AppText>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -438,9 +459,12 @@ export const AddTrackModal = ({
                 onPress={handleDelete}
                 testID="add-track-delete-button"
               >
-                <Text style={[styles.buttonText, styles.deleteButtonText]}>
+                <AppText
+                  variant="body"
+                  style={[styles.buttonText, styles.deleteButtonText]}
+                >
                   Supprimer la musique
-                </Text>
+                </AppText>
               </TouchableOpacity>
             </ScrollView>
           )}
@@ -495,7 +519,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   groupLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "600",
     marginTop: 10,
     marginBottom: 2,
@@ -543,7 +567,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   styleChipText: {
-    fontSize: 12,
+    fontSize: 13,
   },
   bgDarkInput: { backgroundColor: "#222" },
   bgLightInput: { backgroundColor: "#F5F5F5" },

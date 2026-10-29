@@ -374,7 +374,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "DMSans-Regular",
     borderWidth: 2,
-    height: 56, // Fixed height for consistency
+    // minHeight, not height: a fixed box clipped the text at large sizes.
+    minHeight: 56,
   },
   inputFocused: {
     borderColor: theme.colors.ffdCyan,
@@ -393,11 +394,11 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     fontSize: 16,
     fontFamily: "DMSans-Regular",
-    height: "100%",
   },
+  // Stretches to the row height (min 56pt, taller with large text).
   passwordPressable: {
     flex: 1,
-    height: "100%",
+    alignSelf: "stretch",
     justifyContent: "center",
   },
   loginButton: {
@@ -416,9 +417,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: 0, // Reset vertical padding for fixed height alignment
+    paddingVertical: 0, // Reset vertical padding; the row sets the height
     borderWidth: 2,
-    height: 56, // Fixed height for consistency
+    // minHeight, not height: grows with large text instead of clipping it.
+    minHeight: 56,
   },
   eyeIcon: {
     // >= 44pt touch target (RGAA 13.x / WCAG 2.5.8).
@@ -427,7 +429,7 @@ const styles = StyleSheet.create({
     padding: 8,
     justifyContent: "center",
     alignItems: "center",
-    height: "100%",
+    alignSelf: "stretch",
   },
   buttonRow: {
     flexDirection: "row",

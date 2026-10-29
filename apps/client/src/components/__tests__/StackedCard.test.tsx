@@ -149,6 +149,26 @@ describe("StackedCard", () => {
     );
   });
 
+  it("jumps to its new slot without animating when motion is off", async () => {
+    const view = await renderCard({ offset: 0, animated: false });
+    await view.rerender(
+      <StackedCard
+        index={1}
+        isActive
+        offset={STACKED_CARD_PEEK}
+        pullY={pullY}
+        pullGesture={pullGesture}
+        isPullable={false}
+        onPress={jest.fn()}
+        animated={false}
+      >
+        <Text>card content</Text>
+      </StackedCard>,
+    );
+
+    expect(withTiming).not.toHaveBeenCalled();
+  });
+
   it("reports its full height to size the stack", async () => {
     const onHeightChange = jest.fn();
     const { getByTestId } = await renderCard({ onHeightChange });

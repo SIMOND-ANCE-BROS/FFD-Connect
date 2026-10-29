@@ -28,6 +28,7 @@ import { FluidSegmentedTab } from "../../../components/FluidSegmentedTab";
 import { PinnedHeader } from "../../../components/PinnedHeader";
 import { ScreenLoader } from "../../../components/ScreenLoader";
 import { useAppIsActive } from "../../../hooks/useAppIsActive";
+import { useMotionEnabled } from "../../../hooks/useReducedMotion";
 import { useIsOnline } from "../../../hooks/useIsOnline";
 import { NotificationBell } from "../../../components/NotificationBell";
 import { useTheme } from "../../../context/ThemeContext";
@@ -333,10 +334,14 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
   // background limit until the system killed the app (#539). Stopped outside
   // the foreground as well — nobody can see it there.
   const appActive = useAppIsActive();
+  // Decorative loop: off when the OS "Reduce motion" or the in-app
+  // "Animations" toggle says so — the bars then stay still (the playing row
+  // keeps its accent colour).
+  const motionEnabled = useMotionEnabled();
   useEffect(() => {
     equalizerAnimation.current?.stop();
 
-    if (currentTrack && isPlaying && appActive) {
+    if (currentTrack && isPlaying && appActive && motionEnabled) {
       const bar1Loop = Animated.loop(
         Animated.sequence([
           Animated.timing(bar1, {
@@ -396,7 +401,7 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
     return () => {
       equalizerAnimation.current?.stop();
     };
-  }, [currentTrack, isPlaying, appActive, bar1, bar2, bar3]);
+  }, [currentTrack, isPlaying, appActive, motionEnabled, bar1, bar2, bar3]);
 
   const renderTrackItem = useCallback(
     ({ item }: { item: TrackData }) => (

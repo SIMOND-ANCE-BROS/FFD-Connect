@@ -206,5 +206,5 @@ const styles = StyleSheet.create({
   input: { flex: 1, paddingVertical: 10 },
   buttons: { flexDirection: "row", marginTop: 20 },
   buttonSpacer: { width: 12 },
-  footnote: { marginTop: 12, fontSize: 11, textAlign: "center" },
+  footnote: { marginTop: 12, fontSize: 13, textAlign: "center" },
 });

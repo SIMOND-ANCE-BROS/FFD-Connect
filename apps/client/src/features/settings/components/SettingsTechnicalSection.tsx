@@ -1,6 +1,7 @@
 import { ChevronRight, Info, MessageSquare } from "lucide-react-native";
 import React, { type RefObject } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { TouchableOpacity, View } from "react-native";
+import { AppText } from "../../../components/AppText";
 import { APP_VERSION_LABEL } from "../../../config";
 import { AppTheme } from "../../../context/ThemeContext";
 import { styles } from "./settings.styles";
@@ -18,12 +19,13 @@ export const SettingsTechnicalSection: React.FC<
 > = ({ theme, handleShowTechInfo, onOpenReportModal, reportRef }) => (
   <>
     <View style={styles.sectionTitleContainer}>
-      <Text
+      <AppText
+        variant="caption"
         accessibilityRole="header"
         style={[styles.sectionTitle, { color: theme.textSecondary }]}
       >
         Technique
-      </Text>
+      </AppText>
     </View>
 
     <View style={[styles.card, { backgroundColor: theme.surface }]}>
@@ -42,9 +44,12 @@ export const SettingsTechnicalSection: React.FC<
           <View style={[styles.iconBox, styles.technicalIconBox]}>
             <Info size={20} color="#808080" />
           </View>
-          <Text style={[styles.rowLabel, { color: theme.text }]}>
+          <AppText
+            variant="body"
+            style={[styles.rowLabel, { color: theme.text }]}
+          >
             Informations techniques
-          </Text>
+          </AppText>
         </View>
         <View style={styles.rowRight}>
           <ChevronRight size={16} color={theme.textSecondary} />
@@ -65,9 +70,12 @@ export const SettingsTechnicalSection: React.FC<
           <View style={[styles.iconBox, styles.reportIconBox]}>
             <MessageSquare size={20} color="#e74c3c" />
           </View>
-          <Text style={[styles.rowLabel, { color: theme.text }]}>
+          <AppText
+            variant="body"
+            style={[styles.rowLabel, { color: theme.text }]}
+          >
             Faire un retour
-          </Text>
+          </AppText>
         </View>
         <View style={styles.rowRight}>
           <ChevronRight size={16} color={theme.textSecondary} />
@@ -77,9 +85,12 @@ export const SettingsTechnicalSection: React.FC<
 
     {/* Version Info Footer */}
     <View style={styles.footer}>
-      <Text style={[styles.versionText, { color: theme.textSecondary }]}>
+      <AppText
+        variant="caption"
+        style={[styles.versionText, { color: theme.textSecondary }]}
+      >
         FFD Connect {APP_VERSION_LABEL}
-      </Text>
+      </AppText>
     </View>
   </>
 );

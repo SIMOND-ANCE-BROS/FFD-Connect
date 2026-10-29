@@ -1,6 +1,7 @@
 import { ChevronRight, ClipboardCheck, Music } from "lucide-react-native";
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { AppText } from "../../../components/AppText";
 import { AppTheme } from "../../../context/ThemeContext";
 import { styles } from "../../settings/components/settings.styles";
 import { usePendingTrackCorrectionsCount } from "../hooks/useTrackCorrections";
@@ -27,12 +28,13 @@ export const TrackCorrectionsSettingsSection = ({
   return (
     <>
       <View style={styles.sectionTitleContainer}>
-        <Text
+        <AppText
+          variant="caption"
           accessibilityRole="header"
           style={[styles.sectionTitle, { color: theme.textSecondary }]}
         >
           Musiques
-        </Text>
+        </AppText>
       </View>
 
       <View style={[styles.card, { backgroundColor: theme.surface }]}>
@@ -53,9 +55,12 @@ export const TrackCorrectionsSettingsSection = ({
               <View style={[styles.iconBox, local.reviewIconBox]}>
                 <ClipboardCheck size={20} color="#8e44ad" />
               </View>
-              <Text style={[styles.rowLabel, { color: theme.text }]}>
+              <AppText
+                variant="body"
+                style={[styles.rowLabel, { color: theme.text }]}
+              >
                 Propositions de correction
-              </Text>
+              </AppText>
             </View>
             <View style={styles.rowRight}>
               {pendingCount > 0 && (
@@ -64,9 +69,13 @@ export const TrackCorrectionsSettingsSection = ({
                   testID="settings-track-corrections-badge"
                 >
                   {/* Fixed-height pill: cap Dynamic Type (count is in the label). */}
-                  <Text style={local.badgeText} maxFontSizeMultiplier={1.3}>
+                  <AppText
+                    variant="caption"
+                    style={local.badgeText}
+                    maxFontSizeMultiplier={1.3}
+                  >
                     {pendingCount > 99 ? "99+" : pendingCount}
-                  </Text>
+                  </AppText>
                 </View>
               )}
               <ChevronRight size={16} color={theme.textSecondary} />
@@ -90,9 +99,12 @@ export const TrackCorrectionsSettingsSection = ({
             <View style={[styles.iconBox, local.mineIconBox]}>
               <Music size={20} color={theme.primary} />
             </View>
-            <Text style={[styles.rowLabel, { color: theme.text }]}>
+            <AppText
+              variant="body"
+              style={[styles.rowLabel, { color: theme.text }]}
+            >
               Mes propositions de correction
-            </Text>
+            </AppText>
           </View>
           <View style={styles.rowRight}>
             <ChevronRight size={16} color={theme.textSecondary} />
@@ -108,11 +120,11 @@ const local = StyleSheet.create({
   mineIconBox: { backgroundColor: "rgba(0, 136, 206, 0.1)" },
   badge: {
     minWidth: 22,
-    height: 22,
+    minHeight: 22,
     borderRadius: 11,
     paddingHorizontal: 6,
     alignItems: "center",
     justifyContent: "center",
   },
-  badgeText: { color: "#FFF", fontSize: 12, fontWeight: "700" },
+  badgeText: { color: "#FFF", fontSize: 13, fontWeight: "700" },
 });

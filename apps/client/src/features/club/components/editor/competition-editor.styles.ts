@@ -78,6 +78,9 @@ export const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
+    // 44pt touch target (and room for larger text sizes).
+    minHeight: 44,
+    justifyContent: "center",
   },
   sectionHeader: { paddingHorizontal: 16 },
   iconButton: { padding: 8, marginLeft: 4 },
@@ -102,6 +105,8 @@ export const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 1,
+    minHeight: 44,
+    justifyContent: "center",
   },
   layoutSection: { marginTop: 16 },
   layoutHeader: {

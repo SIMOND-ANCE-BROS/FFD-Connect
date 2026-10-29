@@ -160,7 +160,9 @@ export const styles = StyleSheet.create({
   },
   /** Pour AppButton (outline/primary) : pas de bordure sur le wrapper, le bouton gère la sienne. */
   compactActionButtonFromApp: {
-    height: 36,
+    // minHeight, not height: a fixed 36pt box cut the touch target under 44pt
+    // (and clipped the label at large text sizes).
+    minHeight: 44,
     justifyContent: "center",
     alignItems: "center",
     borderRadius: 22,
@@ -213,6 +215,9 @@ export const styles = StyleSheet.create({
     marginBottom: 16,
   },
   delayBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,

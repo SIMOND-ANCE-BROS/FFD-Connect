@@ -9,6 +9,13 @@ import { AppText } from "./AppText";
 export const WAKE_OVERLAY_ANNOUNCEMENT =
   "Réveil du serveur, merci de patienter";
 
+/**
+ * Expected wait. The measured cold start is 30–60 s (image pull + migrations +
+ * NestJS boot), so "about a minute" stays honest without overpromising.
+ */
+export const WAKE_OVERLAY_SUBTITLE =
+  "Le serveur démarre, ça prend environ une minute. Merci de patienter.";
+
 const noop = () => {};
 
 /**
@@ -66,8 +73,7 @@ export const WakeOverlay = (): React.JSX.Element | null => {
             color={theme.textSecondary}
             style={styles.subtitle}
           >
-            Le serveur démarre, ça prend environ 90 secondes. Merci de
-            patienter.
+            {WAKE_OVERLAY_SUBTITLE}
           </AppText>
           <AppText
             variant="caption"

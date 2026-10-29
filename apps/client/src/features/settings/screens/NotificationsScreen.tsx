@@ -258,7 +258,13 @@ export const NotificationsScreen = ({ navigation }: Props) => {
               tintColor={theme.primary}
             />
           }
-          contentContainerStyle={{ ...styles.list, paddingTop: headerH }}
+          contentContainerStyle={{
+            ...styles.list,
+            paddingTop: headerH,
+            // The screen only pads left/right: keep the last notification
+            // clear of the home indicator.
+            paddingBottom: styles.list.paddingBottom + insets.bottom,
+          }}
           ListFooterComponent={
             // En pied de liste, et non dans l'en-tête à côté de « Tout lire » :
             // une action destructive n'a pas à être à portée de pouce

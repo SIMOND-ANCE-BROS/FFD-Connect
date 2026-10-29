@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText } from "./AppText";
 import { radii } from "../constants/radii";
 import { useTheme } from "../context/ThemeContext";
@@ -36,6 +37,7 @@ export const FilterSheet = ({
   children,
 }: FilterSheetProps) => {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   // Hauteur du clavier : la carte reste ancrée en bas (son fond court derrière
   // le clavier, pas de trou), et paddingBottom = hauteur du clavier remonte le
   // contenu (ex. champs MPM) au-dessus du clavier.
@@ -79,7 +81,11 @@ export const FilterSheet = ({
             styles.card,
             {
               backgroundColor: theme.surface,
-              paddingBottom: keyboardHeight > 0 ? keyboardHeight : 28,
+              // Above the home indicator (never a hardcoded inset).
+              paddingBottom:
+                keyboardHeight > 0
+                  ? keyboardHeight
+                  : Math.max(28, insets.bottom + 16),
             },
           ]}
         >

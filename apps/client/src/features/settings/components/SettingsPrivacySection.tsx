@@ -10,10 +10,10 @@ import React, { type RefObject } from "react";
 import {
   ActivityIndicator,
   Switch,
-  Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { AppText } from "../../../components/AppText";
 import { AppTheme } from "../../../context/ThemeContext";
 import { LegalDoc } from "../../legal/legalContent";
 import { styles } from "./settings.styles";
@@ -50,12 +50,13 @@ export const SettingsPrivacySection: React.FC<SettingsPrivacySectionProps> = ({
 }) => (
   <>
     <View style={styles.sectionTitleContainer}>
-      <Text
+      <AppText
+        variant="caption"
         accessibilityRole="header"
         style={[styles.sectionTitle, { color: theme.textSecondary }]}
       >
         Confidentialité et données
-      </Text>
+      </AppText>
     </View>
 
     <View style={[styles.card, { backgroundColor: theme.surface }]}>
@@ -66,12 +67,15 @@ export const SettingsPrivacySection: React.FC<SettingsPrivacySectionProps> = ({
               <BarChart3 size={20} color="#8e44ad" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.rowLabel, { color: theme.text }]}>
+              <AppText
+                variant="body"
+                style={[styles.rowLabel, { color: theme.text }]}
+              >
                 Mesure d'audience anonyme
-              </Text>
-              <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
+              </AppText>
+              <AppText variant="caption" color={theme.textSecondary}>
                 Statistiques d'usage anonymes, sans lien avec votre compte.
-              </Text>
+              </AppText>
             </View>
           </View>
           <Switch
@@ -103,9 +107,12 @@ export const SettingsPrivacySection: React.FC<SettingsPrivacySectionProps> = ({
             <View style={[styles.iconBox, { backgroundColor: "#3498db20" }]}>
               <Download size={20} color="#3498db" />
             </View>
-            <Text style={[styles.rowLabel, { color: theme.text }]}>
+            <AppText
+              variant="body"
+              style={[styles.rowLabel, { color: theme.text }]}
+            >
               Exporter mes données
-            </Text>
+            </AppText>
           </View>
           <View style={styles.rowRight}>
             {exporting ? (
@@ -148,9 +155,12 @@ export const SettingsPrivacySection: React.FC<SettingsPrivacySectionProps> = ({
                 <FileText size={20} color="#95a5a6" />
               )}
             </View>
-            <Text style={[styles.rowLabel, { color: theme.text }]}>
+            <AppText
+              variant="body"
+              style={[styles.rowLabel, { color: theme.text }]}
+            >
               {label}
-            </Text>
+            </AppText>
           </View>
           <View style={styles.rowRight}>
             <ChevronRight size={16} color={theme.textSecondary} />
@@ -179,9 +189,12 @@ export const SettingsPrivacySection: React.FC<SettingsPrivacySectionProps> = ({
             >
               <Trash2 size={20} color={theme.dangerText} />
             </View>
-            <Text style={[styles.rowLabel, { color: theme.dangerText }]}>
+            <AppText
+              variant="body"
+              style={[styles.rowLabel, { color: theme.dangerText }]}
+            >
               Supprimer mon compte
-            </Text>
+            </AppText>
           </View>
           <View style={styles.rowRight}>
             <ChevronRight size={16} color={theme.textSecondary} />

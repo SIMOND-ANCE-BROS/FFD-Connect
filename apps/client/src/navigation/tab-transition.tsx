@@ -105,7 +105,19 @@ const ANDROID_PILL_GAP = 12;
  */
 const INDICATOR_INSET_X = 3;
 /** Breathing room kept between the label and the capsule's edges. */
-const LABEL_PADDING_X = 4;
+const LABEL_PADDING_X = 2;
+/**
+ * Tab label size. 11pt is the floor for a readable tab label (the native iOS
+ * tab bar uses 10–11pt); the short labels set in MainTabs fit an iPhone SE
+ * slot (375pt wide, 5 tabs) at this size.
+ */
+export const TAB_LABEL_FONT_SIZE = 11;
+/**
+ * Labels follow the system text size up to this factor (11pt → 13.2pt). Past
+ * it, the fixed-height pill would clip them; the label box ellipsizes as a
+ * last resort.
+ */
+export const TAB_LABEL_MAX_FONT_SCALE = 1.2;
 
 /** Capsule + label widths for one tab slot (exported for tests). */
 export function getTabItemMetrics(itemWidth: number): {
@@ -384,9 +396,9 @@ const FloatingGlassTabBar = ({
                     <Text
                       numberOfLines={1}
                       ellipsizeMode="tail"
-                      // Tab labels keep a fixed size (like the native iOS tab
-                      // bar): Dynamic Type would push them past the capsule.
-                      allowFontScaling={false}
+                      // Labels follow the system text size, capped so they
+                      // stay inside the fixed-height pill and the capsule.
+                      maxFontSizeMultiplier={TAB_LABEL_MAX_FONT_SCALE}
                       // Best effort only: adjustsFontSizeToFit does not shrink
                       // text under this RN / New Arch build; the box above is
                       // the real guarantee.
@@ -462,9 +474,11 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     textAlign: "center",
-    // 8px so the longest labels ("Bibliothèque", "Compétitions") fit the
-    // selection pill without relying on adjustsFontSizeToFit (broken on New Arch).
-    fontSize: 8,
+    // Readable size; long names are shortened in MainTabs ("Biblio",
+    // "Compét") instead of shrinking the type (adjustsFontSizeToFit is broken
+    // on New Arch).
+    fontFamily: "DMSans-Medium",
+    fontSize: TAB_LABEL_FONT_SIZE,
     fontWeight: "500",
   },
 });

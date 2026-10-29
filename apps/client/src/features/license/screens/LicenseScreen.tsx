@@ -44,6 +44,7 @@ import { SwipeableLicenseCard } from "../components/SwipeableLicenseCard";
 import { WdsfEntryModal } from "../components/WdsfEntryModal";
 
 import { useTheme } from "../../../context/ThemeContext";
+import { useMotionEnabled } from "../../../hooks/useReducedMotion";
 import { useAuthStore } from "../../../stores/auth.store";
 import type { RootStackParamList } from "../../../navigation/types";
 import { isWdsfQrData } from "../../../utils/typeGuards";
@@ -84,6 +85,7 @@ const stackedCardLabel = (type: string): string => {
 export const LicenseScreen: React.FC = () => {
   const { state, actions } = useLicenseLogic();
   const { theme: currentTheme, isDark } = useTheme();
+  const motionEnabled = useMotionEnabled();
   const insets = useSafeAreaInsets();
   const scrollY = useRef(new Animated.Value(0)).current;
   const navigation =
@@ -143,6 +145,7 @@ export const LicenseScreen: React.FC = () => {
     pullY: state.pullY,
     pullGesture: state.pullGesture,
     backCardLabel: stackedCardLabel(state.listItems[index]?.type ?? ""),
+    animated: motionEnabled,
   });
 
   // FFD/WDSF card (WDSF wrapped for swipe-to-remove) in the stacked wallet.

@@ -8,11 +8,11 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
 import { announce } from "../../../utils/announce";
 import type {
@@ -193,13 +193,14 @@ export const TrackCorrectionModal = ({
       case "TITLE":
         return (
           <>
-            <Text
+            <AppText
+              variant="caption"
               style={[styles.label, { color: currentTheme.textSecondary }]}
               accessibilityElementsHidden
               importantForAccessibility="no"
             >
               Titre correct
-            </Text>
+            </AppText>
             <TextInput
               accessibilityLabel="Titre correct"
               accessibilityHint="Saisissez le bon titre de la musique"
@@ -214,13 +215,14 @@ export const TrackCorrectionModal = ({
       case "ARTIST":
         return (
           <>
-            <Text
+            <AppText
+              variant="caption"
               style={[styles.label, { color: currentTheme.textSecondary }]}
               accessibilityElementsHidden
               importantForAccessibility="no"
             >
               Artiste correct
-            </Text>
+            </AppText>
             <TextInput
               accessibilityLabel="Artiste correct"
               accessibilityHint="Saisissez le bon nom d'artiste"
@@ -235,12 +237,13 @@ export const TrackCorrectionModal = ({
       case "DANCE":
         return (
           <>
-            <Text
+            <AppText
+              variant="caption"
               style={[styles.label, { color: currentTheme.textSecondary }]}
               accessibilityRole="header"
             >
               Bonne danse
-            </Text>
+            </AppText>
             <DanceChips
               value={style}
               onChange={setStyle}
@@ -251,13 +254,14 @@ export const TrackCorrectionModal = ({
       case "MPM":
         return (
           <>
-            <Text
+            <AppText
+              variant="caption"
               style={[styles.label, { color: currentTheme.textSecondary }]}
               accessibilityElementsHidden
               importantForAccessibility="no"
             >
               MPM correct (mesures par minute)
-            </Text>
+            </AppText>
             <TextInput
               accessibilityLabel="MPM correct"
               accessibilityHint={
@@ -273,11 +277,12 @@ export const TrackCorrectionModal = ({
               maxLength={3}
             />
             {track?.bpm ? (
-              <Text
+              <AppText
+                variant="caption"
                 style={[styles.hint, { color: currentTheme.textSecondary }]}
               >
                 Valeur actuelle : {Math.round(track.bpm)} MPM
-              </Text>
+              </AppText>
             ) : null}
           </>
         );
@@ -287,11 +292,14 @@ export const TrackCorrectionModal = ({
             style={[styles.infoBox, { borderColor: currentTheme.border }]}
             testID="correction-delete-info"
           >
-            <Text style={[styles.infoText, { color: currentTheme.text }]}>
+            <AppText
+              variant="caption"
+              style={[styles.infoText, { color: currentTheme.text }]}
+            >
               Un administrateur vérifiera la demande. Si elle est acceptée, la
               musique sera retirée de la bibliothèque pour tout le monde.
               Indiquez pourquoi ci-dessous (doublon, mauvais fichier…).
-            </Text>
+            </AppText>
           </View>
         );
       default:
@@ -334,12 +342,13 @@ export const TrackCorrectionModal = ({
           <View
             style={[styles.header, { borderBottomColor: currentTheme.border }]}
           >
-            <Text
+            <AppText
+              variant="body"
               style={[styles.headerTitle, { color: currentTheme.text }]}
               accessibilityRole="header"
             >
               Proposer une correction
-            </Text>
+            </AppText>
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel="Fermer"
@@ -348,18 +357,24 @@ export const TrackCorrectionModal = ({
               hitSlop={12}
               style={styles.closeButton}
             >
-              <Text style={[styles.closeText, { color: currentTheme.text }]}>
+              <AppText
+                variant="body"
+                style={[styles.closeText, { color: currentTheme.text }]}
+              >
                 ×
-              </Text>
+              </AppText>
             </TouchableOpacity>
           </View>
 
           {sending ? (
             <View style={styles.loadingContent}>
               <ActivityIndicator size="large" color={currentTheme.primary} />
-              <Text style={[styles.loadingText, { color: currentTheme.text }]}>
+              <AppText
+                variant="body"
+                style={[styles.loadingText, { color: currentTheme.text }]}
+              >
                 Envoi...
-              </Text>
+              </AppText>
             </View>
           ) : (
             <ScrollView
@@ -371,14 +386,16 @@ export const TrackCorrectionModal = ({
             >
               {track ? (
                 <>
-                  <Text
+                  <AppText
+                    variant="body"
                     style={[styles.trackTitle, { color: currentTheme.text }]}
                     numberOfLines={2}
                   >
                     {track.title}
-                  </Text>
+                  </AppText>
                   {track.artist ? (
-                    <Text
+                    <AppText
+                      variant="caption"
                       style={[
                         styles.trackArtist,
                         { color: currentTheme.textSecondary },
@@ -386,17 +403,18 @@ export const TrackCorrectionModal = ({
                       numberOfLines={1}
                     >
                       {track.artist}
-                    </Text>
+                    </AppText>
                   ) : null}
                 </>
               ) : null}
 
-              <Text
+              <AppText
+                variant="caption"
                 style={[styles.label, { color: currentTheme.textSecondary }]}
                 accessibilityRole="header"
               >
                 Qu&apos;est-ce qui est incorrect ?
-              </Text>
+              </AppText>
               <View style={chipStyles.grid}>
                 {CORRECTION_REASONS.map((r) => (
                   <ChoiceChip
@@ -412,13 +430,14 @@ export const TrackCorrectionModal = ({
 
               {renderField()}
 
-              <Text
+              <AppText
+                variant="caption"
                 style={[styles.label, { color: currentTheme.textSecondary }]}
                 accessibilityElementsHidden
                 importantForAccessibility="no"
               >
                 {messageLabel(reason)}
-              </Text>
+              </AppText>
               <TextInput
                 accessibilityLabel="Commentaire pour les administrateurs"
                 accessibilityHint={
@@ -459,7 +478,8 @@ export const TrackCorrectionModal = ({
                 }}
                 testID="correction-submit-button"
               >
-                <Text
+                <AppText
+                  variant="body"
                   style={[
                     styles.buttonText,
                     {
@@ -470,7 +490,7 @@ export const TrackCorrectionModal = ({
                   ]}
                 >
                   Envoyer la proposition
-                </Text>
+                </AppText>
               </TouchableOpacity>
             </ScrollView>
           )}
@@ -533,7 +553,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   hint: {
-    fontSize: 12,
+    fontSize: 13,
     marginTop: 4,
   },
   input: {
