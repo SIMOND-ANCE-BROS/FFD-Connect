@@ -30,53 +30,33 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogClose } from './ui/dialog';
 
 import { CompetitionDetail } from './competition-detail';
-import { demoDate, demoDayMonth, demoSeason, demoSeasonEnd } from '../lib/demo-dates';
+import {
+  demoDate,
+  demoDayMonth,
+  demoSeason,
+  demoSeasonEnd,
+  demoSeasonOf,
+  demoStatus,
+} from '../lib/demo-dates';
 
 // Web adaptation of the client screens at 0e257a11b8f9e052a042f1f58e53d0c706daef64.
 // See APP_PREVIEW.md for source paths, preserved styling and deliberate deviations.
 export type DemoView = 'competitions' | 'licence' | 'audio' | 'organisation';
+// Each fictional event is placed `days` from today; its status and, for the
+// seasonal ones, its name follow from that date so they never contradict it.
 const events = [
+  { title: 'Open de Lyon', city: 'Lyon', days: 26, mine: true, registered: true },
+  { title: 'Trophée des Alpes', city: 'Grenoble', days: 47, mine: true, registered: false },
+  { title: 'Coupe Atlantique', city: 'Nantes', days: 61, mine: false, registered: false },
+  { title: `Rencontre ${demoSeasonOf(0)}`, city: 'Paris', days: 0, mine: true, registered: true },
   {
-    title: 'Open de Lyon',
-    city: 'Lyon',
-    date: demoDate(26),
-    status: 'À venir',
-    mine: true,
-    registered: true,
-  },
-  {
-    title: 'Trophée des Alpes',
-    city: 'Grenoble',
-    date: demoDate(47),
-    status: 'À venir',
-    mine: true,
-    registered: false,
-  },
-  {
-    title: 'Coupe Atlantique',
-    city: 'Nantes',
-    date: demoDate(61),
-    status: 'À venir',
-    mine: false,
-    registered: false,
-  },
-  {
-    title: 'Rencontre d’automne',
-    city: 'Paris',
-    date: demoDate(0),
-    status: 'En cours',
-    mine: true,
-    registered: true,
-  },
-  {
-    title: 'Grand Prix d’été',
+    title: `Grand Prix ${demoSeasonOf(-46)}`,
     city: 'Bordeaux',
-    date: demoDate(-46),
-    status: 'Passées',
+    days: -46,
     mine: true,
     registered: true,
   },
-];
+].map(({ days, ...event }) => ({ ...event, date: demoDate(days), status: demoStatus(days) }));
 const dances = [
   'Samba',
   'Cha-cha-cha',
@@ -244,9 +224,9 @@ export function AppDemo({
                 <ChevronLeft size={21} />
               </button>
             )}
-            <h4 ref={heading} tabIndex={-1}>
+            <h3 ref={heading} tabIndex={-1}>
               {title}
-            </h4>
+            </h3>
             <div className="native-header-actions">
               {(view === 'audio' || (view === 'competitions' && !selectedEvent)) && (
                 <button
@@ -492,7 +472,7 @@ export function AppDemo({
                     <div id={licenseBodyId}>
                       <div className="native-license-body">
                         <div>
-                          <h5>Camille Martin</h5>
+                          <h4>Camille Martin</h4>
                           <dl>
                             <dt>Numéro :</dt>
                             <dd>DÉMONSTRATION</dd>
@@ -544,7 +524,7 @@ export function AppDemo({
             {view === 'organisation' && (
               <div className="native-club">
                 <div className="native-club-heading">
-                  <h5>Aperçu</h5>
+                  <h4>Aperçu</h4>
                   <button
                     className="native-icon"
                     aria-label="Personnaliser le tableau de bord"
@@ -582,7 +562,7 @@ export function AppDemo({
                     </button>
                   ))}
                 </div>
-                <h5>Gestion</h5>
+                <h4>Gestion</h4>
                 {[
                   {
                     label: 'Événements',

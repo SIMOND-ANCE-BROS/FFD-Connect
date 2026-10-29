@@ -24,6 +24,27 @@ export function demoDayMonth(days: number, today: Date = new Date()): string {
   return shortDate.format(shift(today, days));
 }
 
+export type DemoStatus = 'À venir' | 'En cours' | 'Passées';
+
+/** Status of a one-day fictional event held `days` after (or before) today. */
+export function demoStatus(days: number): DemoStatus {
+  if (days > 0) return 'À venir';
+  return days === 0 ? 'En cours' : 'Passées';
+}
+
+/**
+ * Season of the date `days` after (or before) today, with its French
+ * preposition ("d’automne", "de printemps"), so an event named after a
+ * season never contradicts its own date.
+ */
+export function demoSeasonOf(days: number, today: Date = new Date()): string {
+  const month = shift(today, days).getMonth();
+  if (month >= 2 && month <= 4) return 'de printemps';
+  if (month >= 5 && month <= 7) return 'd’été';
+  if (month >= 8 && month <= 10) return 'd’automne';
+  return 'd’hiver';
+}
+
 /** Sporting season label: a season starts in September ("2026-2027"). */
 export function demoSeason(today: Date = new Date()): string {
   const start = seasonStartYear(today);

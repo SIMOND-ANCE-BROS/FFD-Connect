@@ -51,7 +51,7 @@ export function CompetitionDetail({
           </TabsList>
           <TabsContent value="events">
             <section className="native-program-card">
-              <h5>Programme des épreuves</h5>
+              <h4>Programme des épreuves</h4>
               <span className="native-badge">Standards & Latines</span>
               <p>
                 Une journée de danse sportive, avec des épreuves en couple pour les catégories
@@ -78,7 +78,7 @@ export function CompetitionDetail({
           </TabsContent>
           <TabsContent value="timing">
             <section className="native-program-card">
-              <h5>Timing de la journée</h5>
+              <h4>Timing de la journée</h4>
               <p className="native-example-note">Horaires fictifs · Aucune donnée en direct</p>
               <ol className="native-timing">
                 {[
