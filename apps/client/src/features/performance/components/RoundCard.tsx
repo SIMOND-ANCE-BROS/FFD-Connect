@@ -38,6 +38,13 @@ interface RoundCardProps {
 }
 
 const slug = (s: string) => s.replace(/\s+/g, "-").toLowerCase();
+
+/**
+ * Touch areas extended to ~44pt without changing the layout: the icon buttons
+ * draw 30pt (18pt icon + 6pt padding), the chips ~30–34pt.
+ */
+const ICON_HIT_SLOP = 7;
+const CHIP_HIT_SLOP = { top: 6, bottom: 6 };
 const CATEGORIES: Category[] = ["Standard", "Latin"];
 /** Steps shown in the floor-order preview before « … ». */
 const PREVIEW_STEPS = 6;
@@ -91,6 +98,7 @@ export const RoundCard: React.FC<RoundCardProps> = ({
             onPress={onDelete}
             style={styles.iconButton}
             testID={`${prefix}-delete-button`}
+            hitSlop={ICON_HIT_SLOP}
             accessibilityRole="button"
             accessibilityLabel={`Supprimer le tour ${index + 1}`}
             accessibilityHint="Retire ce tour du programme"
@@ -143,6 +151,7 @@ export const RoundCard: React.FC<RoundCardProps> = ({
                   key={c}
                   onPress={() => onGroupCategoryChange(g, c)}
                   testID={`${prefix}-group-${g}-${c.toLowerCase()}`}
+                  hitSlop={CHIP_HIT_SLOP}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: active }}
                   accessibilityLabel={`Groupe ${g + 1} en ${CATEGORY_LABELS[c]}`}
@@ -173,6 +182,7 @@ export const RoundCard: React.FC<RoundCardProps> = ({
               onPress={() => onRemoveGroup(g)}
               style={styles.iconButton}
               testID={`${prefix}-group-${g}-remove`}
+              hitSlop={ICON_HIT_SLOP}
               accessibilityRole="button"
               accessibilityLabel={`Retirer le groupe ${g + 1}`}
               accessibilityHint="Retire ce groupe de l'ordre de passage"
@@ -189,6 +199,7 @@ export const RoundCard: React.FC<RoundCardProps> = ({
           onPress={onAddGroup}
           style={[styles.addGroupButton, { borderColor: theme.border }]}
           testID={`${prefix}-add-group`}
+          hitSlop={CHIP_HIT_SLOP}
           accessibilityRole="button"
           accessibilityLabel="Ajouter un groupe"
           accessibilityHint="Ajoute un groupe à la fin de l'ordre de passage"
@@ -217,6 +228,7 @@ export const RoundCard: React.FC<RoundCardProps> = ({
                 <TouchableOpacity
                   key={dance}
                   testID={`${prefix}-dance-${slug(dance)}`}
+                  hitSlop={CHIP_HIT_SLOP}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: isActive }}
                   accessibilityLabel={`Danse ${danceLabel(dance)}`}

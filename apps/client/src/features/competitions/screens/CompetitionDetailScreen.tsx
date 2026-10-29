@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { Calendar as CalendarIcon } from "lucide-react-native";
+import { AlertTriangle, Calendar as CalendarIcon } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -267,7 +267,7 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
           {!!(state.details.delayMinutes && state.details.delayMinutes > 0) && (
             <View style={styles.delayBadgeContainer}>
               <View
-                // Spoken without the emoji; polite live region so TalkBack
+                // Spoken as one sentence; polite live region so TalkBack
                 // reads a delay that appears while the screen is open.
                 accessible
                 accessibilityRole="alert"
@@ -281,8 +281,9 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
                   { backgroundColor: currentTheme.colors.error },
                 ]}
               >
+                <AlertTriangle color="white" size={14} />
                 <AppText variant="caption" weight="600" color="white">
-                  ⚠️ Retard estimé: {state.details.delayMinutes} min
+                  Retard estimé : {state.details.delayMinutes} min
                 </AppText>
               </View>
             </View>

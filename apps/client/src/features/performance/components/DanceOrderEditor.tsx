@@ -245,8 +245,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     marginBottom: 6,
   },
+  // 44pt square: the up/down buttons sit side by side, so a hitSlop would
+  // overlap; the size itself meets the touch-target minimum.
   iconButton: {
-    padding: 8,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
   disabled: {
     opacity: 0.35,

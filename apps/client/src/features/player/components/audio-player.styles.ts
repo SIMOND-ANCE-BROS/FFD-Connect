@@ -70,7 +70,9 @@ export const audioPlayerStyles = StyleSheet.create({
     padding: 8,
     borderRadius: 20,
     width: 44,
+    minHeight: 44,
     alignItems: "center",
+    justifyContent: "center",
   },
   controlDark: {
     backgroundColor: "rgba(255,255,255,0.05)",
@@ -164,6 +166,8 @@ export const audioPlayerStyles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     marginBottom: 6,
+    // 44pt touch target (caption + 6pt padding drew ~30pt).
+    minHeight: 44,
   },
   progressBar: {
     width: "100%",

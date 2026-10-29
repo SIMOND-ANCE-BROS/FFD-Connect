@@ -1,6 +1,7 @@
 import { ListMusic, Trophy } from "lucide-react-native";
 import React from "react";
-import { Text, View } from "react-native";
+import { View } from "react-native";
+import { AppText } from "../../../components/AppText";
 import { FluidSegmentedTab } from "../../../components/FluidSegmentedTab";
 import { AppTheme } from "../../../context/ThemeContext";
 import { styles } from "./settings.styles";
@@ -26,12 +27,13 @@ export const SettingsFiltersSection: React.FC<SettingsFiltersSectionProps> = ({
 }) => (
   <>
     <View style={styles.sectionTitleContainer}>
-      <Text
+      <AppText
+        variant="caption"
         accessibilityRole="header"
         style={[styles.sectionTitle, { color: theme.textSecondary }]}
       >
         Filtres
-      </Text>
+      </AppText>
     </View>
 
     <View style={[styles.card, { backgroundColor: theme.surface }]}>
@@ -41,9 +43,12 @@ export const SettingsFiltersSection: React.FC<SettingsFiltersSectionProps> = ({
           <View style={[styles.iconBox, styles.libraryIconBox]}>
             <ListMusic size={18} color="#FFD700" />
           </View>
-          <Text style={[styles.rowLabel, { color: theme.text }]}>
+          <AppText
+            variant="body"
+            style={[styles.rowLabel, { color: theme.text }]}
+          >
             Bibliothèque
-          </Text>
+          </AppText>
         </View>
       </View>
 
@@ -75,9 +80,12 @@ export const SettingsFiltersSection: React.FC<SettingsFiltersSectionProps> = ({
           <View style={[styles.iconBox, styles.competitionIconBox]}>
             <Trophy size={18} color="#FF6464" />
           </View>
-          <Text style={[styles.rowLabel, { color: theme.text }]}>
+          <AppText
+            variant="body"
+            style={[styles.rowLabel, { color: theme.text }]}
+          >
             Compétition
-          </Text>
+          </AppText>
         </View>
       </View>
 

@@ -19,7 +19,8 @@ export const styles = StyleSheet.create({
   // Header — kept compact so a full card (FFD or WDSF) fits on one phone
   // screen without scrolling.
   cardHeader: {
-    height: 88,
+    // minHeight: the season/status lines grow with large text, not clip.
+    minHeight: 88,
     position: "relative",
     width: "100%",
   },
@@ -42,7 +43,8 @@ export const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    height: "100%",
+    // Fills the header (min 88pt) and grows with it.
+    flexGrow: 1,
     paddingBottom: 16,
     paddingHorizontal: 16,
     width: "100%",

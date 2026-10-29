@@ -1,6 +1,7 @@
 import { ChevronRight, Key, Shield } from "lucide-react-native";
 import React, { type RefObject } from "react";
-import { Switch, Text, TouchableOpacity, View } from "react-native";
+import { Switch, TouchableOpacity, View } from "react-native";
+import { AppText } from "../../../components/AppText";
 import { AppTheme } from "../../../context/ThemeContext";
 import { styles } from "./settings.styles";
 
@@ -35,12 +36,13 @@ export const SettingsSecuritySection: React.FC<
   return (
     <>
       <View style={styles.sectionTitleContainer}>
-        <Text
+        <AppText
+          variant="caption"
           accessibilityRole="header"
           style={[styles.sectionTitle, { color: theme.textSecondary }]}
         >
           Sécurité
-        </Text>
+        </AppText>
       </View>
 
       <View style={[styles.card, { backgroundColor: theme.surface }]}>
@@ -58,9 +60,12 @@ export const SettingsSecuritySection: React.FC<
             <View style={[styles.iconBox, styles.passwordIconBox]}>
               <Key size={20} color="#FF9500" />
             </View>
-            <Text style={[styles.rowLabel, { color: theme.text }]}>
+            <AppText
+              variant="body"
+              style={[styles.rowLabel, { color: theme.text }]}
+            >
               Changer le mot de passe
-            </Text>
+            </AppText>
           </View>
           <View style={styles.rowRight}>
             <ChevronRight size={16} color={theme.textSecondary} />
@@ -80,9 +85,12 @@ export const SettingsSecuritySection: React.FC<
               <View style={[styles.iconBox, styles.securityIconBox]}>
                 <Shield size={20} color="#34C759" />
               </View>
-              <Text style={[styles.rowLabel, { color: theme.text }]}>
+              <AppText
+                variant="body"
+                style={[styles.rowLabel, { color: theme.text }]}
+              >
                 {isFaceId ? "Face ID" : "Biométrie"}
-              </Text>
+              </AppText>
             </View>
             <Switch
               trackColor={{

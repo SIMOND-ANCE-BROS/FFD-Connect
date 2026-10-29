@@ -164,7 +164,7 @@ export const styles = StyleSheet.create({
     marginBottom: 2,
   },
   policyDesc: {
-    fontSize: 12,
+    fontSize: 13,
   },
   tabContainer: {
     paddingHorizontal: 16,

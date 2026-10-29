@@ -20,11 +20,11 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
 
 import { useReportModalLogic } from "../hooks/useReportModalLogic";
@@ -83,10 +83,14 @@ export const ReportModal: React.FC<ReportModalProps> = ({
           ]}
         >
           <CheckCircle size={80} color={currentTheme.successText} />
-          <Text style={[styles.successTitle, { color: currentTheme.text }]}>
+          <AppText
+            variant="body"
+            style={[styles.successTitle, { color: currentTheme.text }]}
+          >
             Rapport envoyé !
-          </Text>
-          <Text
+          </AppText>
+          <AppText
+            variant="body"
             style={[
               styles.successMessage,
               { color: currentTheme.textSecondary },
@@ -94,7 +98,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
           >
             Merci de nous aider à améliorer l'application. Nous allons traiter
             votre {type === "BUG" ? "bug" : "suggestion"} au plus vite.
-          </Text>
+          </AppText>
           <TouchableOpacity
             accessibilityRole="button"
             onPress={handleClose}
@@ -104,7 +108,9 @@ export const ReportModal: React.FC<ReportModalProps> = ({
               { backgroundColor: currentTheme.primaryFill },
             ]}
           >
-            <Text style={styles.successButtonText}>Fermer</Text>
+            <AppText variant="body" style={styles.successButtonText}>
+              Fermer
+            </AppText>
           </TouchableOpacity>
         </View>
       </Modal>
@@ -125,9 +131,12 @@ export const ReportModal: React.FC<ReportModalProps> = ({
         <View
           style={[styles.header, { borderBottomColor: currentTheme.border }]}
         >
-          <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
+          <AppText
+            variant="body"
+            style={[styles.headerTitle, { color: currentTheme.text }]}
+          >
             Faire un retour
-          </Text>
+          </AppText>
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Fermer"
@@ -168,7 +177,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                     : currentTheme.textSecondary
                 }
               />
-              <Text
+              <AppText
+                variant="caption"
                 style={[
                   styles.typeText,
                   { color: currentTheme.textSecondary },
@@ -177,7 +187,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                 ]}
               >
                 Bug
-              </Text>
+              </AppText>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -206,7 +216,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                     : currentTheme.textSecondary
                 }
               />
-              <Text
+              <AppText
+                variant="caption"
                 style={[
                   styles.typeText,
                   { color: currentTheme.textSecondary },
@@ -215,16 +226,19 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                 ]}
               >
                 Suggestion
-              </Text>
+              </AppText>
             </TouchableOpacity>
           </View>
 
           {/* Severity (Only for BUG) */}
           {type === "BUG" && (
             <View style={styles.severityContainer}>
-              <Text style={[styles.label, { color: currentTheme.text }]}>
+              <AppText
+                variant="caption"
+                style={[styles.label, { color: currentTheme.text }]}
+              >
                 Sévérité
-              </Text>
+              </AppText>
               <View style={styles.severityOptions}>
                 <TouchableOpacity
                   accessibilityRole="button"
@@ -251,7 +265,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                         : currentTheme.textSecondary
                     }
                   />
-                  <Text
+                  <AppText
+                    variant="caption"
                     style={[
                       styles.severityText,
                       { color: currentTheme.textSecondary },
@@ -262,7 +277,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                     ]}
                   >
                     Mineur
-                  </Text>
+                  </AppText>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -290,7 +305,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                         : currentTheme.textSecondary
                     }
                   />
-                  <Text
+                  <AppText
+                    variant="caption"
                     style={[
                       styles.severityText,
                       { color: currentTheme.textSecondary },
@@ -301,7 +317,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                     ]}
                   >
                     Gênant
-                  </Text>
+                  </AppText>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -329,7 +345,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                         : currentTheme.textSecondary
                     }
                   />
-                  <Text
+                  <AppText
+                    variant="caption"
                     style={[
                       styles.severityText,
                       { color: currentTheme.textSecondary },
@@ -340,16 +357,19 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                     ]}
                   >
                     Bloquant
-                  </Text>
+                  </AppText>
                 </TouchableOpacity>
               </View>
             </View>
           )}
 
           {/* Module Selector */}
-          <Text style={[styles.label, { color: currentTheme.text }]}>
+          <AppText
+            variant="caption"
+            style={[styles.label, { color: currentTheme.text }]}
+          >
             Module concerné
-          </Text>
+          </AppText>
           <View style={styles.moduleScrollContainer}>
             <ScrollView
               horizontal
@@ -375,7 +395,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                   onPress={() => setModule(m)}
                   accessibilityState={{ selected: module === m }}
                 >
-                  <Text
+                  <AppText
+                    variant="caption"
                     style={[
                       styles.moduleText,
                       { color: currentTheme.textSecondary },
@@ -383,7 +404,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                     ]}
                   >
                     {m}
-                  </Text>
+                  </AppText>
                 </TouchableOpacity>
               ))}
               {/* Spacer to ensure last item isn't covered by gradient/arrow */}
@@ -408,9 +429,15 @@ export const ReportModal: React.FC<ReportModalProps> = ({
           </View>
 
           {/* Form Fields */}
-          <Text style={[styles.label, { color: currentTheme.text }]}>
-            Titre <Text style={styles.asterisk}>*</Text>
-          </Text>
+          <AppText
+            variant="caption"
+            style={[styles.label, { color: currentTheme.text }]}
+          >
+            Titre{" "}
+            <AppText variant="caption" style={styles.asterisk}>
+              *
+            </AppText>
+          </AppText>
           <TextInput
             accessibilityLabel="Titre du rapport"
             accessibilityHint="Saisissez un titre pour ce rapport"
@@ -433,9 +460,15 @@ export const ReportModal: React.FC<ReportModalProps> = ({
             testID="report-title-input"
           />
 
-          <Text style={[styles.label, { color: currentTheme.text }]}>
-            Description <Text style={styles.asterisk}>*</Text>
-          </Text>
+          <AppText
+            variant="caption"
+            style={[styles.label, { color: currentTheme.text }]}
+          >
+            Description{" "}
+            <AppText variant="caption" style={styles.asterisk}>
+              *
+            </AppText>
+          </AppText>
           <TextInput
             accessibilityLabel="Description du rapport"
             accessibilityHint="Décrivez avec plus de détails ce qui se passe ou votre suggestion"
@@ -464,9 +497,12 @@ export const ReportModal: React.FC<ReportModalProps> = ({
 
           {type === "BUG" && (
             <>
-              <Text style={[styles.label, { color: currentTheme.text }]}>
+              <AppText
+                variant="caption"
+                style={[styles.label, { color: currentTheme.text }]}
+              >
                 Étapes pour reproduire
-              </Text>
+              </AppText>
               <TextInput
                 accessibilityLabel="Étapes pour reproduire"
                 accessibilityHint="Si c'est un bug, indiquez comment le reproduire pas à pas"
@@ -492,9 +528,12 @@ export const ReportModal: React.FC<ReportModalProps> = ({
           )}
 
           {/* Image Picker */}
-          <Text style={[styles.label, { color: currentTheme.text }]}>
+          <AppText
+            variant="caption"
+            style={[styles.label, { color: currentTheme.text }]}
+          >
             Capture d'écran
-          </Text>
+          </AppText>
           {image ? (
             <View
               style={[
@@ -505,12 +544,13 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                 },
               ]}
             >
-              <Text
+              <AppText
+                variant="caption"
                 style={[styles.imageName, { color: currentTheme.text }]}
                 numberOfLines={1}
               >
                 {image.fileName}
-              </Text>
+              </AppText>
               <TouchableOpacity
                 accessibilityRole="button"
                 accessibilityLabel="Supprimer la capture d'écran"
@@ -539,14 +579,15 @@ export const ReportModal: React.FC<ReportModalProps> = ({
               testID="attach-image-button"
             >
               <ImageIcon size={20} color={currentTheme.textSecondary} />
-              <Text
+              <AppText
+                variant="caption"
                 style={[
                   styles.attachButtonText,
                   { color: currentTheme.textSecondary },
                 ]}
               >
                 Joindre une image
-              </Text>
+              </AppText>
             </TouchableOpacity>
           )}
 
@@ -568,11 +609,11 @@ export const ReportModal: React.FC<ReportModalProps> = ({
             ) : (
               <>
                 <Send size={20} color="white" />
-                <Text style={styles.submitText}>
+                <AppText variant="body" style={styles.submitText}>
                   {type === "BUG"
                     ? "Envoyer le rapport"
                     : "Envoyer la suggestion"}
-                </Text>
+                </AppText>
               </>
             )}
           </TouchableOpacity>

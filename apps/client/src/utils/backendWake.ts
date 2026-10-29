@@ -13,12 +13,12 @@ import { createLogger } from "./logger";
 const logger = createLogger("BackendWake");
 
 // Le backend est un Container App en minReplicas=0 : le réveil (image pull +
-// migrations + boot NestJS) prend en général 30-90s. Azure retient la requête
+// migrations + boot NestJS) prend en général 30-60s. Azure retient la requête
 // pendant le scale-from-zero, donc le premier poll répond souvent dès que
 // l'app est prête — un intervalle court raccourcit surtout le cas 502 (ingress
 // debout, conteneur pas encore prêt).
 const WAKE_POLL_INTERVAL_MS = 3000;
-const WAKE_MAX_WAIT_MS = 150000; // ~2.5 min (boot ~90s + marge)
+const WAKE_MAX_WAIT_MS = 150000; // ~2.5 min (boot 30-60s + large marge)
 /** Sonde initiale du pré-réveil : au-delà, on considère le backend endormi. */
 const WARM_PROBE_TIMEOUT_MS = 4000;
 

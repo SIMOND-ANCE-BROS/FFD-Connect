@@ -1,5 +1,6 @@
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
 import type { TrackCorrectionStatus } from "../../../services/api/track-correction-api";
 import { DANCE_GROUPS } from "../../player/utils/danceTempo";
@@ -43,7 +44,8 @@ export const ChoiceChip = ({
         },
       ]}
     >
-      <Text
+      <AppText
+        variant="caption"
         style={[
           styles.chipText,
           { color: theme.textSecondary },
@@ -51,7 +53,7 @@ export const ChoiceChip = ({
         ]}
       >
         {label}
-      </Text>
+      </AppText>
     </TouchableOpacity>
   );
 };
@@ -74,9 +76,12 @@ export const DanceChips = ({
     <>
       {DANCE_GROUPS.map((group) => (
         <View key={group.label}>
-          <Text style={[styles.groupLabel, { color: theme.textSecondary }]}>
+          <AppText
+            variant="caption"
+            style={[styles.groupLabel, { color: theme.textSecondary }]}
+          >
             {formatDiscipline(group.label)}
-          </Text>
+          </AppText>
           <View style={styles.grid}>
             {group.dances.map((dance) => (
               <ChoiceChip
@@ -113,7 +118,9 @@ export const StatusBadge = ({ status }: { status: TrackCorrectionStatus }) => {
       accessibilityLabel={`Statut : ${STATUS_LABELS[status]}`}
       accessibilityHint="Statut de la proposition de correction"
     >
-      <Text style={[styles.badgeText, { color }]}>{STATUS_LABELS[status]}</Text>
+      <AppText variant="caption" style={[styles.badgeText, { color }]}>
+        {STATUS_LABELS[status]}
+      </AppText>
     </View>
   );
 };
@@ -130,7 +137,7 @@ export const chipStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   grid: chipStyles.grid,
   groupLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "600",
     marginTop: 8,
     marginBottom: 2,
@@ -155,7 +162,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   badgeText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "700",
   },
 });

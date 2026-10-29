@@ -6,6 +6,14 @@ import { TrackCorrectionApi } from "../../../../services/api/track-correction-ap
 import { TrackCorrectionsSettingsSection } from "../TrackCorrectionsSettingsSection";
 import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
+// The sections now render AppText, which reads the theme context.
+jest.mock("../../../../context/ThemeContext", () => ({
+  useTheme: () => ({
+    theme: { text: "#111111", textSecondary: "#555555" },
+    isDark: false,
+  }),
+}));
+
 jest.mock("../../../../services/api/track-correction-api", () => ({
   TrackCorrectionApi: { pendingCount: jest.fn() },
 }));

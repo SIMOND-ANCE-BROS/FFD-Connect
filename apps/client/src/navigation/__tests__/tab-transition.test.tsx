@@ -4,7 +4,12 @@ import React from "react";
 import * as ReactNative from "react-native";
 import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { getTabItemMetrics, TabBarWithTransition } from "../tab-transition";
+import {
+  getTabItemMetrics,
+  TAB_LABEL_FONT_SIZE,
+  TAB_LABEL_MAX_FONT_SCALE,
+  TabBarWithTransition,
+} from "../tab-transition";
 
 jest.mock("expo-glass-effect", () => ({
   GlassView: "GlassView",
@@ -89,7 +94,7 @@ describe("FloatingGlassTabBar", () => {
       });
     });
 
-    it("bounds each label in a fixed-width, clipping, non-scaling box (5 tabs on a 375pt phone)", async () => {
+    it("bounds each label in a fixed-width, clipping box with capped font scaling (5 tabs on a 375pt phone)", async () => {
       Platform.OS = "ios";
       const dims = jest
         .spyOn(ReactNative, "useWindowDimensions")
@@ -119,7 +124,13 @@ describe("FloatingGlassTabBar", () => {
         expect(box).toHaveStyle({ width: labelWidth, overflow: "hidden" });
         const label = getAllByText("Bibliothèque")[3];
         expect(label.props.numberOfLines).toBe(1);
-        expect(label.props.allowFontScaling).toBe(false);
+        // Readable size that follows Dynamic Type, with a cap (audit #847).
+        expect(label.props.allowFontScaling).not.toBe(false);
+        expect(label.props.maxFontSizeMultiplier).toBe(
+          TAB_LABEL_MAX_FONT_SCALE,
+        );
+        expect(label).toHaveStyle({ fontSize: TAB_LABEL_FONT_SIZE });
+        expect(TAB_LABEL_FONT_SIZE).toBeGreaterThanOrEqual(11);
       } finally {
         dims.mockRestore();
       }
