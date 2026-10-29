@@ -1,13 +1,13 @@
 import { Anchor, Badge, Pagination, Stack, Text } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
+import type { CompetitionResultsStatusDto } from '../api/generated/types.gen';
 import { competitionsQuery, competitionsResultsStatusQuery } from '../api/queries';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { EmptyState } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
 import { RecordCard, RecordLine } from '../components/RecordCard';
 import { apiErrorMessage } from '../lib/apiError';
-import type { CompetitionResultsStatusDto } from '../api/generated/types.gen';
 import {
   COMPETITION_STATUS_BADGES,
   competitionDates,

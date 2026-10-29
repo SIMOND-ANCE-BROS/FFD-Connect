@@ -37,6 +37,9 @@ const toIdList = ({ value }: { value: unknown }): unknown => {
 export class CompetitionResultsStatusQueryDto {
   @ApiProperty({
     type: [String],
+    format: "uuid",
+    minItems: 1,
+    maxItems: MAX_RESULTS_STATUS_IDS,
     description: `IDs des compétitions (1 à ${MAX_RESULTS_STATUS_IDS}), répétés (\`ids=A&ids=B\`) ou séparés par des virgules`,
   })
   @Transform(toIdList)

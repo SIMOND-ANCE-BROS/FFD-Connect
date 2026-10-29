@@ -247,6 +247,7 @@ describe("ClubCompetitionFormScreen", () => {
           level: "Avancé",
           openLevels: [],
           locked: true,
+          resultCount: 0,
         },
       ],
       schedule: [

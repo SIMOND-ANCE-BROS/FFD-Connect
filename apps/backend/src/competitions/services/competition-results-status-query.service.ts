@@ -27,6 +27,9 @@ export class CompetitionResultsStatusQueryService {
     const competitionIds = [...new Set(ids)];
     if (competitionIds.length === 0) return [];
 
+    // Two independent reads (Prisma types groupBy badly inside an array
+    // $transaction): a race with an import is harmless, resultsStatusOf
+    // treats eventsWithResults >= eventCount as COMPLETE.
     const [events, eventsWithResults] = await Promise.all([
       this.prisma.event.groupBy({
         by: ["competitionId"],

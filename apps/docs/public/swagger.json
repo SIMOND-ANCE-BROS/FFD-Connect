@@ -22025,9 +22025,12 @@
             "in": "query",
             "description": "IDs des compétitions (1 à 100), répétés (`ids=A&ids=B`) ou séparés par des virgules",
             "schema": {
+              "minItems": 1,
+              "maxItems": 100,
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "string",
+                "format": "uuid"
               }
             }
           }
