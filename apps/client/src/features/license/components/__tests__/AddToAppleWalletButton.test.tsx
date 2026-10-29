@@ -6,6 +6,7 @@ import {
   ADD_TO_APPLE_WALLET_LABEL,
   AddToAppleWalletButton,
   APPLE_WALLET_OFFLINE_HINT,
+  APPLE_WALLET_REFRESH_HINT,
 } from "../AddToAppleWalletButton";
 import type { LicenseUser } from "../LicenseCard";
 
@@ -76,6 +77,12 @@ describe("AddToAppleWalletButton", () => {
     expect(addToWallet).toHaveBeenCalledTimes(1);
   });
 
+  it("tells how to refresh a pass already added (#552)", async () => {
+    setHook();
+    const { getByText } = await renderButton();
+    expect(getByText(APPLE_WALLET_REFRESH_HINT)).toBeTruthy();
+  });
+
   it("passes the snapshot flag to the hook", async () => {
     setHook();
     await renderButton(true);
@@ -105,6 +112,7 @@ describe("AddToAppleWalletButton", () => {
     expect(button.props.accessibilityState.disabled).toBe(true);
     expect(getByText(APPLE_WALLET_OFFLINE_HINT)).toBeTruthy();
     expect(queryByTestId("license-apple-wallet-error")).toBeNull();
+    expect(queryByTestId("license-apple-wallet-refresh-hint")).toBeNull();
     await fireEvent.press(button);
     expect(addToWallet).not.toHaveBeenCalled();
   });
