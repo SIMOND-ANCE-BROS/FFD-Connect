@@ -96,7 +96,7 @@ export function SiteHeader({ documentation = false }: { documentation?: boolean 
                 </SheetClose>
               </div>
               <SheetDescription className="sheet-description">
-                La danse, connectée.
+                Application indépendante de danse sportive
               </SheetDescription>
               <nav aria-label="Navigation mobile">
                 {links.map((link, i) => (
