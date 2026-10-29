@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { Alert } from "react-native";
+import { queryClient } from "../../../../services/queryClient";
 import { CompetitionService } from "../../services/CompetitionService";
 import {
   CompetitionProgramError,
@@ -11,6 +12,7 @@ import {
   toCompetitionStatus,
   useClubCompetitionEditorLogic,
 } from "../useClubCompetitionEditorLogic";
+import { CLUB_COMPETITIONS_QUERY_ROOT } from "../useClubCompetitions";
 
 jest.mock("../../services/CompetitionService", () => ({
   CompetitionService: {
@@ -89,9 +91,14 @@ describe("useClubCompetitionEditorLogic", () => {
     });
   });
 
+  let invalidateSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    invalidateSpy = jest
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
     (fetchCompetitionProgram as jest.Mock).mockResolvedValue(emptyProgram);
     (saveCompetitionProgram as jest.Mock).mockResolvedValue(emptyProgram);
   });
@@ -442,6 +449,10 @@ describe("useClubCompetitionEditorLogic", () => {
       okButton.onPress();
 
       expect(mockNavigation.goBack).toHaveBeenCalled();
+      // The club list reloads on return, however the editor is left (#441).
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: CLUB_COMPETITIONS_QUERY_ROOT,
+      });
     });
 
     it("loads and saves « QR tournant obligatoire » (#668)", async () => {
@@ -538,6 +549,7 @@ describe("useClubCompetitionEditorLogic", () => {
         "Impossible de sauvegarder la compétition",
       );
       expect(mockNavigation.goBack).not.toHaveBeenCalled();
+      expect(invalidateSpy).not.toHaveBeenCalled();
     });
   });
 

@@ -216,6 +216,20 @@ export function getPendingRegistrationActions(
   return result;
 }
 
+/**
+ * Events the user is registered to, from GET /competitions/user/registrations.
+ * Unregistering keeps the row as CANCELLED (history), so it must not count:
+ * otherwise the CTA stays « Désinscrire » after a successful unregister
+ * (#549). Rows without status (optimistic register) count.
+ */
+export function activeRegistrationEventIds(
+  registrations: readonly { eventId: string; status?: string }[] | undefined,
+): string[] {
+  return (registrations ?? [])
+    .filter((r) => r.status !== "CANCELLED")
+    .map((r) => r.eventId);
+}
+
 /** Server registrations with the pending (optimistic) actions applied. */
 export function applyPendingRegistrations(
   serverEventIds: string[],

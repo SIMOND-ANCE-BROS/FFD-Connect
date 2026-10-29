@@ -34,6 +34,13 @@ interface AppButtonProps {
   testID?: string;
   accessibilityLabel?: string;
   accessibilityHint?: string;
+  /**
+   * `compact`: 44pt minimum height (DESIGN.md touch target) and tighter
+   * padding, for buttons stacked in a list row. Set on the button itself:
+   * sizing only the outer `style` left the 56pt button overflowing its box,
+   * so stacked buttons overlapped (#549).
+   */
+  size?: "default" | "compact";
 }
 
 const GradientBackground = React.memo<{ borderRadius: number }>(
@@ -65,9 +72,11 @@ const AppButtonComponent = React.forwardRef<View, AppButtonProps>(
       testID,
       accessibilityLabel,
       accessibilityHint,
+      size = "default",
     },
     ref,
   ) {
+    const compact = size === "compact";
     // The in-app theme (honours the user's light/dark/system choice), not the
     // OS scheme: a forced dark mode on a light phone used to keep light-mode
     // outline/ghost labels (ffdBlue, ~2:1 on the dark surfaces).
@@ -156,10 +165,11 @@ const AppButtonComponent = React.forwardRef<View, AppButtonProps>(
     const buttonStyle = useMemo(
       () => [
         styles.button,
+        compact && styles.compactButton,
         { backgroundColor, borderColor, borderWidth },
         variant === "primary" && !disabled && styles.primaryShadow,
       ],
-      [variant, backgroundColor, borderColor, borderWidth, disabled],
+      [variant, backgroundColor, borderColor, borderWidth, disabled, compact],
     );
 
     const textStyleWithColor = useMemo(
@@ -187,7 +197,11 @@ const AppButtonComponent = React.forwardRef<View, AppButtonProps>(
           accessibilityLabel={accessibilityLabel ?? title}
           accessibilityHint={accessibilityHint}
         >
-          {showGradient && <GradientBackground borderRadius={30} />}
+          {showGradient && (
+            <GradientBackground
+              borderRadius={compact ? COMPACT_RADIUS : DEFAULT_RADIUS}
+            />
+          )}
 
           {loading ? (
             <ActivityIndicator color={textColor} testID="button-loader" />
@@ -209,6 +223,10 @@ export const AppButton = React.memo(AppButtonComponent);
 
 AppButton.displayName = "AppButton";
 
+const DEFAULT_RADIUS = 30;
+/** Half the compact minimum height: a pill at 44pt. */
+const COMPACT_RADIUS = 22;
+
 const styles = StyleSheet.create({
   button: {
     flexDirection: "row",
@@ -216,8 +234,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: 14, // Taller touch target
     paddingHorizontal: 32,
-    borderRadius: 30, // Pill shape
+    borderRadius: DEFAULT_RADIUS, // Pill shape
     minHeight: 56, // Premium height
+  },
+  compactButton: {
+    minHeight: 44, // DESIGN.md minimum touch target
+    paddingVertical: theme.spacing.s,
+    paddingHorizontal: theme.spacing.m,
+    borderRadius: COMPACT_RADIUS,
   },
   text: {
     fontWeight: "500", // Medium

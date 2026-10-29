@@ -78,36 +78,40 @@ export class CompetitionAccessService {
   }
 
   /**
-   * Organizer to stamp on a competition created through the API: `undefined`
-   * for STAFF/ADMIN (unchanged behaviour), the caller's club for a CLUB
-   * account — its name as label and its id as link (#408) — so it can edit
-   * its competition afterwards and cannot create one on behalf of another
-   * club. A CLUB account without a club is refused. A legacy account without
-   * `clubId` is linked to the one active club its name designates, and
-   * refused when there is none (#625).
+   * Organizer to stamp on a competition created through the API: the
+   * caller's club for an account holding the CLUB role — its name as label
+   * and its id as link (#408) — so it finds the competition in its club list
+   * and can edit it afterwards, and cannot create one on behalf of another
+   * club. A legacy account without `clubId` is linked to the one active club
+   * its name designates (#625).
+   *
+   * Multi-profile accounts (#441): a CLUB account that also holds STAFF or
+   * ADMIN is still stamped with its club — the club editor is the only
+   * creation path, and a competition left without organiser never showed in
+   * the club's list. No organiser (`undefined`) only for STAFF/ADMIN without
+   * a resolvable club; a CLUB-only account without one is refused.
    */
   async organizerForNewCompetition(
     actor: CompetitionActor,
   ): Promise<NewCompetitionOrganizer | undefined> {
-    if (this.isStaffOrAdmin(actor)) return undefined;
+    const staffOrAdmin = this.isStaffOrAdmin(actor);
+    if (staffOrAdmin && !hasRole(this.subjectOf(actor), UserRole.CLUB)) {
+      return undefined;
+    }
 
     const user = await this.prisma.user.findUnique({
       where: { id: actor.userId },
       select: userRolesClubNameSelect,
     });
     const clubName = (user?.club?.name ?? user?.clubName)?.trim();
-    if (!user || !hasRole(user, UserRole.CLUB) || !clubName) {
-      throw new ForbiddenException(
-        "Seul un compte club rattaché à un club peut créer une compétition",
-      );
-    }
     // Same actor as the organiser checks (#625): a legacy account whose name
     // designates no single active club could not manage what it creates.
-    const { clubId: organizerClubId } = await organizerActorOf(
-      this.prisma,
-      user,
-    );
-    if (!organizerClubId) {
+    const organizerClubId =
+      user && clubName && hasRole(user, UserRole.CLUB)
+        ? (await organizerActorOf(this.prisma, user)).clubId
+        : null;
+    if (!clubName || !organizerClubId) {
+      if (staffOrAdmin) return undefined;
       throw new ForbiddenException(
         "Seul un compte club rattaché à un club peut créer une compétition",
       );
@@ -115,8 +119,12 @@ export class CompetitionAccessService {
     return { organizer: clubName, organizerClubId };
   }
 
+  private subjectOf(actor: CompetitionActor): { roles: readonly string[] } {
+    return { roles: actor.roles ?? rolesOf({ role: actor.role }) };
+  }
+
   private isStaffOrAdmin(actor: CompetitionActor): boolean {
-    const subject = { roles: actor.roles ?? rolesOf({ role: actor.role }) };
+    const subject = this.subjectOf(actor);
     return hasRole(subject, UserRole.STAFF) || hasRole(subject, UserRole.ADMIN);
   }
 

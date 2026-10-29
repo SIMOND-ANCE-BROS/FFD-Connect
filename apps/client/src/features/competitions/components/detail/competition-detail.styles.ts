@@ -133,23 +133,31 @@ export const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
+  // Description and buttons side by side when they fit; at small widths or
+  // large font scale the buttons wrap under the description instead of
+  // squeezing it or overlapping each other (#549).
   eventCardBody: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: 12,
   },
   eventInfo: {
-    flex: 1,
-    marginRight: 12,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 160,
   },
   eventDetails: {
     marginTop: 2,
   },
+  // Stacked compact buttons (AppButton size="compact", 44pt each), same
+  // width; pushed to the right when wrapped under the description.
   eventActionsColumn: {
     flexDirection: "column",
     gap: 8,
-    alignItems: "flex-end",
-    minWidth: 100,
+    alignItems: "stretch",
+    marginLeft: "auto",
   },
   notEligibleBadge: {
     marginTop: 4,
@@ -157,17 +165,6 @@ export const styles = StyleSheet.create({
   },
   notEligibleReason: {
     marginTop: 2,
-  },
-  /** Pour AppButton (outline/primary) : pas de bordure sur le wrapper, le bouton gère la sienne. */
-  compactActionButtonFromApp: {
-    // minHeight, not height: a fixed 36pt box cut the touch target under 44pt
-    // (and clipped the label at large text sizes).
-    minHeight: 44,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 22,
-    paddingHorizontal: 12,
-    minWidth: 80,
   },
   pendingSection: {
     marginHorizontal: 16,
