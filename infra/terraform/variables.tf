@@ -238,4 +238,11 @@ variable "backend_app_key_vault_secrets" {
     ]))
     error_message = "Each secret granted to an environment must end with -<env> (e.g. jwt-secret-staging for staging)."
   }
+
+  # One identity per environment: a principal id copied from staging into the
+  # prod entry would hand the staging app the prod secrets.
+  validation {
+    condition     = length(distinct([for c in values(var.backend_app_key_vault_secrets) : c.principal_id])) == length(var.backend_app_key_vault_secrets)
+    error_message = "Each environment must use its own principal_id (backend-staging and backend-prod identities are distinct)."
+  }
 }
