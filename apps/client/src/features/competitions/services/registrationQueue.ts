@@ -216,7 +216,6 @@ export function getPendingRegistrationActions(
   return result;
 }
 
-/** Server registrations with the pending (optimistic) actions applied. */
 /**
  * Events the user is registered to, from GET /competitions/user/registrations.
  * Unregistering keeps the row as CANCELLED (history), so it must not count:
@@ -231,6 +230,7 @@ export function activeRegistrationEventIds(
     .map((r) => r.eventId);
 }
 
+/** Server registrations with the pending (optimistic) actions applied. */
 export function applyPendingRegistrations(
   serverEventIds: string[],
   pending: Record<string, RegistrationAction>,

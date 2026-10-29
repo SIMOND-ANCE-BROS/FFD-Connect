@@ -531,11 +531,21 @@ describe("CompetitionAccessService", () => {
       });
     });
 
+    // Extra CLUB dropped by rolesOf (no club relation, or disabled club):
+    // the stored account no longer counts as a club, nothing is stamped.
     it.each([
-      ["without a club", { clubId: null, clubName: null, club: null }],
-      ["whose legacy name is ambiguous", { clubId: null, club: null }],
+      ["without a club relation", { clubId: null, clubName: null, club: null }],
+      [
+        "on a disabled club",
+        {
+          club: {
+            disabledAt: new Date("2026-01-01"),
+            name: "Dance Club Paris",
+          },
+        },
+      ],
     ])(
-      "leaves the organizer unset for an ADMIN+CLUB account %s",
+      "leaves the organizer unset for an ADMIN account with an extra CLUB %s",
       async (_label, overrides) => {
         prisma.user.findUnique.mockResolvedValue(
           clubUser({
@@ -544,7 +554,6 @@ describe("CompetitionAccessService", () => {
             ...overrides,
           }),
         );
-        prisma.club.findMany.mockResolvedValue([{ id: "a" }, { id: "b" }]);
 
         await expect(
           service.organizerForNewCompetition({
@@ -553,8 +562,47 @@ describe("CompetitionAccessService", () => {
             roles: [UserRole.ADMIN, UserRole.CLUB],
           }),
         ).resolves.toBeUndefined();
+        expect(prisma.club.findMany).not.toHaveBeenCalled();
       },
     );
+
+    it("leaves the organizer unset for a CLUB+STAFF account without a club", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        clubUser({
+          extraRoles: [UserRole.STAFF],
+          clubId: null,
+          clubName: null,
+          club: null,
+        }),
+      );
+
+      await expect(
+        service.organizerForNewCompetition({
+          userId: "club-staff",
+          role: UserRole.CLUB,
+          roles: [UserRole.CLUB, UserRole.STAFF],
+        }),
+      ).resolves.toBeUndefined();
+      expect(prisma.club.findMany).not.toHaveBeenCalled();
+    });
+
+    it("leaves the organizer unset for a CLUB+ADMIN legacy account whose name is ambiguous", async () => {
+      // Main CLUB role (always counts), no clubId: the name is resolved and
+      // designates two clubs (homonyms) — never guessed.
+      prisma.user.findUnique.mockResolvedValue(
+        clubUser({ extraRoles: [UserRole.ADMIN], clubId: null, club: null }),
+      );
+      prisma.club.findMany.mockResolvedValue([{ id: "a" }, { id: "b" }]);
+
+      await expect(
+        service.organizerForNewCompetition({
+          userId: "club-admin",
+          role: UserRole.CLUB,
+          roles: [UserRole.CLUB, UserRole.ADMIN],
+        }),
+      ).resolves.toBeUndefined();
+      expect(prisma.club.findMany).toHaveBeenCalledTimes(1);
+    });
 
     it("returns the club relation name of a CLUB account", async () => {
       prisma.user.findUnique.mockResolvedValue(
