@@ -31,6 +31,7 @@ const event = (overrides: Record<string, unknown> = {}) => ({
   level: 'Avancé',
   openLevels: [],
   locked: true,
+  resultCount: 12,
   ...overrides,
 });
 
@@ -55,7 +56,16 @@ function renderPage() {
       syncedFromFfd: true,
       eventsSource: null,
       programEditedAt: null,
-      events: [event(), event({ id: 'ev-std', category: 'Standard', level: null, locked: false })],
+      events: [
+        event(),
+        event({
+          id: 'ev-std',
+          category: 'Standard',
+          level: null,
+          locked: false,
+          resultCount: 0,
+        }),
+      ],
       schedule: [],
     }) as never,
   );
@@ -89,6 +99,10 @@ describe('CompetitionDetailPage', () => {
     expect(await screen.findByText('Latines Adultes Avancé')).toBeInTheDocument();
     expect(screen.getByText('ev-lat')).toBeInTheDocument();
     expect(screen.getByText('Standards Adultes')).toBeInTheDocument();
+    // Results already imported, per event and in all (#846).
+    expect(screen.getByText('12 résultats')).toBeInTheDocument();
+    expect(screen.getByText('Aucun résultat')).toBeInTheDocument();
+    expect(screen.getByText('1 épreuve sur 2 avec résultats')).toBeInTheDocument();
     expect(checkButton()).toBeDisabled();
     expect(importButton()).toBeDisabled();
   });

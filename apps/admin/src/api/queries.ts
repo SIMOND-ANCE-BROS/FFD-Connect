@@ -1,4 +1,4 @@
-import { queryOptions } from '@tanstack/react-query';
+import { type QueryClient, queryOptions } from '@tanstack/react-query';
 import {
   adminControllerAuditLog,
   adminControllerClubOptions,
@@ -16,6 +16,7 @@ import {
   adminTracksControllerFindOne,
   adminTracksControllerList,
   adminTopTurnierControllerStatus,
+  adminCompetitionsControllerResultsStatusList,
   competitionsControllerFindAll,
   competitionsControllerFindOne,
   competitionsControllerGetProgram,
@@ -305,6 +306,32 @@ export const competitionQuery = (id: string) =>
     refetchOnReconnect: false,
     retry: false,
   });
+
+/**
+ * Whether the results of a page of competitions are imported (#846): one
+ * request per page, keyed by the ids shown, never per competition.
+ */
+export const competitionsResultsStatusQuery = (ids: string[]) =>
+  queryOptions({
+    queryKey: ['admin', 'competitions', 'results-status', ids],
+    queryFn: async () => {
+      const rows = await unwrap(adminCompetitionsControllerResultsStatusList({ query: { ids } }));
+      return new Map(rows.map((row) => [row.competitionId, row]));
+    },
+    enabled: ids.length > 0,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+/**
+ * After an import or a deletion of results: the programme (locks, counts per
+ * event) and the import status of the competitions list are stale.
+ */
+export function invalidateCompetitionResults(qc: QueryClient, competitionId: string) {
+  void qc.invalidateQueries({ queryKey: competitionProgramQuery(competitionId).queryKey });
+  void qc.invalidateQueries({ queryKey: ['admin', 'competitions', 'results-status'] });
+}
 
 /** Events of a competition (ids and names for the results CSV). */
 export const competitionProgramQuery = (id: string) =>

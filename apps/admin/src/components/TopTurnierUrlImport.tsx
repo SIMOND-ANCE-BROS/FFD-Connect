@@ -2,7 +2,7 @@ import { Alert, Button, Group, Stack, Text, TextInput } from '@mantine/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { competitionsControllerImportTopTurnierUrlResults } from '../api/generated/sdk.gen';
-import { competitionProgramQuery, unwrap } from '../api/queries';
+import { invalidateCompetitionResults, unwrap } from '../api/queries';
 import type { ImportReportCounts } from '../lib/resultsImport';
 import { eventMappings } from '../lib/topturnierImport';
 import { MappingTable } from './TopTurnierImport';
@@ -46,7 +46,7 @@ export function TopTurnierUrlImport({
   const save = useMutation({
     mutationFn: (address: string) => send(address, false),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: competitionProgramQuery(competitionId).queryKey });
+      invalidateCompetitionResults(qc, competitionId);
       void qc.invalidateQueries({ queryKey: ['admin', 'audit'] });
     },
   });
