@@ -482,6 +482,39 @@ describe("useCompetitionDetailLogic", () => {
         "Désinscription confirmée",
       );
     });
+
+    it("shows the event as not registered once the server keeps it CANCELLED (#549)", async () => {
+      mockGetUserRegistrations.mockResolvedValue([
+        { eventId: "evt-1", status: "CONFIRMED" },
+      ]);
+      const { result } = await renderHook(
+        () =>
+          useCompetitionDetailLogic(mockCompetitionId, mockNavigation as never),
+        { wrapper: createWrapper() },
+      );
+      await waitFor(() =>
+        expect(result.current.state.myRegistrations).toEqual(["evt-1"]),
+      );
+
+      // The unregister keeps the row as history: the refetch returns it
+      // CANCELLED, which must not bring « Désinscrire » back.
+      mockGetUserRegistrations.mockResolvedValue([
+        { eventId: "evt-1", status: "CANCELLED" },
+      ]);
+      await act(async () => {
+        // eslint-disable-next-line @typescript-eslint/await-thenable
+        await result.current.actions.handleUnregister(
+          createPartialEvent({ id: "evt-1" }),
+        );
+      });
+
+      await waitFor(() =>
+        expect(mockGetUserRegistrations).toHaveBeenCalledTimes(2),
+      );
+      await waitFor(() =>
+        expect(result.current.state.myRegistrations).toEqual([]),
+      );
+    });
   });
 
   describe("offline queue (#416)", () => {

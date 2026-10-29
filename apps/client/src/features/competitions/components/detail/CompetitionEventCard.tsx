@@ -82,7 +82,7 @@ export function CompetitionEventCard({
           styles.disabledEvent,
       ]}
     >
-      <View style={styles.eventCardBody}>
+      <View testID={`event-body-${event.id}`} style={styles.eventCardBody}>
         {/* Event description = one screen-reader stop (name, pending state,
             eligibility). Only Text inside, so grouping hides no control. */}
         <View
@@ -163,7 +163,7 @@ export function CompetitionEventCard({
               title="Résultats"
               onPress={onNavigateResults}
               variant="primary"
-              style={styles.compactActionButtonFromApp}
+              size="compact"
               // Same target for every row (competition-wide results), so the
               // plain "Résultats" label is unambiguous — and Maestro taps it.
               accessibilityHint="Ouvre les résultats de la compétition"
@@ -173,7 +173,7 @@ export function CompetitionEventCard({
               <AppButton
                 title="Inscrits"
                 variant="outline"
-                style={styles.compactActionButtonFromApp}
+                size="compact"
                 onPress={() =>
                   Alert.alert(
                     "Inscrits",
@@ -191,7 +191,7 @@ export function CompetitionEventCard({
                     onRegister(event);
                   }}
                   variant="outline"
-                  style={styles.compactActionButtonFromApp}
+                  size="compact"
                   accessibilityLabel={`Inscrire des membres : ${eventName}`}
                   accessibilityHint="Choisir les membres du club à inscrire"
                 />
@@ -205,7 +205,7 @@ export function CompetitionEventCard({
                     onUnregister(event);
                   }}
                   variant="outline"
-                  style={styles.compactActionButtonFromApp}
+                  size="compact"
                   accessibilityLabel={`Se désinscrire : ${eventName}`}
                   accessibilityHint="Annule votre inscription à cette épreuve"
                 />
@@ -221,7 +221,7 @@ export function CompetitionEventCard({
                       onRegister(event);
                     }}
                     variant="primary"
-                    style={styles.compactActionButtonFromApp}
+                    size="compact"
                     accessibilityLabel={`S'inscrire : ${eventName}`}
                     accessibilityHint="Vous inscrit à cette épreuve"
                   />
@@ -232,7 +232,7 @@ export function CompetitionEventCard({
                   title="S'inscrire"
                   onPress={onSignInToRegister}
                   variant="primary"
-                  style={styles.compactActionButtonFromApp}
+                  size="compact"
                   accessibilityLabel={`S'inscrire : ${eventName}`}
                   accessibilityHint="Connectez-vous ou créez un compte pour vous inscrire, puis revenez sur cette compétition"
                 />

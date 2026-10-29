@@ -31,6 +31,7 @@ import { useOfflineQueueStore } from "../../../stores/offlineQueue.store";
 import type { CompetitionLevelProfile } from "../../../utils/competitionLevel";
 import { evaluateLocalEligibility } from "../utils/localEligibility";
 import {
+  activeRegistrationEventIds,
   applyPendingRegistrations,
   getPendingRegistrationActions,
   QUEUE_MESSAGES,
@@ -118,7 +119,7 @@ export const useCompetitionDetailLogic = (
   const myRegistrations = useMemo(
     () =>
       applyPendingRegistrations(
-        myRegistrationsRaw?.map((r) => r.eventId) ?? [],
+        activeRegistrationEventIds(myRegistrationsRaw),
         pendingRegistrationActions,
       ),
     [myRegistrationsRaw, pendingRegistrationActions],

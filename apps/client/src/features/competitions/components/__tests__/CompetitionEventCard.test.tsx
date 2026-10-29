@@ -1,5 +1,6 @@
 import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
+import { StyleSheet, type StyleProp, type ViewStyle } from "react-native";
 import type { AppTheme } from "../../../../context/ThemeContext";
 import type { Event } from "../../context/CompetitionContext";
 import { CompetitionEventCard } from "../detail/CompetitionEventCard";
@@ -105,5 +106,43 @@ describe("CompetitionEventCard accessibility", () => {
     expect(
       getByRole("button", { name: /^Inscrire des membres : .*Juniors 2/ }),
     ).toBeTruthy();
+  });
+});
+
+// « Inscrits » and « S'inscrire / Désinscrire » overlapped (#549): the 56pt
+// AppButton sat in a smaller outer box. The row buttons are compact (44pt on
+// the button itself) and the row wraps at small widths / large font scale.
+describe("CompetitionEventCard layout (#549)", () => {
+  const flat = (style: StyleProp<ViewStyle>) => StyleSheet.flatten(style);
+
+  it.each([
+    ["not registered", false, "register-event-ev-1"],
+    ["registered", true, "unregister-event-ev-1"],
+  ])(
+    "sizes « Inscrits » and the CTA as 44pt buttons (%s)",
+    async (_label, isRegistered, ctaTestID) => {
+      const { getByTestId, getByRole } = await render(
+        <CompetitionEventCard {...baseProps} isRegistered={isRegistered} />,
+      );
+      const buttons = [
+        getByRole("button", { name: /^Inscrits : / }),
+        getByTestId(ctaTestID),
+      ];
+      for (const button of buttons) {
+        const style = flat(button.props.style as StyleProp<ViewStyle>);
+        expect(style.minHeight).toBe(44);
+        expect(style.height).toBeUndefined();
+      }
+    },
+  );
+
+  it("lets the actions wrap under the description", async () => {
+    const { getByTestId } = await render(
+      <CompetitionEventCard {...baseProps} />,
+    );
+    const body = getByTestId("event-body-ev-1");
+    expect(flat(body.props.style as StyleProp<ViewStyle>).flexWrap).toBe(
+      "wrap",
+    );
   });
 });
