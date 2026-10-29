@@ -707,7 +707,31 @@ jobs:
           else echo "::error::no platform to build"; exit 1
           fi
           echo "Building preview in the EAS cloud for: $* (--platform $PLATFORM)" | tee -a "$GITHUB_STEP_SUMMARY"
-          eas build --profile preview --platform "$PLATFORM" --non-interactive
+          # Nothing that locates the binary is printed (#511): eas-cli logs the
+          # build page URL and build id (stderr, even with --json), and an
+          # internal-distribution build is downloadable WITHOUT login from
+          # project id (public) + build id. Output goes to $RUNNER_TEMP; on
+          # failure it is replayed with expo.dev URLs and UUIDs masked.
+          out="$RUNNER_TEMP/eas-cloud-build.json"
+          log="$RUNNER_TEMP/eas-cloud-build.log"
+          trap 'rm -f "$out" "$log"' EXIT
+          if ! eas build --profile preview --platform "$PLATFORM" --non-interactive --json \
+            < /dev/null > "$out" 2> "$log"; then
+            sed -E \
+              -e 's#https?://[^[:space:]]*expo\.(dev|io)[^[:space:]]*#<expo.dev URL masquée>#g' \
+              -e 's#[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}#<id masqué>#g' \
+              "$log" >&2
+            echo "::error::eas build (preview, $PLATFORM) a échoué - détail : expo.dev → Builds, membres du compte Expo"
+            exit 1
+          fi
+          # Same guard as the beta path: keep only the JSON array.
+          sed -n '/^\[/,$p' "$out" > "$out.tmp" && mv "$out.tmp" "$out"
+          if ! jq -e 'length > 0 and all(.[]; .status == "FINISHED")' "$out" > /dev/null; then
+            echo "::error::eas build ($PLATFORM) : statut final illisible ou différent de FINISHED"
+            exit 1
+          fi
+          jq -r '.[] | "\(.platform): \(.status) (build \(.appBuildVersion // "?"))"' "$out" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
 
       # Same path as the beta promotion (promote-beta, builder=github): Firebase
       # config from this job's GitHub environment secrets, credentials frozen,
@@ -2873,7 +2897,31 @@ jobs:
           else echo "::error::no platform to build"; exit 1
           fi
           echo "Building production in the EAS cloud for: $* (--platform $PLATFORM)" | tee -a "$GITHUB_STEP_SUMMARY"
-          eas build --profile production --platform "$PLATFORM" --non-interactive
+          # Nothing that locates the binary is printed (#511): eas-cli logs the
+          # build page URL and build id (stderr, even with --json), and an
+          # internal-distribution build is downloadable WITHOUT login from
+          # project id (public) + build id. Output goes to $RUNNER_TEMP; on
+          # failure it is replayed with expo.dev URLs and UUIDs masked.
+          out="$RUNNER_TEMP/eas-cloud-build.json"
+          log="$RUNNER_TEMP/eas-cloud-build.log"
+          trap 'rm -f "$out" "$log"' EXIT
+          if ! eas build --profile production --platform "$PLATFORM" --non-interactive --json \
+            < /dev/null > "$out" 2> "$log"; then
+            sed -E \
+              -e 's#https?://[^[:space:]]*expo\.(dev|io)[^[:space:]]*#<expo.dev URL masquée>#g' \
+              -e 's#[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}#<id masqué>#g' \
+              "$log" >&2
+            echo "::error::eas build (production, $PLATFORM) a échoué - détail : expo.dev → Builds, membres du compte Expo"
+            exit 1
+          fi
+          # Same guard as the beta path: keep only the JSON array.
+          sed -n '/^\[/,$p' "$out" > "$out.tmp" && mv "$out.tmp" "$out"
+          if ! jq -e 'length > 0 and all(.[]; .status == "FINISHED")' "$out" > /dev/null; then
+            echo "::error::eas build ($PLATFORM) : statut final illisible ou différent de FINISHED"
+            exit 1
+          fi
+          jq -r '.[] | "\(.platform): \(.status) (build \(.appBuildVersion // "?"))"' "$out" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
 
       # Same path as the beta promotion (promote-beta, builder=github): Firebase
       # config from this job's GitHub environment secrets, credentials frozen,
