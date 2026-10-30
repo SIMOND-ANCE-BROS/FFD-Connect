@@ -1,4 +1,4 @@
-import { INestApplication } from "@nestjs/common";
+import { INestApplication, Logger } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { Test, TestingModule } from "@nestjs/testing";
 import {
@@ -12,6 +12,7 @@ import { UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import request from "supertest";
 import { AppModule } from "./../src/app.module";
+import { AuthTokenService } from "./../src/auth/auth-token.service";
 import { SessionCleanupService } from "./../src/auth/session-cleanup.service";
 import { NotificationsService } from "./../src/notifications/notifications.service";
 import { PrismaService } from "./../src/prisma/prisma.service";
@@ -415,6 +416,181 @@ describe("AuthController (integration with real DB)", () => {
         await refresh(legacy).expect(401);
         await refresh(next.refresh_token).expect(401);
         expect(await liveTokens(user.id)).toHaveLength(0);
+      });
+
+      // Review of #883 (L3a): the user-row lock must close the READ COMMITTED
+      // gap between a rotation and a "revoke all" (password reset): without
+      // it, a revocation whose UPDATE starts while the rotation is between
+      // its consume and its commit re-reads the old row (now revoked) and
+      // never sees the new one, which stays alive. Each side runs its own
+      // transaction on its own pooled connection.
+      describe("refresh racing a revoke-all", () => {
+        const sleep = (ms: number) =>
+          new Promise((resolve) => setTimeout(resolve, ms));
+        const tokenHolders = () => app.get(AuthTokenService);
+        /** Sessions of this database blocked on a row lock. */
+        const lockWaiters = async () => {
+          const rows = await prisma.$queryRaw<{ n: number }[]>`
+            SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+          return rows[0]?.n ?? 0;
+        };
+        const waitForLockWaiters = async (n: number) => {
+          for (let i = 0; i < 200; i++) {
+            if ((await lockWaiters()) >= n) return;
+            await sleep(10);
+          }
+          throw new Error(`fewer than ${n} sessions waiting on a lock`);
+        };
+
+        it("never leaves a live token, whatever the interleaving (many runs)", async () => {
+          const tokens = tokenHolders();
+          const { user, email, password } = await makeUser();
+          const ITERATIONS = 30;
+
+          for (let i = 0; i < ITERATIONS; i++) {
+            const token = await login(email, password);
+            // Spread the start of the revocation over the rotation's span.
+            const delay = i % 6;
+            const [rotated] = await Promise.all([
+              tokens.refreshAccessToken(token).then(
+                (r) => r.refresh_token,
+                () => null,
+              ),
+              sleep(delay).then(() => tokens.revokeAllUserTokens(user.id)),
+            ]);
+            expect(await liveTokens(user.id)).toHaveLength(0);
+            if (rotated) await refresh(rotated).expect(401);
+          }
+        }, 60000);
+
+        it("a revoke-all queued behind a rotation in flight revokes the new token", async () => {
+          const tokens = tokenHolders();
+          const { user, email, password } = await makeUser();
+          const token = await login(email, password);
+
+          // A third connection holds the user row, so the rotation stops
+          // inside its transaction and the revocation lines up behind it.
+          let release: () => void = () => undefined;
+          const released = new Promise<void>((resolve) => (release = resolve));
+          let held: () => void = () => undefined;
+          const locked = new Promise<void>((resolve) => (held = resolve));
+          const holder = prisma.$transaction(
+            async (tx) => {
+              await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;
+              held();
+              await released;
+            },
+            { timeout: 20000 },
+          );
+          await locked;
+
+          const rotation = tokens.refreshAccessToken(token);
+          await waitForLockWaiters(1);
+          const revocation = tokens.revokeAllUserTokens(user.id);
+          await waitForLockWaiters(2);
+          release();
+          await holder;
+
+          const [{ refresh_token }] = await Promise.all([rotation, revocation]);
+          expect(await liveTokens(user.id)).toHaveLength(0);
+          await refresh(refresh_token).expect(401);
+        }, 30000);
+      });
+
+      // L3b: a token revoked by logout, a password reset or an admin has no
+      // live descendant. Coming back later must not crash nor touch the
+      // user's other sessions; it is logged and refused.
+      describe.each([
+        [
+          "logout",
+          async (_userId: string, token: string) => {
+            await request(app.getHttpServer() as Parameters<typeof request>[0])
+              .post("/api/v1/auth/logout")
+              .send({ refresh_token: token })
+              .expect(201);
+          },
+        ],
+        [
+          "a password reset",
+          async (userId: string) => {
+            await app.get(AuthTokenService).revokeAllUserTokens(userId);
+          },
+        ],
+        [
+          "an admin",
+          async (userId: string) => {
+            // Same write as the admin e-mail change and account disable.
+            await prisma.refreshToken.updateMany({
+              where: { userId, revoked: false },
+              data: { revoked: true, revokedAt: new Date() },
+            });
+          },
+        ],
+      ])("a token revoked by %s, presented again", (_label, revoke) => {
+        it("gets a 401, revokes nothing live and is logged", async () => {
+          const { user, email, password } = await makeUser();
+          const old = await login(email, password);
+          await revoke(user.id, old);
+          await ageRevocations(user.id);
+          // The user logs in again (new family) before the old token returns.
+          const current = await login(email, password);
+          const warn = jest.spyOn(Logger.prototype, "warn");
+
+          try {
+            await refresh(old).expect(401);
+            expect(warn).toHaveBeenCalledWith(
+              expect.stringContaining("0 live token(s) revoked"),
+            );
+          } finally {
+            warn.mockRestore();
+          }
+          // The new session is untouched.
+          expect(await liveTokens(user.id)).toHaveLength(1);
+          await refresh(current).expect(201);
+        });
+      });
+
+      // L3c: reuse on a disabled account.
+      it("reuse on a disabled account revokes the family and answers 401", async () => {
+        const { user, email, password } = await makeUser();
+        const old = await login(email, password);
+        const next = (await refresh(old).expect(201)).body as {
+          refresh_token: string;
+        };
+        // Disabled without its tokens being revoked (e.g. a CLUB account of a
+        // disabled club): the rotated child is still live.
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { disabledAt: new Date() },
+          select: { id: true },
+        });
+        await ageRevocations(user.id);
+        const warn = jest.spyOn(Logger.prototype, "warn");
+
+        try {
+          await refresh(old)
+            .expect(401)
+            .expect((res) =>
+              expect(res.body).toMatchObject({
+                message: "Invalid or expired refresh token",
+              }),
+            );
+          expect(warn).toHaveBeenCalledWith(
+            expect.stringContaining("1 live token(s) revoked"),
+          );
+        } finally {
+          warn.mockRestore();
+        }
+        expect(await liveTokens(user.id)).toHaveLength(0);
+
+        // Re-enabled later: the family stays revoked.
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { disabledAt: null },
+          select: { id: true },
+        });
+        await refresh(next.refresh_token).expect(401);
       });
     });
   });

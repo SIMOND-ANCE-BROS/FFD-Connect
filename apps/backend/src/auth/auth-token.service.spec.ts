@@ -553,6 +553,83 @@ describe("AuthTokenService", () => {
         }
       });
 
+      it.each([["logout"], ["a password reset"], ["an admin"]])(
+        "a token revoked by %s and presented again: 401, nothing live to revoke, logged",
+        async () => {
+          // No live descendant: the family revocation matches no row.
+          mockPrismaService.refreshToken.findUnique.mockResolvedValue(
+            familyRecord({
+              id: "tok-1",
+              revoked: true,
+              revokedAt: new Date(Date.now() - 60 * 60 * 1000),
+            }),
+          );
+          mockPrismaService.refreshToken.updateMany.mockResolvedValue({
+            count: 0,
+          });
+          const warn = jest
+            .spyOn(Logger.prototype, "warn")
+            .mockImplementation(() => undefined);
+
+          await expect(service.refreshAccessToken("old")).rejects.toThrow(
+            new UnauthorizedException("Invalid or expired refresh token"),
+          );
+
+          expect(
+            mockPrismaService.refreshToken.updateMany,
+          ).toHaveBeenCalledTimes(1);
+          expect(
+            mockPrismaService.refreshToken.updateMany.mock.calls[0][0].where,
+          ).toEqual({
+            userId: "u1",
+            revoked: false,
+            OR: [{ familyId: "fam-1" }, { id: "fam-1" }],
+          });
+          expect(mockPrismaService.refreshToken.create).not.toHaveBeenCalled();
+          expect(warn).toHaveBeenCalledWith(
+            expect.stringContaining("0 live token(s) revoked"),
+          );
+        },
+      );
+
+      it("reuse on a disabled account revokes the family and answers the generic 401", async () => {
+        mockPrismaService.refreshToken.findUnique.mockResolvedValue(
+          familyRecord({
+            id: "tok-1",
+            revoked: true,
+            revokedAt: new Date(Date.now() - 60 * 60 * 1000),
+            user: {
+              id: "u1",
+              email: "u@test.com",
+              role: UserRole.LICENSEE,
+              disabledAt: new Date(),
+              club: null,
+            },
+          }),
+        );
+        const warn = jest
+          .spyOn(Logger.prototype, "warn")
+          .mockImplementation(() => undefined);
+
+        // Reuse is checked first: same answer as any revoked token, so a
+        // replayed token does not reveal that the account is disabled.
+        await expect(service.refreshAccessToken("stolen")).rejects.toThrow(
+          new UnauthorizedException("Invalid or expired refresh token"),
+        );
+        expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({
+              OR: [{ familyId: "fam-1" }, { id: "fam-1" }],
+            }) as unknown,
+          }),
+        );
+        expect(mockPrismaService.refreshToken.create).not.toHaveBeenCalled();
+        expect(mockJwtService.sign).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining("Refresh token reuse detected (user u1"),
+        );
+      });
+
       it("concurrent refreshes with the same token: one rotates, the loser revokes nothing", async () => {
         // Both callers read the token as live; the conditional consume lets
         // only the first one through (Postgres re-evaluates revoked=false).
