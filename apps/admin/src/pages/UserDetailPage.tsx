@@ -19,7 +19,6 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ListSkeleton } from '../components/ListStates';
@@ -49,6 +48,7 @@ import { changedFields, type EditableFields, withLegacy } from '../lib/diff';
 import { formatDiscipline } from '../lib/discipline';
 import { protectedActionError, type ProtectedAction } from '../lib/storeReview';
 import { useSession } from '../session/sessionStore';
+import { formatParisDateTime, formatParisDay } from '../lib/parisDate';
 
 type UpdateBody = AdminControllerUpdateUserData['body'];
 
@@ -254,8 +254,8 @@ export function UserDetailPage() {
       {storeReview && <StoreReviewNotice target="user" />}
       {disabled && (
         <Alert color="red" title="Compte désactivé">
-          Désactivé le {dayjs(u.disabledAt).format('DD/MM/YYYY HH:mm')} : connexion et accès
-          refusés. Les données restent intactes.
+          Désactivé le {formatParisDateTime(u.disabledAt)} : connexion et accès refusés. Les données
+          restent intactes.
         </Alert>
       )}
       {!disabled && u.role === 'CLUB' && u.clubDisabledAt && (
@@ -268,10 +268,9 @@ export function UserDetailPage() {
         <SimpleGrid cols={{ base: 1, sm: 3 }}>
           <UserIdentifiers user={u} editable={!isSelf} />
           <Text size="sm">WDSF : {u.wdsfMin ?? '—'}</Text>
-          <Text size="sm">Inscription : {dayjs(u.createdAt).format('DD/MM/YYYY')}</Text>
+          <Text size="sm">Inscription : {formatParisDay(u.createdAt)}</Text>
           <Text size="sm">
-            Dernière connexion :{' '}
-            {u.lastLoginAt ? dayjs(u.lastLoginAt).format('DD/MM/YYYY HH:mm') : 'inconnue'}
+            Dernière connexion : {u.lastLoginAt ? formatParisDateTime(u.lastLoginAt) : 'inconnue'}
           </Text>
         </SimpleGrid>
       </Card>
@@ -508,8 +507,8 @@ export function UserDetailPage() {
         history.data.data.map((h) => (
           <Card key={h.id} withBorder p="xs">
             <Text size="sm" fw={500}>
-              {dayjs(h.createdAt).format('DD/MM/YYYY HH:mm')} —{' '}
-              {ACTION_LABELS[h.action] ?? h.action} par {h.actorName ?? 'admin supprimé'}
+              {formatParisDateTime(h.createdAt)} — {ACTION_LABELS[h.action] ?? h.action} par{' '}
+              {h.actorName ?? 'admin supprimé'}
             </Text>
             {h.after && <ChangeSummary before={h.before ?? {}} after={h.after} />}
           </Card>

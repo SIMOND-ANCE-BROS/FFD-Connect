@@ -19,7 +19,6 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
 import {
@@ -45,11 +44,12 @@ import {
   type RejectionReason,
   STATUS_BADGES,
 } from '../lib/licenseRenewals';
+import { formatParisDateTime, formatParisDay } from '../lib/parisDate';
 
 type Decision = 'approve' | 'reject';
 
-const day = (iso: string | null) => (iso ? dayjs(iso).format('DD/MM/YYYY') : '—');
-const dateTime = (iso: string | null) => (iso ? dayjs(iso).format('DD/MM/YYYY HH:mm') : '—');
+const day = formatParisDay;
+const dateTime = formatParisDateTime;
 
 /** OCR readings, shown as hints to check against the document (#19), never as a verdict. */
 function OcrHints({ ocr }: { ocr: AdminRenewalOcrHintsDto }) {

@@ -1,6 +1,5 @@
 import { Alert, Anchor, Card, Group, Stack, Text, Title } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { Link } from 'react-router';
 import { healthAccessLogQuery } from '../api/queries';
 import { apiErrorMessage } from '../lib/apiError';
@@ -12,6 +11,7 @@ import {
   userIdsOf,
 } from '../lib/healthAccessLog';
 import { useUserNames } from '../lib/useUserNames';
+import { formatParisDateTime } from '../lib/parisDate';
 
 /** Latest accesses shown on the record; the journal has the rest. */
 const LATEST = 10;
@@ -53,7 +53,7 @@ export function HealthAccessHistory({ userId }: { userId: string }) {
         rows.map((e) => (
           <Card key={e.id} withBorder p="xs">
             <Text size="sm" fw={500}>
-              {dayjs(e.createdAt).format('DD/MM/YYYY HH:mm')} — {HEALTH_ACTION_LABELS[e.action]} (
+              {formatParisDateTime(e.createdAt)} — {HEALTH_ACTION_LABELS[e.action]} (
               {RESOURCE_LABELS[e.resourceType].toLowerCase()}) par{' '}
               {e.actorUserId === null
                 ? 'le système'

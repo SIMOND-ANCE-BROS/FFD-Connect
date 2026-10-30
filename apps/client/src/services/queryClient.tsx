@@ -16,6 +16,8 @@ import {
   handleRegistrationReplayError,
   handleRegistrationReplayExhausted,
   handleRegistrationReplaySuccess,
+  beginRegistrationReplayBatch,
+  endRegistrationReplayBatch,
 } from "../features/competitions/services/registrationQueue";
 import {
   CHECKIN_KIND,
@@ -157,6 +159,9 @@ const OfflineQueueRunner = () => {
       handleCheckinReplayError(mutation, error) ??
       handleRegistrationReplayError(mutation, error),
     onReplaySuccess: handleRegistrationReplaySuccess,
+    // One recap per reconnect when several registrations were pending (#859).
+    onReplayBatchStart: beginRegistrationReplayBatch,
+    onReplayBatchEnd: endRegistrationReplayBatch,
     onConflict: () =>
       Alert.alert(
         "Données mises à jour",

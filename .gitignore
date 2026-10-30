@@ -70,6 +70,8 @@ output.json
 lint-results.json
 lint-results-fresh.json
 coverage-report.json
+# Ad-hoc coverage text dumps (e.g. apps/client/coverage_summary.txt), never versioned (#871).
+coverage_*.txt
 # .claude racine : état local ignoré, seuls les sous-agents du projet sont versionnés.
 # Règles ANCRÉES (/) pour ne s'appliquer qu'à la racine — sinon le `!.../agents/`
 # non ancré dé-ignorait aussi les .claude imbriqués (ex. apps/backend/.claude).

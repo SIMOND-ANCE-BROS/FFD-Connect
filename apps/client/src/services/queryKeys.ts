@@ -23,6 +23,14 @@ export const queryKeys = {
   registrations: {
     my: ["myRegistrations"] as const,
   },
+  career: {
+    /**
+     * Partnerships (/career/me) of the account the session acts as. `scope`
+     * keeps an impersonated account apart from the admin's own one:
+     * impersonation keeps the persisted cache, only logout clears it.
+     */
+    me: (scope: string) => ["career", "me", "partnerships", scope] as const,
+  },
   club: {
     members: ["clubMembers"] as const,
     registrationMode: ["clubRegistrationMode"] as const,

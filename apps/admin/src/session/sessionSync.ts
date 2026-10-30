@@ -40,6 +40,14 @@ let removePageShow: (() => void) | null = null;
 let applyingRemote = false;
 /** A logout was announced while this tab was restoring: adopt no reply. */
 let logoutSeenWhileRestoring = false;
+/**
+ * This tab started from a session saved in its own sessionStorage (reload,
+ * tab discarded by the browser then reloaded, session restore): it may have
+ * missed token rotations pushed by the other tabs while it was not running.
+ * Its first refresh checks the open tabs first (#687): sending a superseded
+ * refresh token now revokes the token family shared by every tab.
+ */
+let restoredFromStorage = false;
 const pendingRequests = new Map<string, (session: SessionSnapshot) => void>();
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -61,6 +69,8 @@ function isSessionUser(value: unknown): value is SessionUser {
 function isSnapshot(value: unknown): value is SessionSnapshot {
   return (
     isRecord(value) &&
+    (value.issuedAt === undefined ||
+      (typeof value.issuedAt === 'number' && Number.isFinite(value.issuedAt))) &&
     typeof value.accessToken === 'string' &&
     value.accessToken !== '' &&
     typeof value.refreshToken === 'string' &&
@@ -90,9 +100,23 @@ function parseMessage(data: unknown): SyncMessage | null {
 
 /** The admin session held by this tab, if any. */
 function currentSnapshot(): SessionSnapshot | null {
-  const { accessToken, refreshToken, user } = useSession.getState();
+  const { accessToken, refreshToken, user, issuedAt } = useSession.getState();
   if (!accessToken || !refreshToken || !user || !isAdmin(user)) return null;
-  return { accessToken, refreshToken, user };
+  return issuedAt === null
+    ? { accessToken, refreshToken, user }
+    : { accessToken, refreshToken, user, issuedAt };
+}
+
+/**
+ * Whether a peer's session of the same account holds a newer refresh token
+ * than this tab's. Both stamped: the later one wins, so a tab never takes an
+ * older token from another stale tab. A session saved before #687 has no
+ * stamp: a different token is then taken, as before.
+ */
+function isNewerSession(peer: SessionSnapshot, mine: SessionSnapshot): boolean {
+  if (peer.user.id !== mine.user.id || peer.refreshToken === mine.refreshToken) return false;
+  if (peer.issuedAt === undefined || mine.issuedAt === undefined) return true;
+  return peer.issuedAt > mine.issuedAt;
 }
 
 function post(message: SyncMessage): void {
@@ -135,6 +159,8 @@ function onMessage(event: MessageEvent<unknown>): void {
       const { user } = useSession.getState();
       if (user && user.id === message.session.user.id && isAdmin(message.session.user)) {
         adoptPeerSession(message.session);
+        // Up to date with the other tabs again.
+        restoredFromStorage = false;
       }
       return;
     }
@@ -221,18 +247,38 @@ export async function resyncAfterRestore(waitMs = PEER_WAIT_MS): Promise<void> {
     applyRemote(() => useSession.getState().clear());
     return;
   }
+  await adoptNewerPeerSession(waitMs);
+}
+
+/**
+ * Asks the open tabs for their session and takes it when it is a newer one
+ * of the same account. Returns the adopted access token, or null when this
+ * tab already holds the latest session (or no tab answered).
+ */
+async function adoptNewerPeerSession(waitMs: number): Promise<string | null> {
   const mine = currentSnapshot();
-  if (!mine) return;
+  if (!mine) return null;
   const peer = await requestPeerSession(waitMs);
-  const current = useSession.getState();
-  if (
-    peer &&
-    peer.user.id === mine.user.id &&
-    peer.refreshToken !== mine.refreshToken &&
-    current.refreshToken === mine.refreshToken
-  ) {
-    adoptPeerSession(peer);
-  }
+  // A rotation, a logout or a login in this tab meanwhile wins.
+  if (!peer || useSession.getState().refreshToken !== mine.refreshToken) return null;
+  if (!isNewerSession(peer, mine)) return null;
+  adoptPeerSession(peer);
+  return peer.accessToken;
+}
+
+/**
+ * Called by the refresh before it sends anything (#687). The first time after
+ * a startup from a stored session, asks the open tabs for the current one: a
+ * tab discarded by the browser and reloaded kept its sessionStorage but missed
+ * the rotations, and its stale refresh token would now look like a stolen one
+ * and revoke the session of every tab. Returns the access token taken from a
+ * peer, or null to go on with a normal refresh (no peer, nothing newer, or
+ * not the first refresh).
+ */
+export async function syncBeforeFirstRefresh(waitMs = PEER_WAIT_MS): Promise<string | null> {
+  if (!restoredFromStorage) return null;
+  restoredFromStorage = false;
+  return adoptNewerPeerSession(waitMs);
 }
 
 /**
@@ -261,7 +307,14 @@ export function startSessionSync(waitMs = PEER_WAIT_MS): Promise<void> {
   window.addEventListener('pageshow', onPageShow);
   removePageShow = () => window.removeEventListener('pageshow', onPageShow);
 
-  if (currentSnapshot()) return Promise.resolve();
+  if (currentSnapshot()) {
+    // Any startup from a stored session: a plain reload, and a tab Chrome's
+    // Memory Saver discarded (`document.wasDiscarded`), which reloads with its
+    // sessionStorage but with `pageshow.persisted` false, so the bfcache
+    // resync below never runs for it.
+    restoredFromStorage = true;
+    return Promise.resolve();
+  }
   logoutSeenWhileRestoring = false;
   useSession.setState({ restoring: true });
   return requestPeerSession(waitMs).then((session) => {
@@ -280,6 +333,7 @@ export function stopSessionSync(): void {
   removePageShow?.();
   removePageShow = null;
   logoutSeenWhileRestoring = false;
+  restoredFromStorage = false;
   channel?.close();
   channel = null;
   pendingRequests.clear();

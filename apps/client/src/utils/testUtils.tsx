@@ -20,6 +20,7 @@ export function createMockNavigation(): NativeStackNavigationProp<RootStackParam
     push: jest.fn(),
     pop: jest.fn(),
     popToTop: jest.fn(),
+    popTo: jest.fn(),
     goBack: jest.fn(),
     dispatch: jest.fn(),
     setOptions: jest.fn(),

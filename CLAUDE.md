@@ -94,7 +94,7 @@ The backend runs on Azure Container Apps with `minReplicas=0` (see `docs/exploit
 - **Backend:** NestJS modular architecture. Each domain (auth, competitions, clubs, licenses, tracks, etc.) is a module with controllers + services. Services decomposed by responsibility (QueryService for reads, Service for writes).
 - **Client:** Feature-based organization under `src/features/`. State: Zustand stores (player, club, competition, performance) + React Query (server cache) + Context (auth, theme only). Navigation: React Navigation native-stack + bottom tabs.
 - **Database:** Prisma 7 + PostgreSQL 15. Schema split in `prisma/schema/` by domain. Migrations auto-run on Docker container start.
-- **ADRs:** All architectural decisions documented in `docs/adr/` (18 ADRs).
+- **ADRs:** All architectural decisions documented in `docs/adr/`, one file per decision, indexed in `docs/adr/README.md`.
 
 ## Conventions
 

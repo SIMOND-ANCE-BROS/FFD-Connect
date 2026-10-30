@@ -14,7 +14,12 @@ import {
 import {
   EXHAUSTED_REASONS,
   QUEUE_MESSAGES,
+  REFUSAL_REASONS,
   RegistrationDeadlinePassedError,
+  beginRegistrationReplayBatch,
+  buildReplayRecap,
+  endRegistrationReplayBatch,
+  eventRecapLabel,
   activeRegistrationEventIds,
   applyPendingRegistrations,
   assertReplayable,
@@ -217,6 +222,21 @@ describe("submitRegistrationAction", () => {
     const [queued] = await loadQueue();
     expect(queued.meta?.registrationDeadline).toBe(FUTURE);
   });
+
+  it("stores the names for the replay recap, never in the request (#859)", async () => {
+    await enqueueRegistrationAction("register", {
+      ...target,
+      competitionTitle: "Open de Lyon",
+      eventLabel: "Latines Adultes C",
+    });
+    const [queued] = await loadQueue();
+    expect(queued.meta).toMatchObject({
+      competitionTitle: "Open de Lyon",
+      eventLabel: "Latines Adultes C",
+    });
+    // The backend runs forbidNonWhitelisted: the body stays DTO-only.
+    expect(queued.payload).toEqual({ eventId: "e1", partnerName: "Jean" });
+  });
 });
 
 describe("helpers", () => {
@@ -310,19 +330,28 @@ describe("classifyRegistrationReplayError", () => {
     ).toEqual({
       decision: "drop",
       message: QUEUE_MESSAGES.DEADLINE_PASSED_ON_REPLAY,
+      reason: REFUSAL_REASONS.DEADLINE_PASSED,
     });
   });
 
   it("drops on 401 (silent refresh already failed)", () => {
     expect(
       classifyRegistrationReplayError(mutation("register"), httpError(401)),
-    ).toEqual({ decision: "drop", message: QUEUE_MESSAGES.SESSION_EXPIRED });
+    ).toEqual({
+      decision: "drop",
+      message: QUEUE_MESSAGES.SESSION_EXPIRED,
+      reason: REFUSAL_REASONS.SESSION_EXPIRED,
+    });
   });
 
   it("drops on 409 already registered", () => {
     expect(
       classifyRegistrationReplayError(mutation("register"), httpError(409)),
-    ).toEqual({ decision: "drop", message: QUEUE_MESSAGES.ALREADY_REGISTERED });
+    ).toEqual({
+      decision: "drop",
+      message: QUEUE_MESSAGES.ALREADY_REGISTERED,
+      reason: REFUSAL_REASONS.ALREADY_REGISTERED,
+    });
   });
 
   it("drops a 409 on unregister with the server message", () => {
@@ -331,7 +360,7 @@ describe("classifyRegistrationReplayError", () => {
         mutation("unregister"),
         httpError(409, { message: "Conflit" }),
       ),
-    ).toEqual({ decision: "drop", message: "Conflit" });
+    ).toEqual({ decision: "drop", message: "Conflit", reason: "Conflit" });
     expect(
       classifyRegistrationReplayError(mutation("unregister"), httpError(409)),
     ).toEqual({ decision: "drop", message: QUEUE_MESSAGES.UNREGISTER_REFUSED });
@@ -343,10 +372,15 @@ describe("classifyRegistrationReplayError", () => {
     ).toEqual({
       decision: "drop",
       message: QUEUE_MESSAGES.ALREADY_UNREGISTERED,
+      reason: REFUSAL_REASONS.ALREADY_UNREGISTERED,
     });
     expect(
       classifyRegistrationReplayError(mutation("register"), httpError(404)),
-    ).toEqual({ decision: "drop", message: QUEUE_MESSAGES.EVENT_NOT_FOUND });
+    ).toEqual({
+      decision: "drop",
+      message: QUEUE_MESSAGES.EVENT_NOT_FOUND,
+      reason: REFUSAL_REASONS.EVENT_NOT_FOUND,
+    });
   });
 
   it("drops a full event / refused registration with the server message", () => {
@@ -358,6 +392,7 @@ describe("classifyRegistrationReplayError", () => {
     ).toEqual({
       decision: "drop",
       message: `${QUEUE_MESSAGES.REGISTER_REFUSED}\nÉpreuve complète`,
+      reason: "Épreuve complète",
     });
     expect(
       classifyRegistrationReplayError(
@@ -487,5 +522,133 @@ describe("replay exhausted (#874)", () => {
       httpError(500),
     );
     expect(alertSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("replay recap (#859)", () => {
+  const named = (
+    action: "register" | "unregister",
+    id: string,
+    competitionTitle: string,
+    eventLabel: string,
+  ): PendingMutation => ({
+    ...mutation(action, { competitionTitle, eventLabel }),
+    id,
+  });
+
+  afterEach(() => {
+    // Never leak an open batch into the next test.
+    endRegistrationReplayBatch();
+  });
+
+  it("names an event from its discipline, dance, age group and level", () => {
+    expect(
+      eventRecapLabel({
+        category: "LATIN",
+        dance: "Samba",
+        ageGroup: "Adultes",
+        level: "C",
+      }),
+    ).toBe("Latines Samba Adultes C");
+    expect(eventRecapLabel({ category: "STANDARD", level: null })).toBe(
+      "Standards",
+    );
+  });
+
+  it("shows one recap for several replays, refusals with their reason", () => {
+    beginRegistrationReplayBatch();
+    handleRegistrationReplaySuccess(
+      named("register", "m1", "Open de Lyon", "Latines Adultes C"),
+    );
+    handleRegistrationReplayError(
+      named("register", "m2", "Coupe de Paris", "Standard Juniors B"),
+      new RegistrationDeadlinePassedError(),
+    );
+    handleRegistrationReplayError(
+      named("unregister", "m3", "Gala de Nice", "Standard Adultes A"),
+      httpError(422, { message: "Désinscription impossible le jour J" }),
+    );
+    // Nothing is shown while the run is in progress.
+    expect(alertSpy).not.toHaveBeenCalled();
+
+    endRegistrationReplayBatch();
+
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(
+      QUEUE_MESSAGES.RECAP_TITLE,
+      [
+        "3 actions en attente ont été traitées (1 envoyée, 2 refusées) :",
+        "• Open de Lyon — Latines Adultes C : inscription envoyée",
+        `• Coupe de Paris — Standard Juniors B : inscription refusée. Motif : ${REFUSAL_REASONS.DEADLINE_PASSED}`,
+        "• Gala de Nice — Standard Adultes A : désinscription refusée. Motif : Désinscription impossible le jour J",
+      ].join("\n"),
+    );
+    // The side effects of a success still run.
+    expect(cancelDeadlineNotificationForCompetition).toHaveBeenCalledWith("c1");
+  });
+
+  it("keeps the single alert unchanged when one registration was pending", () => {
+    beginRegistrationReplayBatch();
+    handleRegistrationReplaySuccess(
+      named("register", "m1", "Open de Lyon", "Latines Adultes C"),
+    );
+    endRegistrationReplayBatch();
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(
+      QUEUE_MESSAGES.REPLAYED_TITLE,
+      QUEUE_MESSAGES.REPLAYED_REGISTER,
+    );
+
+    alertSpy.mockClear();
+    beginRegistrationReplayBatch();
+    handleRegistrationReplayError(mutation("register"), httpError(409));
+    endRegistrationReplayBatch();
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(
+      QUEUE_MESSAGES.REPLAY_REJECTED_TITLE,
+      QUEUE_MESSAGES.ALREADY_REGISTERED,
+    );
+  });
+
+  it("says nothing for a run without a final outcome (kept for later)", () => {
+    beginRegistrationReplayBatch();
+    expect(
+      handleRegistrationReplayError(mutation("register"), networkError()),
+    ).toBe("retry");
+    endRegistrationReplayBatch();
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it("names entries queued before the names were stored", () => {
+    const recap = buildReplayRecap([
+      {
+        action: "register",
+        result: "sent",
+        alert: { title: "t", message: "m" },
+      },
+      {
+        action: "register",
+        result: "refused",
+        competitionTitle: "Open de Lyon",
+        alert: { title: "t", message: "m" },
+      },
+    ]);
+    expect(recap?.message).toBe(
+      [
+        "2 actions en attente ont été traitées (1 envoyée, 1 refusée) :",
+        "• Épreuve : inscription envoyée",
+        "• Open de Lyon : inscription refusée",
+      ].join("\n"),
+    );
+  });
+
+  it("counts several successes in the plural", () => {
+    const sent = {
+      action: "register" as const,
+      result: "sent" as const,
+      alert: { title: "t", message: "m" },
+    };
+    expect(buildReplayRecap([sent, sent])?.message).toContain("(2 envoyées) :");
+    expect(buildReplayRecap([])).toBeNull();
   });
 });

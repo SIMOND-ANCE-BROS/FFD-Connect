@@ -78,7 +78,7 @@ export class ParentalConsentStateDto {
   state!: ParentalConsentState;
 
   @ApiPropertyOptional({
-    enum: ["EXPIRED", "REVOKED"],
+    enum: ["EXPIRED", "REVOKED", null],
     nullable: true,
     type: String,
     description: "Pourquoi un mineur est revenu à REQUIRED",

@@ -47,6 +47,14 @@ interface UseOfflineQueueOptions {
   onReplaySuccess?: (mutation: PendingMutation) => void;
   /** An entry dropped after MAX_REPLAY_ATTEMPTS failures. */
   onReplayExhausted?: (mutation: PendingMutation, error: unknown) => void;
+  /**
+   * Bracket one replay run (a reconnect or a return to the foreground),
+   * including the entries picked up while it ran. Lets a feature report the
+   * whole run at once instead of once per entry (#859). `onReplayBatchEnd`
+   * runs even if the run failed unexpectedly.
+   */
+  onReplayBatchStart?: () => void;
+  onReplayBatchEnd?: () => void;
 }
 
 function httpStatusOf(err: unknown): number | null {
@@ -178,7 +186,15 @@ export function useOfflineQueue(options: UseOfflineQueueOptions = {}) {
 
     const processQueue = () => {
       if (processing) return;
-      processing = runQueue()
+      const runBatch = async () => {
+        optionsRef.current.onReplayBatchStart?.();
+        try {
+          await runQueue();
+        } finally {
+          optionsRef.current.onReplayBatchEnd?.();
+        }
+      };
+      processing = runBatch()
         .catch((err: unknown) => {
           log.error("processQueue: unexpected error", err);
         })

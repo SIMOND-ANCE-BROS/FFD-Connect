@@ -12,7 +12,6 @@ import {
   TextInput,
 } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { Link } from 'react-router';
 import type { AdminTrackDto, TrackStatus } from '../api/generated/types.gen';
 import { tracksQuery } from '../api/queries';
@@ -39,6 +38,7 @@ import {
   writeTracksParams,
 } from '../lib/tracks';
 import { useUrlSearch } from '../lib/useUrlSearch';
+import { formatParisDay } from '../lib/parisDate';
 
 const PAGE_SIZE = 50;
 
@@ -211,7 +211,7 @@ export function TracksPage() {
       priority: 5,
       label: 'Ajoutée le',
       sortField: 'createdAt',
-      cell: (t) => dayjs(t.createdAt).format('DD/MM/YYYY'),
+      cell: (t) => formatParisDay(t.createdAt),
       filter: ops.filter('createdAt'),
     },
   ];
@@ -273,7 +273,7 @@ export function TracksPage() {
             <RecordLine label="Danse">
               {t.style ?? '—'} · {t.bpm} MPM
             </RecordLine>
-            <RecordLine label="Ajoutée le">{dayjs(t.createdAt).format('DD/MM/YYYY')}</RecordLine>
+            <RecordLine label="Ajoutée le">{formatParisDay(t.createdAt)}</RecordLine>
           </RecordCard>
         )}
       />

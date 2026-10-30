@@ -2,6 +2,7 @@ import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
 import { Alert, Linking } from "react-native";
 import { CompetitionProgramSection } from "../CompetitionProgramSection";
+import { preloadReactNative } from "../../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../../components/AppText");
 jest.mock("../../../../../context/ThemeContext", () => ({
@@ -9,6 +10,12 @@ jest.mock("../../../../../context/ThemeContext", () => ({
     theme: { surface: "#fff", primary: "#00f", textSecondary: "#666" },
   }),
 }));
+
+// One-off react-native module loading, out of the first test's budget
+// (#862). The first render reads these lazy getters: cold and under
+// full-suite load, TouchableOpacity alone was measured at 12.6 s and Text at
+// 3.2 s, and the first test timed out at 63 s while the others took 15 ms.
+preloadReactNative("View", "Text", "TouchableOpacity");
 
 describe("CompetitionProgramSection links", () => {
   let openURL: jest.SpyInstance;
