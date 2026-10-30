@@ -33,6 +33,7 @@ import { evaluateLocalEligibility } from "../utils/localEligibility";
 import {
   activeRegistrationEventIds,
   applyPendingRegistrations,
+  eventRecapLabel,
   getPendingRegistrationActions,
   QUEUE_MESSAGES,
   RegistrationDeadlinePassedError,
@@ -253,6 +254,15 @@ export const useCompetitionDetailLogic = (
     }
   };
 
+  /** Names shown in the replay recap when the action is queued (#859). */
+  const recapLabelsFor = (eventId: string) => {
+    const event = details?.events.find((e) => e.id === eventId);
+    return {
+      competitionTitle: details?.title,
+      eventLabel: event ? eventRecapLabel(event) : undefined,
+    };
+  };
+
   // Mutations
   // `networkMode: "always"` on register/unregister (#285): onlineManager is
   // wired to NetInfo (queryClient.tsx), so the default "online" mode would
@@ -277,6 +287,7 @@ export const useCompetitionDetailLogic = (
           eventId,
           partnerName,
           registrationDeadline: details?.registrationDeadline,
+          ...recapLabelsFor(eventId),
         },
         () => registerForEvent(competitionId, eventId, partnerName),
         useOfflineQueueStore.getState().items,
@@ -337,7 +348,7 @@ export const useCompetitionDetailLogic = (
     mutationFn: (eventId: string) =>
       submitRegistrationAction(
         "unregister",
-        { competitionId, eventId },
+        { competitionId, eventId, ...recapLabelsFor(eventId) },
         () => unregisterFromEvent(competitionId, eventId),
         useOfflineQueueStore.getState().items,
       ),

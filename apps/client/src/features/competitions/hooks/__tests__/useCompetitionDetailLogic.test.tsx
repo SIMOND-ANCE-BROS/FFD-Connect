@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import { useOfflineQueueStore } from "../../../../stores/offlineQueue.store";
+import { loadQueue } from "../../../../services/offlineQueueStorage";
 import { QUEUE_MESSAGES } from "../../services/registrationQueue";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import React from "react";
@@ -559,6 +560,35 @@ describe("useCompetitionDetailLogic", () => {
         }),
       );
       expect(result.current.state.myRegistrations).toContain("evt-1");
+    });
+
+    it("names the queued action for the reconnection recap (#859)", async () => {
+      (NetInfo.fetch as jest.Mock).mockResolvedValue({ isConnected: false });
+      mockGetCompetitionDetailsForUser.mockResolvedValue({
+        id: mockCompetitionId,
+        title: "Open de Lyon",
+        events: [
+          {
+            id: "evt-1",
+            category: "Latin",
+            ageGroup: "Adultes",
+            level: "C",
+            eventType: "SOLO",
+          },
+        ],
+      });
+      const { result } = await setup();
+
+      await act(async () => {
+        // eslint-disable-next-line @typescript-eslint/await-thenable
+        await result.current.actions.handleRegister(soloEvent());
+      });
+
+      const [queued] = await loadQueue();
+      expect(queued.meta).toMatchObject({
+        competitionTitle: "Open de Lyon",
+        eventLabel: "Latines Adultes C",
+      });
     });
 
     describe("when React Query's onlineManager is offline (#285)", () => {
