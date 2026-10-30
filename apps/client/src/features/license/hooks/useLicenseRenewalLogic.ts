@@ -11,6 +11,10 @@ import {
   LicenseRenewalRequest,
 } from "../../../services/BackendService";
 import { queryClient } from "../../../services/queryClient";
+import {
+  currentSessionGeneration,
+  isSameSession,
+} from "../../../utils/sessionGeneration";
 import { renewalStatusQueryKey } from "./useRenewalPending";
 
 export type RenewalStep = "documents" | "submitted" | "approved" | "rejected";
@@ -26,26 +30,35 @@ export function useLicenseRenewalLogic() {
 
   // The Licence and Profile banners read the status from React Query (#268):
   // keep it in step with what this screen loads or submits.
-  const applyRequest = useCallback((next: LicenseRenewalRequest | null) => {
-    setRequest(next);
-    const queryKey = renewalStatusQueryKey();
-    // A banner fetch still in flight (waking backend) would land after this
-    // write and overwrite it with an older status: cancel it first. The
-    // cancellation reverts asynchronously, hence the write once it settled.
-    void queryClient
-      .cancelQueries({ queryKey })
-      .then(() => queryClient.setQueryData(queryKey, next?.status ?? null));
-  }, []);
+  // `startedIn`: identity generation the answer was requested under — an
+  // answer for a previous account never lands in the next one's cache (#892).
+  const applyRequest = useCallback(
+    (next: LicenseRenewalRequest | null, startedIn: number) => {
+      if (!isSameSession(startedIn)) return;
+      setRequest(next);
+      const queryKey = renewalStatusQueryKey();
+      // A banner fetch still in flight (waking backend) would land after this
+      // write and overwrite it with an older status: cancel it first. The
+      // cancellation reverts asynchronously, hence the write once it settled.
+      void queryClient.cancelQueries({ queryKey }).then(() => {
+        if (isSameSession(startedIn)) {
+          queryClient.setQueryData(queryKey, next?.status ?? null);
+        }
+      });
+    },
+    [],
+  );
 
   const loadRenewal = useCallback(async () => {
+    const startedIn = currentSessionGeneration();
     const config = await auth.getAuthConfig();
     if (!config.authToken || !config.isLoggedIn) {
-      applyRequest(null);
+      applyRequest(null, startedIn);
       return;
     }
     try {
       const data = await BackendService.getMyRenewalRequest(config.authToken);
-      applyRequest(data ?? null);
+      applyRequest(data ?? null, startedIn);
     } catch {
       // Unknown, not "none": the banners keep what they last knew.
       setRequest(null);
@@ -57,6 +70,7 @@ export function useLicenseRenewalLogic() {
   }, [loadRenewal]);
 
   const startOrGetDraft = useCallback(async () => {
+    const startedIn = currentSessionGeneration();
     const config = await auth.getAuthConfig();
     if (!config.authToken || !config.isLoggedIn) {
       throw new Error(ERROR_MESSAGES.LOGIN_REQUIRED);
@@ -66,7 +80,7 @@ export function useLicenseRenewalLogic() {
         const data = await BackendService.startRenewalRequest(
           config.authToken!,
         );
-        applyRequest(data);
+        applyRequest(data, startedIn);
       },
       {
         userMessage: ERROR_MESSAGES.RENEWAL_LOAD_FAILED,
@@ -78,6 +92,7 @@ export function useLicenseRenewalLogic() {
 
   const pickAndUploadDocument = useCallback(
     async (type: LicenseRenewalDocumentType) => {
+      const startedIn = currentSessionGeneration();
       const config = await auth.getAuthConfig();
       if (!config.authToken || !config.isLoggedIn) return;
       let req = request;
@@ -120,7 +135,7 @@ export function useLicenseRenewalLogic() {
             // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
             result.assets![0].uri,
           );
-          applyRequest(updated);
+          applyRequest(updated, startedIn);
         },
         {
           userMessage: ERROR_MESSAGES.RENEWAL_UPLOAD_FAILED,
@@ -135,6 +150,7 @@ export function useLicenseRenewalLogic() {
 
   const submit = useCallback(async () => {
     if (request?.status !== "DRAFT") return;
+    const startedIn = currentSessionGeneration();
     const config = await auth.getAuthConfig();
     if (!config.authToken || !config.isLoggedIn) return;
 
@@ -145,7 +161,7 @@ export function useLicenseRenewalLogic() {
           config.authToken!,
           request.id,
         );
-        applyRequest(updated);
+        applyRequest(updated, startedIn);
       },
       {
         userMessage: ERROR_MESSAGES.RENEWAL_SUBMIT_FAILED,
