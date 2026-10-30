@@ -523,6 +523,98 @@ describe("replay exhausted (#874)", () => {
     );
     expect(alertSpy).not.toHaveBeenCalled();
   });
+
+  it("shows the standalone alert when given up outside a replay run", () => {
+    handleRegistrationReplayExhausted(
+      mutation("register", named),
+      httpError(503),
+    );
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(
+      QUEUE_MESSAGES.EXHAUSTED_TITLE,
+      buildExhaustedAlert(mutation("register", named), httpError(503)).message,
+    );
+  });
+
+  describe("inside a replay run", () => {
+    afterEach(() => {
+      // Never leak an open batch into the next test.
+      endRegistrationReplayBatch();
+    });
+
+    it("joins the single recap of the run, with its reason and retry hint", () => {
+      beginRegistrationReplayBatch();
+      handleRegistrationReplaySuccess({
+        ...mutation("register", {
+          competitionTitle: "Coupe de Paris",
+          eventLabel: "Standard Juniors B",
+        }),
+        id: "m2",
+      });
+      handleRegistrationReplayExhausted(
+        mutation("register", named),
+        networkError(),
+      );
+      // Nothing is shown while the run is in progress.
+      expect(alertSpy).not.toHaveBeenCalled();
+
+      endRegistrationReplayBatch();
+
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      expect(alertSpy).toHaveBeenCalledWith(
+        QUEUE_MESSAGES.RECAP_TITLE,
+        [
+          "2 actions en attente ont été traitées (1 envoyée, 1 abandonnée) :",
+          "• Coupe de Paris — Standard Juniors B : inscription envoyée",
+          `• Open de Lyon — Latines Adultes C : inscription abandonnée. Motif : ${EXHAUSTED_REASONS.UNREACHABLE} malgré plusieurs tentatives`,
+          QUEUE_MESSAGES.EXHAUSTED_RETRY_REGISTER,
+        ].join("\n"),
+      );
+    });
+
+    it("gives each retry hint once, for register and unregister", () => {
+      beginRegistrationReplayBatch();
+      handleRegistrationReplayExhausted(
+        mutation("register", named),
+        httpError(500),
+      );
+      handleRegistrationReplayExhausted(
+        { ...mutation("register"), id: "m2" },
+        httpError(429),
+      );
+      handleRegistrationReplayExhausted(
+        { ...mutation("unregister", named), id: "m3" },
+        httpError(502),
+      );
+      endRegistrationReplayBatch();
+
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      const message = alertSpy.mock.calls[0][1] as string;
+      expect(message).toContain("(3 abandonnées) :");
+      expect(message).toContain(
+        `• ${QUEUE_MESSAGES.RECAP_UNNAMED_EVENT} : inscription abandonnée. Motif : ${EXHAUSTED_REASONS.OVERLOADED}`,
+      );
+      expect(
+        message.split(QUEUE_MESSAGES.EXHAUSTED_RETRY_REGISTER),
+      ).toHaveLength(2);
+      expect(message).toContain(QUEUE_MESSAGES.EXHAUSTED_RETRY_UNREGISTER);
+    });
+
+    it("keeps the standalone alert when it is the only outcome of the run", () => {
+      beginRegistrationReplayBatch();
+      handleRegistrationReplayExhausted(
+        mutation("unregister", named),
+        httpError(500),
+      );
+      endRegistrationReplayBatch();
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      expect(alertSpy).toHaveBeenCalledWith(
+        QUEUE_MESSAGES.EXHAUSTED_TITLE,
+        buildExhaustedAlert(mutation("unregister", named), httpError(500))
+          .message,
+      );
+    });
+  });
 });
 
 describe("replay recap (#859)", () => {
