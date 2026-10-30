@@ -108,7 +108,7 @@ const CONFIRM_AFTER_MS = 5_000;
 let unreadableReported = false;
 /** Time of the first unconfirmed permanent failure, null when none. */
 let firstPermanentFailureAt: number | null = null;
-/** sessionGeneration at that first failure. */
+/** tokenWriteGeneration at that first failure. */
 let firstFailureGeneration = 0;
 /**
  * Latch: the session is ended at most once per app session and the latch is
@@ -121,7 +121,41 @@ let unreadableSessionEnded = false;
  * the failure means the store works again: the pending session end is
  * dropped.
  */
-let sessionGeneration = 0;
+let tokenWriteGeneration = 0;
+
+/**
+ * Identity generation (#892, #893): bumped on every change of the identity
+ * the app speaks for — login/register (setTokens), both ends of a support
+ * access, logout and every other session end (clearTokens, a rejected refresh
+ * token, an unreadable store). NOT by a silent refresh: same identity, and
+ * the request it replays must still go out.
+ *
+ * Work started under one generation must never act under another: the HTTP
+ * client cancels a retry/replay whose stamp differs (services/api.ts), and
+ * mutation callbacks skip their cache writes (utils/sessionGeneration.ts).
+ */
+let identityGeneration = 0;
+
+/** Current identity generation (see above). Synchronous on purpose. */
+export function getSessionGeneration(): number {
+  return identityGeneration;
+}
+
+/**
+ * Runs an identity change (lock held) between two bumps: one before the
+ * first token write, one after the last. A request that read its token while
+ * the switch was under way — old token, none or the new one — sees the
+ * generation move after its stamp, so neither it nor its retries can go out
+ * under an identity it was not started for.
+ */
+async function changeIdentity<T>(fn: () => Promise<T>): Promise<T> {
+  identityGeneration += 1;
+  try {
+    return await fn();
+  } finally {
+    identityGeneration += 1;
+  }
+}
 
 function breadcrumb(message: string): void {
   try {
@@ -151,10 +185,10 @@ function onPermanentReadFailure(typed: TokenStoreUnavailableError): void {
     firstPermanentFailureAt === null ||
     // A login/refresh since the first failure: the store worked meanwhile,
     // this failure starts a new suspicion instead of confirming the old one.
-    firstFailureGeneration !== sessionGeneration
+    firstFailureGeneration !== tokenWriteGeneration
   ) {
     firstPermanentFailureAt = now;
-    firstFailureGeneration = sessionGeneration;
+    firstFailureGeneration = tokenWriteGeneration;
     return;
   }
   // Same burst (e.g. the access and refresh reads of one getTokens): not an
@@ -165,15 +199,15 @@ function onPermanentReadFailure(typed: TokenStoreUnavailableError): void {
 
   unreadableSessionEnded = true;
   const handler = unreadableSessionHandler;
-  const generation = sessionGeneration;
+  const generation = tokenWriteGeneration;
   // Fire-and-forget: the caller may hold the write lock, which clearing the
   // tokens needs — awaiting here would deadlock.
   void (async () => {
     try {
       const cleared = await withLock(async () => {
-        if (generation !== sessionGeneration) return false;
-        await deleteAllTokens();
-        sessionGeneration += 1;
+        if (generation !== tokenWriteGeneration) return false;
+        await changeIdentity(deleteAllTokens);
+        tokenWriteGeneration += 1;
         return true;
       });
       if (!cleared) {
@@ -183,7 +217,7 @@ function onPermanentReadFailure(typed: TokenStoreUnavailableError): void {
         return;
       }
       // Re-checked: a login may have landed while the handler was queued.
-      if (generation + 1 === sessionGeneration) await handler();
+      if (generation + 1 === tokenWriteGeneration) await handler();
     } catch {
       /* best-effort; the latch stays set on purpose (see above) */
     }
@@ -337,9 +371,14 @@ export async function getAccessToken(): Promise<string | undefined> {
   return (await getTokens()).authToken;
 }
 
-/** Écrit les tokens fournis. N'efface JAMAIS sur undefined (voir clearTokens). */
+/**
+ * Écrit les tokens d'une connexion/inscription. N'efface JAMAIS sur undefined
+ * (voir clearTokens). Bumps the identity generation.
+ */
 export function setTokens(tokens: Tokens): Promise<void> {
-  return withLock(() => writeSessionTokens(tokens));
+  // Login/register only (a refresh goes through setTokensIfRefreshIs): a new
+  // identity, even when it is the same account signing in again.
+  return withLock(() => changeIdentity(() => writeSessionTokens(tokens)));
 }
 
 /** setTokens' body, for callers already holding the lock. */
@@ -365,7 +404,7 @@ async function writeSessionTokens(tokens: Tokens): Promise<void> {
   if (tokens.authToken !== undefined || tokens.refreshToken !== undefined) {
     // A login/refresh written successfully: the store works, and this
     // supersedes any pending "unreadable store" session end.
-    sessionGeneration += 1;
+    tokenWriteGeneration += 1;
   }
 }
 
@@ -423,8 +462,8 @@ export function clearTokensIfRefreshIs(expected: string): Promise<boolean> {
       current = expected;
     }
     if (current !== expected) return false;
-    sessionGeneration += 1;
-    await deleteAllTokens();
+    tokenWriteGeneration += 1;
+    await changeIdentity(deleteAllTokens);
     return true;
   });
 }
@@ -460,9 +499,11 @@ export function switchToImpersonation(targetAccess: string): Promise<void> {
     }
     await SecureStore.setItemAsync(BACKUP_ACCESS_KEY, access, storeOptions());
     await SecureStore.setItemAsync(BACKUP_REFRESH_KEY, refresh, storeOptions());
-    sessionGeneration += 1;
-    await deleteAllTokens();
-    await writeSessionTokens({ authToken: targetAccess });
+    tokenWriteGeneration += 1;
+    await changeIdentity(async () => {
+      await deleteAllTokens();
+      await writeSessionTokens({ authToken: targetAccess });
+    });
   });
 }
 
@@ -479,13 +520,15 @@ export function switchToImpersonation(targetAccess: string): Promise<void> {
 export function restoreFromImpersonation(): Promise<boolean> {
   return withLock(async () => {
     const backup = await readImpersonationBackup();
-    sessionGeneration += 1;
-    await deleteAllTokens();
-    if (backup.authToken === undefined || backup.refreshToken === undefined) {
-      return false;
-    }
-    await writeSessionTokens(backup);
-    return true;
+    tokenWriteGeneration += 1;
+    return changeIdentity(async () => {
+      await deleteAllTokens();
+      if (backup.authToken === undefined || backup.refreshToken === undefined) {
+        return false;
+      }
+      await writeSessionTokens(backup);
+      return true;
+    });
   });
 }
 
@@ -514,8 +557,8 @@ async function deleteQuietly(key: string): Promise<void> {
  */
 export function clearTokens(): Promise<void> {
   return withLock(async () => {
-    sessionGeneration += 1;
-    await deleteAllTokens();
+    tokenWriteGeneration += 1;
+    await changeIdentity(deleteAllTokens);
   });
 }
 

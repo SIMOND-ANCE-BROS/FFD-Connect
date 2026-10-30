@@ -2,6 +2,7 @@
  * Utilitaire de retry pour les requêtes réseau
  * Implémente une stratégie de retry avec backoff exponentiel
  */
+import axios from "axios";
 
 export interface RetryOptions {
   /** Nombre maximum de tentatives (défaut: 3) */
@@ -124,6 +125,9 @@ export function retryAxios<T>(
 ): Promise<T> {
   return retry(axiosRequest, {
     shouldRetry: (error) => {
+      // A cancelled request is never retried: cancelled by its caller, or by
+      // services/api.ts after an identity change (#893).
+      if (axios.isCancel(error)) return false;
       // Ne pas retry sur les erreurs 4xx (sauf 408). 429 est traité à part,
       // une seule fois et après `Retry-After` (services/api.ts, #585).
       if (error && typeof error === "object" && "response" in error) {

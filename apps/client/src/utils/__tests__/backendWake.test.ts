@@ -37,9 +37,14 @@ const ONLINE: NetState = { isConnected: true, isInternetReachable: true };
 function loadModule(
   config: typeof CONFIG | Record<string, unknown>,
   netState: { current: NetState } = { current: ONLINE },
+  sessionGeneration: () => number = () => 0,
 ) {
   jest.resetModules();
   jest.doMock("../../config", () => config);
+  // Identity generation (#893): a test can move it during a wake.
+  jest.doMock("../../api/tokenStore", () => ({
+    getSessionGeneration: sessionGeneration,
+  }));
   // NetInfo reads `netState.current` on every fetch so a test can flip the
   // connectivity between calls (offline → online transitions).
   jest.doMock("@react-native-community/netinfo", () => ({
@@ -161,6 +166,46 @@ describe("backendWake", () => {
     expect(res.status).toBe(200);
     expect(dataCalls).toBe(2);
   });
+
+  it.each([
+    ["a 503", false],
+    ["a network error", true],
+  ])(
+    "after %s, never replays once the identity changed during the wake (#893)",
+    async (_label, throws) => {
+      let generation = 0;
+      let dataCalls = 0;
+      const mockFetch = jest.fn(async (url: string) => {
+        if (url === "https://api.example/notifications/preferences") {
+          dataCalls += 1;
+          if (throws) throw new Error("Network request failed");
+          return { status: 503, ok: false };
+        }
+        if (url.startsWith(CONFIG.WAKE_URL)) {
+          // The admin starts (or ends) a support access meanwhile.
+          generation += 1;
+          return { status: 202, ok: true };
+        }
+        return { status: 200, ok: true };
+      });
+      global.fetch = mockFetch as unknown as typeof fetch;
+      const { installBackendWake } = loadModule(
+        CONFIG,
+        { current: ONLINE },
+        () => generation,
+      );
+      installBackendWake();
+
+      const error: unknown = await global
+        .fetch("https://api.example/notifications/preferences", {
+          method: "PATCH",
+        })
+        .catch((e: unknown) => e);
+
+      expect(error).toMatchObject({ name: "AbortError" });
+      expect(dataCalls).toBe(1);
+    },
+  );
 
   it("is idempotent: installing twice keeps a single wrapper", () => {
     const mockFetch = jest.fn().mockResolvedValue({ status: 200, ok: true });
