@@ -9,6 +9,7 @@ import {
   signOut,
   startSessionSync,
   stopSessionSync,
+  syncBeforeFirstRefresh,
 } from './sessionSync';
 
 const admin: SessionSnapshot = {
@@ -114,7 +115,11 @@ describe('sessionSync (#669)', () => {
     peer.received.length = 0;
     peer.channel.postMessage({ type: 'request', id: 'r2' });
     await waitFor(() =>
-      expect(peer.received).toContainEqual({ type: 'reply', id: 'r2', session: admin }),
+      expect(peer.received).toContainEqual({
+        type: 'reply',
+        id: 'r2',
+        session: { ...admin, issuedAt: expect.any(Number) },
+      }),
     );
   });
 
@@ -245,7 +250,12 @@ describe('sessionSync (#669)', () => {
     await waitFor(() =>
       expect(peer.received).toContainEqual({
         type: 'update',
-        session: { ...admin, accessToken: 'at2', refreshToken: 'rt2' },
+        session: {
+          ...admin,
+          accessToken: 'at2',
+          refreshToken: 'rt2',
+          issuedAt: expect.any(Number),
+        },
       }),
     );
   });
@@ -322,5 +332,81 @@ describe('sessionSync (#669)', () => {
     useSession.getState().setSession(admin);
     signOut();
     expect(useSession.getState().user).toBeNull();
+  });
+  describe('first refresh after a startup from a stored session (#687)', () => {
+    const stale = { ...admin, issuedAt: 1_000 };
+    const fresh = { ...admin, accessToken: 'at2', refreshToken: 'rt2', issuedAt: 2_000 };
+
+    it('takes the newer session of an open tab, once', async () => {
+      useSession.getState().setSession(stale);
+      await startSessionSync();
+      peerTab(fresh);
+
+      await expect(syncBeforeFirstRefresh(50)).resolves.toBe('at2');
+      expect(useSession.getState()).toMatchObject({ refreshToken: 'rt2', issuedAt: 2_000 });
+      // Only the first refresh asks.
+      await expect(syncBeforeFirstRefresh(50)).resolves.toBeNull();
+    });
+
+    it('keeps its own token when the open tab holds an older one', async () => {
+      useSession.getState().setSession(fresh);
+      await startSessionSync();
+      peerTab(stale);
+
+      await expect(syncBeforeFirstRefresh(50)).resolves.toBeNull();
+      expect(useSession.getState().refreshToken).toBe('rt2');
+    });
+
+    it('takes a different token when the sessions predate the stamp', async () => {
+      useSession.setState({
+        accessToken: 'at',
+        refreshToken: 'rt',
+        user: admin.user,
+        issuedAt: null,
+      });
+      await startSessionSync();
+      peerTab({ ...admin, accessToken: 'at2', refreshToken: 'rt2' });
+
+      await expect(syncBeforeFirstRefresh(50)).resolves.toBe('at2');
+    });
+
+    it('ignores another account and goes on when no tab answers', async () => {
+      useSession.getState().setSession(stale);
+      await startSessionSync();
+      peerTab({ ...fresh, user: { ...admin.user, id: 'b2' } });
+
+      await expect(syncBeforeFirstRefresh(50)).resolves.toBeNull();
+      expect(useSession.getState().refreshToken).toBe('rt');
+    });
+
+    it('does not ask when the tab started without a session', async () => {
+      await startSessionSync(10);
+      useSession.getState().setSession(stale);
+      const peer = peerTab(fresh);
+
+      await expect(syncBeforeFirstRefresh(50)).resolves.toBeNull();
+      expect(peer.received).toEqual([]);
+    });
+
+    it('does not ask once a rotation from another tab was taken', async () => {
+      useSession.getState().setSession(stale);
+      await startSessionSync();
+      const peer = peerTab();
+      peer.channel.postMessage({ type: 'update', session: fresh });
+      await waitFor(() => expect(useSession.getState().refreshToken).toBe('rt2'));
+
+      await expect(syncBeforeFirstRefresh(50)).resolves.toBeNull();
+      expect(peer.received).toEqual([]);
+    });
+
+    it('rejects a message with a malformed stamp', async () => {
+      useSession.getState().setSession(stale);
+      await startSessionSync();
+      const peer = peerTab();
+      peer.channel.postMessage({ type: 'update', session: { ...fresh, issuedAt: 'soon' } });
+      await new Promise((r) => setTimeout(r, 30));
+
+      expect(useSession.getState().refreshToken).toBe('rt');
+    });
   });
 });

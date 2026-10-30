@@ -1,6 +1,6 @@
 import { authControllerRefresh } from '../api/generated/sdk.gen';
 import { useSession } from './sessionStore';
-import { adoptPeerSession, requestPeerSession } from './sessionSync';
+import { adoptPeerSession, requestPeerSession, syncBeforeFirstRefresh } from './sessionSync';
 
 let inFlight: Promise<string | null> | null = null;
 
@@ -30,6 +30,12 @@ async function rotatedByAnotherTab(rejected: string, userId: string): Promise<st
 }
 
 async function performRefresh(): Promise<string | null> {
+  // A tab restarted from its stored session may hold a refresh token the
+  // other tabs already rotated; sending it would revoke the session of every
+  // tab (#687). Take theirs instead when it is newer.
+  const fromPeer = await syncBeforeFirstRefresh();
+  if (fromPeer) return fromPeer;
+
   const { refreshToken, user } = useSession.getState();
   if (!refreshToken || !user) return null;
 
