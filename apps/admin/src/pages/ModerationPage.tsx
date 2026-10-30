@@ -12,7 +12,6 @@ import {
   TextInput,
 } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { Link, useLocation } from 'react-router';
 import type {
   TrackCorrectionAdminDto,
@@ -42,6 +41,7 @@ import {
   writeModerationParams,
 } from '../lib/moderation';
 import { useUrlSearch } from '../lib/useUrlSearch';
+import { formatParisDateTime } from '../lib/parisDate';
 
 const PAGE_SIZE = 50;
 
@@ -49,7 +49,7 @@ const isModerationSortField = (value: string): value is ModerationSortField =>
   MODERATION_SORT_FIELDS.some((f) => f === value);
 
 const proposer = (c: TrackCorrectionAdminDto) => c.proposer?.name ?? 'Compte supprimé';
-const createdAt = (c: TrackCorrectionAdminDto) => dayjs(c.createdAt).format('DD/MM/YYYY HH:mm');
+const createdAt = (c: TrackCorrectionAdminDto) => formatParisDateTime(c.createdAt);
 
 export function ModerationPage() {
   const { search: locationSearch } = useLocation();
@@ -176,7 +176,7 @@ export function ModerationPage() {
       priority: 6,
       label: 'Traitée le',
       hiddenByDefault: true,
-      cell: (c) => (c.reviewedAt ? dayjs(c.reviewedAt).format('DD/MM/YYYY HH:mm') : '—'),
+      cell: (c) => formatParisDateTime(c.reviewedAt),
       filter: ops.filter('reviewedAt'),
     },
     {

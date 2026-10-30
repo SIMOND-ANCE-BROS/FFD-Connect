@@ -19,7 +19,6 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { type RefObject, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ListSkeleton } from '../components/ListStates';
@@ -56,6 +55,7 @@ import {
   STATUS_BADGES,
   trackAudioUrl,
 } from '../lib/moderation';
+import { formatParisDateTime } from '../lib/parisDate';
 
 type Decision = 'approve' | 'reject';
 
@@ -224,8 +224,7 @@ function CorrectionReview({ id }: { id: string }) {
       </Modal>
       <Text c="dimmed">
         {c.track.artist} · {REASON_LABELS[c.reason]} · proposée par{' '}
-        {c.proposer?.name ?? 'un compte supprimé'} le{' '}
-        {dayjs(c.createdAt).format('DD/MM/YYYY HH:mm')}
+        {c.proposer?.name ?? 'un compte supprimé'} le {formatParisDateTime(c.createdAt)}
       </Text>
       {conflict && <Alert color="orange">Déjà traitée</Alert>}
       {(decided || conflict) && (
@@ -306,7 +305,7 @@ function CorrectionReview({ id }: { id: string }) {
           <Stack gap={4}>
             <Text size="sm">
               Traitée par {c.reviewer?.name ?? 'un admin supprimé'}
-              {c.reviewedAt && ` le ${dayjs(c.reviewedAt).format('DD/MM/YYYY HH:mm')}`}
+              {c.reviewedAt && ` le ${formatParisDateTime(c.reviewedAt)}`}
             </Text>
             <Text size="sm">Commentaire : {c.reviewComment ?? '—'}</Text>
           </Stack>

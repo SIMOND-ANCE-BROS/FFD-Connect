@@ -1,5 +1,4 @@
-/** Time zone the FFD license validity day is expressed in (backend #238). */
-const FFD_TIME_ZONE = 'Europe/Paris';
+import { formatParisDay, parseInstant } from './parisDate';
 
 /**
  * License end of validity as `DD/MM/YYYY`, always the calendar day in
@@ -9,7 +8,5 @@ const FFD_TIME_ZONE = 'Europe/Paris';
  * the Wallet pass. Returns "" for an unparseable date.
  */
 export function formatLicenseValidUntil(validUntil: string | Date): string {
-  const date = validUntil instanceof Date ? validUntil : new Date(validUntil);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('fr-FR', { timeZone: FFD_TIME_ZONE });
+  return parseInstant(validUntil) ? formatParisDay(validUntil) : '';
 }

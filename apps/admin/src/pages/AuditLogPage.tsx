@@ -1,6 +1,5 @@
 import { Anchor, Group, Pagination, Paper, Stack, Text } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { Link } from 'react-router';
 import type { AuditLogEntryDto } from '../api/generated/types.gen';
 import { auditQuery } from '../api/queries';
@@ -14,6 +13,7 @@ import { ACTION_LABELS } from '../lib/auditLabels';
 import { formatLicenseValidUntil } from '../lib/licenseDate';
 import type { SortState } from '../lib/listSort';
 import { useListParams } from '../lib/useListParams';
+import { formatParisDateTime } from '../lib/parisDate';
 
 const PAGE_SIZE = 50;
 
@@ -82,7 +82,7 @@ function Target({ entry }: { entry: AuditLogEntryDto }) {
   );
 }
 
-const createdAt = (e: AuditLogEntryDto) => dayjs(e.createdAt).format('DD/MM/YYYY HH:mm');
+const createdAt = (e: AuditLogEntryDto) => formatParisDateTime(e.createdAt);
 const actor = (e: AuditLogEntryDto) => e.actorName ?? 'admin supprimé';
 const actionLabel = (e: AuditLogEntryDto) => ACTION_LABELS[e.action] ?? e.action;
 

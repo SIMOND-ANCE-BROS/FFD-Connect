@@ -1,6 +1,5 @@
 import { Anchor, Badge, Button, Pagination, Stack, Text, TextInput } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { Link } from 'react-router';
 import type { AdminClubListItemDto } from '../api/generated/types.gen';
 import { clubsQuery } from '../api/queries';
@@ -23,6 +22,7 @@ import { paymentConfigured, paymentProviderLabel, REGISTRATION_MODE_LABELS } fro
 import type { SortState } from '../lib/listSort';
 import { useListParams } from '../lib/useListParams';
 import { useUrlSearch } from '../lib/useUrlSearch';
+import { formatParisDay } from '../lib/parisDate';
 
 const PAGE_SIZE = 50;
 
@@ -130,7 +130,7 @@ export function ClubsPage() {
       priority: 4,
       label: 'Création',
       sortField: 'createdAt',
-      cell: (c) => dayjs(c.createdAt).format('DD/MM/YYYY'),
+      cell: (c) => formatParisDay(c.createdAt),
       filter: ops.filter('createdAt'),
     },
   ];
@@ -194,7 +194,7 @@ export function ClubsPage() {
             <RecordLine label="Inscriptions">
               {REGISTRATION_MODE_LABELS[c.registrationMode]}
             </RecordLine>
-            <RecordLine label="Création">{dayjs(c.createdAt).format('DD/MM/YYYY')}</RecordLine>
+            <RecordLine label="Création">{formatParisDay(c.createdAt)}</RecordLine>
           </RecordCard>
         )}
       />
