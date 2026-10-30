@@ -275,4 +275,8 @@ model SeatBooking {
   // At most 4 PENDING bookings per user and competition (#428): each takes
   // one of the slots 0..3 (CHECK constraint in the migration).
   @@unique([competitionId, userId, pendingSlot], map: "SeatBooking_pending_cap_key", where: raw("(status = 'PENDING'::\"BookingStatus\")"))
+  // Refunds-due lists (club #516, admin #627): `refundOwedAt IS NOT NULL`,
+  // oldest first then id (pagination). Partial: only the few bookings with a
+  // refund owed are indexed (#675).
+  @@index([refundOwedAt, id], map: "SeatBooking_refund_owed_idx", where: raw("(\"refundOwedAt\" IS NOT NULL)"))
 }
