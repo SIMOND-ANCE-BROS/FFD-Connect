@@ -9,6 +9,7 @@ import {
 } from "@prisma/client";
 import { createHmac } from "crypto";
 import request from "supertest";
+import { purgeTestUser } from "./../scripts/purge-test-accounts.utils";
 import { AdminUserIdentifiersService } from "./../src/admin/admin-user-identifiers.service";
 import { AppModule } from "./../src/app.module";
 import { toLicenseQrExpiry } from "./../src/licenses/qr/license-qr";
@@ -279,5 +280,87 @@ describe("Signed license QR check-in (e2e)", () => {
     expect(JSON.parse(renamedQr)).toMatchObject({ id: "FFD-QR-0002" });
     const own = await checkIn(renamedQr).expect(201);
     expect(own.body.user.firstName).toBe("Qr");
+  });
+
+  it("never lets a QR issued before a licence deletion designate a licence recreated with the number (#491)", async () => {
+    const number = "SCAN-TEST-4910";
+    const validUntil = new Date(Date.now() + 120 * 86_400_000);
+    // A seeded staging account holding a seeded licence (purged at boot).
+    const seeded = await prisma.user.create({
+      data: {
+        email: "qr-seeded-scan@test.com",
+        password: "hash",
+        firstName: "Seeded",
+        lastName: "Scan",
+        role: UserRole.LICENSEE,
+        license: {
+          create: { number, validUntil, category: "Standard", clubName: "C" },
+        },
+      },
+    });
+    const exp = toLicenseQrExpiry(validUntil);
+    const v1Qr = JSON.stringify({
+      v: 1,
+      id: number,
+      exp,
+      sig: createHmac("sha256", QR_SECRET)
+        .update(JSON.stringify(["ffd-license-qr", 1, number, exp]))
+        .digest("base64url"),
+    });
+
+    // The purge deletes the licence: its number is retired.
+    await purgeTestUser(
+      {
+        prisma,
+        files: { deleteFiles: jest.fn().mockResolvedValue(new Set()) },
+        warn: jest.fn(),
+      },
+      seeded.id,
+    );
+    await expect(
+      prisma.retiredLicenseNumber.findUnique({ where: { number } }),
+    ).resolves.toMatchObject({ number });
+
+    // A new licence is created later with the same number.
+    const newHolder = await prisma.user.create({
+      data: {
+        email: "qr-new-holder@ffd.com",
+        password: "hash",
+        firstName: "New",
+        lastName: "Holder",
+        role: UserRole.LICENSEE,
+        license: {
+          create: { number, validUntil, category: "Standard", clubName: "C" },
+        },
+      },
+    });
+    await prisma.registration.create({
+      data: {
+        eventId,
+        userId: newHolder.id,
+        status: RegistrationStatus.CONFIRMED,
+        feePaid: true,
+      },
+    });
+
+    // The old number-only QR is refused; nobody is checked in.
+    const stale = await checkIn(v1Qr).expect(400);
+    expect(String(stale.body.message)).toBe(STALE_LICENSE_QR_MESSAGE);
+    const registration = await prisma.registration.findFirst({
+      where: { userId: newHolder.id },
+      select: { checkedIn: true },
+    });
+    expect(registration?.checkedIn).toBe(false);
+
+    // The new holder's own QR (v2, bound to the licence id) still works.
+    const newHolderQr = await fetchSignedQr(
+      jwtService.sign({
+        sub: newHolder.id,
+        email: newHolder.email,
+        role: newHolder.role,
+      }),
+    );
+    const ok = await checkIn(newHolderQr).expect(201);
+    expect(ok.body.user.firstName).toBe("New");
   });
 });
