@@ -177,4 +177,15 @@ describe("Admin refunds due (#627, integration, real DB)", () => {
       filters([{ field: "paymentId", op: "equals", value: "800" }]),
     ).expect(400);
   });
+
+  it("is served by the partial (refundOwedAt, id) index (#675)", async () => {
+    const rows = await prisma.$queryRaw<{ indexdef: string }[]>`
+      SELECT indexdef FROM pg_indexes
+      WHERE tablename = 'SeatBooking' AND indexname = 'SeatBooking_refund_owed_idx'
+    `;
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].indexdef).toContain(`("refundOwedAt", id)`);
+    expect(rows[0].indexdef).toContain(`WHERE ("refundOwedAt" IS NOT NULL)`);
+  });
 });
