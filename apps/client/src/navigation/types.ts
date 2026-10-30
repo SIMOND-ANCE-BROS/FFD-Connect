@@ -1,4 +1,5 @@
 import type { ID } from "@ffd-connect/shared";
+import type { NavigatorScreenParams } from "@react-navigation/native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ClubMember } from "../features/club/services/ClubService";
 import { Competition } from "../features/competitions/context/CompetitionContext";
@@ -9,8 +10,16 @@ export type RootStackScreenProps<T extends keyof RootStackParamList> =
 export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
-  // `screen` opens a given tab (e.g. Career from a competition, #858).
-  Main: { role?: string; isGuest?: boolean; screen?: keyof TabParamList };
+  // `role` / `isGuest`: legacy fallback (MainTabs reads the auth store).
+  // Nested tab params open a given tab, e.g. Career from a competition
+  // (#858). React Navigation applies them once: tabs re-mounted by a
+  // profile switch start on their first tab again (navigation/__tests__/
+  // popToTab.test.tsx).
+  Main:
+    | ({ role?: string; isGuest?: boolean } & Partial<
+        NavigatorScreenParams<TabParamList>
+      >)
+    | undefined;
   License: undefined;
   LicenseRenewal: undefined;
   // Accord parental d'un compte de mineur (#61).
