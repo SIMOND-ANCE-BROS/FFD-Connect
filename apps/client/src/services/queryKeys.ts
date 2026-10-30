@@ -23,6 +23,10 @@ export const queryKeys = {
   registrations: {
     my: ["myRegistrations"] as const,
   },
+  career: {
+    /** The signed-in dancer's partnerships (/career/me). */
+    me: ["career", "me", "partnerships"] as const,
+  },
   club: {
     members: ["clubMembers"] as const,
     registrationMode: ["clubRegistrationMode"] as const,

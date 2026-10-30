@@ -36,6 +36,7 @@ import { PartnerInputModal } from "../components/detail/PartnerInputModal";
 import { styles } from "../components/detail/competition-detail.styles";
 import { TimingList } from "../components/TimingList";
 import { useCompetitionDetailLogic } from "../hooks/useCompetitionDetailLogic";
+import { useCurrentPartner } from "../../career/hooks/useCurrentPartner";
 import { addCompetitionToCalendar } from "../utils/addToCalendar";
 import { groupEvents } from "../utils/eventGroups";
 import { hasPlaceholderEvents } from "../utils/eventsSourceNotice";
@@ -60,6 +61,9 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
     competitionId,
     navigation,
   );
+  // Couple event without a registered partner: say why and where to add one
+  // (#858). Only licensees have the Career tab that manages partnerships.
+  const currentPartner = useCurrentPartner(state.userRole === "LICENSEE");
   const [activeTab, setActiveTab] = useState<Tab>("EVENTS");
   const [eligibleOnly, setEligibleOnly] = useState(false);
   const { theme: currentTheme, isDark } = useTheme();
@@ -453,6 +457,12 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
           eventLabel={`${formatDiscipline(state.partnerInputEvent.category)} ${state.partnerInputEvent.ageGroup}`}
           onConfirm={actions.handleConfirmPartnerRegistration}
           onClose={actions.clearPartnerInput}
+          partner={currentPartner}
+          onManagePartner={() => {
+            actions.clearPartnerInput();
+            // Back to the existing tabs (navigate would push a second copy).
+            navigation.popTo("Main", { screen: "Career" });
+          }}
           theme={currentTheme}
         />
       )}

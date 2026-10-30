@@ -180,7 +180,9 @@ export const CareerScreen = ({ navigation }: Props) => {
                     variant="body"
                     style={{ color: currentTheme.textSecondary }}
                   >
-                    Aucun partenaire enregistré.
+                    Aucun partenaire enregistré. Votre club déclare les couples
+                    : demandez-lui de vous associer à votre partenaire pour vous
+                    inscrire aux épreuves en couple.
                   </AppText>
                 ) : (
                   <>

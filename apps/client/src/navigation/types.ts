@@ -9,7 +9,8 @@ export type RootStackScreenProps<T extends keyof RootStackParamList> =
 export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
-  Main: { role?: string; isGuest?: boolean };
+  // `screen` opens a given tab (e.g. Career from a competition, #858).
+  Main: { role?: string; isGuest?: boolean; screen?: keyof TabParamList };
   License: undefined;
   LicenseRenewal: undefined;
   // Accord parental d'un compte de mineur (#61).

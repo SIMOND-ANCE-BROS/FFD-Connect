@@ -3,18 +3,40 @@ import {
   Alert,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { AppButton } from "../../../../components/AppButton";
 import { AppText } from "../../../../components/AppText";
+import type { CurrentPartner } from "../../../career/hooks/useCurrentPartner";
+
+/** From this text size on, the buttons stack instead of sharing a row. */
+const STACKED_BUTTONS_FONT_SCALE = 1.3;
+
+export const NO_PARTNER_COPY = {
+  TITLE: "Aucun partenaire enregistré",
+  MESSAGE:
+    "Une épreuve en couple se danse à deux : il vous faut un partenaire. Ajoutez-le (votre club déclare votre couple), ou saisissez son nom ci-dessous.",
+  ACTION: "Ajouter un partenaire",
+  ACTION_HINT: "Ouvre vos partenariats dans l'onglet Carrière",
+} as const;
 
 interface PartnerInputModalProps {
   visible: boolean;
   eventLabel: string;
   onConfirm: (partnerName: string) => void;
   onClose: () => void;
+  /**
+   * The dancer's registered partner (#858). `none` explains why a couple
+   * event needs one and offers `onManagePartner`; `registered` pre-fills
+   * the name. Omitted or `unknown`: plain name entry, as before.
+   */
+  partner?: CurrentPartner;
+  /** Opens the partner management screen (Career tab, « Partenariats »). */
+  onManagePartner?: () => void;
   theme: {
     surface: string;
     text: string;
@@ -30,9 +52,24 @@ export function PartnerInputModal({
   eventLabel,
   onConfirm,
   onClose,
+  partner,
+  onManagePartner,
   theme,
 }: PartnerInputModalProps) {
-  const [partnerName, setPartnerName] = React.useState("");
+  const registeredName = partner?.status === "registered" ? partner.name : "";
+  const [partnerName, setPartnerName] = React.useState(registeredName);
+  // The career may load after the modal opened: pre-fill once, never over
+  // what the dancer already typed.
+  const prefilled = React.useRef(registeredName !== "");
+  React.useEffect(() => {
+    if (registeredName && !prefilled.current) {
+      prefilled.current = true;
+      setPartnerName((current) => current || registeredName);
+    }
+  }, [registeredName]);
+  const { fontScale } = useWindowDimensions();
+  const stackButtons = fontScale >= STACKED_BUTTONS_FONT_SCALE;
+  const showNoPartner = partner?.status === "none";
   const handleSubmit = () => {
     if (partnerName.trim()) {
       onConfirm(partnerName.trim());
@@ -67,46 +104,92 @@ export function PartnerInputModal({
           testID="partner-input-card"
           style={[partnerModalStyles.box, { backgroundColor: theme.surface }]}
         >
-          <AppText
-            variant="h3"
-            color={theme.text}
-            style={partnerModalStyles.title}
+          <ScrollView
+            style={partnerModalStyles.scroll}
+            keyboardShouldPersistTaps="handled"
           >
-            Inscription en couple
-          </AppText>
-          <AppText
-            variant="caption"
-            color={theme.textSecondary}
-            style={partnerModalStyles.subtitle}
-          >
-            {eventLabel}
-          </AppText>
-          <TextInput
-            placeholder="Nom du partenaire"
-            placeholderTextColor={theme.textSecondary}
-            value={partnerName}
-            onChangeText={setPartnerName}
-            style={[
-              partnerModalStyles.input,
-              { color: theme.text, borderColor: theme.border },
-            ]}
-            accessibilityLabel="Nom du partenaire"
-            accessibilityHint="Saisissez le nom de votre partenaire de danse"
-          />
-          <View style={partnerModalStyles.buttons}>
-            <AppButton
-              title="Annuler"
-              variant="outline"
-              onPress={handleClose}
-              style={partnerModalStyles.btn}
+            <AppText
+              variant="h3"
+              color={theme.text}
+              style={partnerModalStyles.title}
+            >
+              Inscription en couple
+            </AppText>
+            <AppText
+              variant="caption"
+              color={theme.textSecondary}
+              style={partnerModalStyles.subtitle}
+            >
+              {eventLabel}
+            </AppText>
+            {showNoPartner && (
+              <View
+                testID="partner-input-no-partner"
+                style={[
+                  partnerModalStyles.notice,
+                  {
+                    // ~8% tint of the primary colour, like BetaNotice.
+                    backgroundColor: `${theme.primary}14`,
+                    borderColor: `${theme.primary}40`,
+                  },
+                ]}
+              >
+                {/* Title + message = one screen-reader stop; the button
+                  stays a separate, focusable control. */}
+                <View accessible accessibilityRole="text">
+                  <AppText variant="body" weight="600" color={theme.text}>
+                    {NO_PARTNER_COPY.TITLE}
+                  </AppText>
+                  <AppText variant="caption" color={theme.textSecondary}>
+                    {NO_PARTNER_COPY.MESSAGE}
+                  </AppText>
+                </View>
+                {onManagePartner && (
+                  <AppButton
+                    testID="partner-input-manage"
+                    title={NO_PARTNER_COPY.ACTION}
+                    variant="outline"
+                    size="compact"
+                    onPress={onManagePartner}
+                    accessibilityHint={NO_PARTNER_COPY.ACTION_HINT}
+                    style={partnerModalStyles.noticeAction}
+                  />
+                )}
+              </View>
+            )}
+            <TextInput
+              placeholder="Nom du partenaire"
+              placeholderTextColor={theme.textSecondary}
+              value={partnerName}
+              onChangeText={setPartnerName}
+              style={[
+                partnerModalStyles.input,
+                { color: theme.text, borderColor: theme.border },
+              ]}
+              accessibilityLabel="Nom du partenaire"
+              accessibilityHint="Saisissez le nom de votre partenaire de danse"
             />
-            <AppButton
-              title="Valider"
-              variant="primary"
-              onPress={handleSubmit}
-              style={partnerModalStyles.btn}
-            />
-          </View>
+            <View
+              testID="partner-input-buttons"
+              style={[
+                partnerModalStyles.buttons,
+                stackButtons && partnerModalStyles.buttonsStacked,
+              ]}
+            >
+              <AppButton
+                title="Annuler"
+                variant="outline"
+                onPress={handleClose}
+                style={stackButtons ? undefined : partnerModalStyles.btn}
+              />
+              <AppButton
+                title="Valider"
+                variant="primary"
+                onPress={handleSubmit}
+                style={stackButtons ? undefined : partnerModalStyles.btn}
+              />
+            </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -124,9 +207,20 @@ const partnerModalStyles = StyleSheet.create({
   box: {
     width: "100%",
     maxWidth: 340,
+    // Large text: the card scrolls instead of overflowing the screen.
+    maxHeight: "90%",
     borderRadius: 16,
     padding: 20,
   },
+  scroll: { flexGrow: 0 },
+  notice: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    gap: 4,
+  },
+  noticeAction: { marginTop: 8, alignSelf: "stretch" },
   title: { marginBottom: 4 },
   subtitle: { marginBottom: 16 },
   input: {
@@ -138,5 +232,6 @@ const partnerModalStyles = StyleSheet.create({
     marginBottom: 16,
   },
   buttons: { flexDirection: "row", gap: 12, justifyContent: "flex-end" },
+  buttonsStacked: { flexDirection: "column-reverse" },
   btn: { flex: 1 },
 });
