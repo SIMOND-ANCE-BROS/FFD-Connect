@@ -1,6 +1,5 @@
 import { Anchor, Badge, Pagination, SegmentedControl, Stack, Text } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { Link, useLocation } from 'react-router';
 import type { AdminLicenseRenewalListItemDto } from '../api/generated/types.gen';
 import { licenseRenewalsQuery } from '../api/queries';
@@ -26,12 +25,13 @@ import {
 import type { SortState } from '../lib/listSort';
 import { useListParams } from '../lib/useListParams';
 import { useIsMobile } from '../lib/useIsMobile';
+import { formatParisDateTime } from '../lib/parisDate';
 
 const PAGE_SIZE = 50;
 
 type Renewal = AdminLicenseRenewalListItemDto;
 
-const dateTime = (iso: string | null) => (iso ? dayjs(iso).format('DD/MM/YYYY HH:mm') : '—');
+const dateTime = formatParisDateTime;
 const isRenewalsSortField = (value: string): value is RenewalsSortField =>
   RENEWALS_SORT_FIELDS.some((f) => f === value);
 

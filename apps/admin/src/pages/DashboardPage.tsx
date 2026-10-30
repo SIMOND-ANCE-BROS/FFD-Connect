@@ -12,7 +12,6 @@ import {
   Title,
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { AdminStatsDto } from '../api/generated/types.gen';
@@ -28,6 +27,7 @@ import { UNAVAILABLE_MESSAGE } from '../lib/apiError';
 import { ACTION_LABELS } from '../lib/auditLabels';
 import { seriesTotal } from '../lib/stats';
 import { useSession } from '../session/sessionStore';
+import { formatParisDateTime } from '../lib/parisDate';
 
 /** The shortest stats period: the key figures are about "now", not a trend. */
 const STATS_PERIOD = '12w';
@@ -163,7 +163,7 @@ function RecentActivity() {
               </Text>
             </Stack>
             <Text size="sm" c="dimmed" className="app-tabular" style={{ whiteSpace: 'nowrap' }}>
-              {dayjs(entry.createdAt).format('DD/MM/YYYY HH:mm')}
+              {formatParisDateTime(entry.createdAt)}
             </Text>
           </Group>
         ))}

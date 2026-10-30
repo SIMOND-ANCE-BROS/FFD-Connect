@@ -2,8 +2,6 @@ import {
   clubLabel,
   clubPath,
   formatAmount,
-  formatParisDateTime,
-  formatParisDay,
   readRefundsDueParams,
   refundsDueFilter,
   totalCents,
@@ -65,14 +63,6 @@ describe('refunds due rows', () => {
   it('formats euros, and an unknown amount as a dash', () => {
     expect(formatAmount(1550)).toMatch(/^15,50\s€$/);
     expect(formatAmount(null)).toBe('—');
-  });
-
-  it('formats dates in Europe/Paris whatever the machine time zone', () => {
-    // 22:30 UTC on Oct 11 is already Oct 12 in Paris (UTC+2 in summer time).
-    expect(formatParisDateTime('2026-10-11T22:30:00.000Z')).toBe('12/10/2026 00:30');
-    // Winter time: UTC+1.
-    expect(formatParisDateTime('2026-12-01T10:00:00.000Z')).toBe('01/12/2026 11:00');
-    expect(formatParisDay('2026-10-31T23:30:00.000Z')).toBe('01/11/2026');
   });
 
   it('totals one payment per HelloAsso reference', () => {

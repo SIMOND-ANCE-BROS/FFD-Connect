@@ -68,31 +68,6 @@ export const refundsDueFilter = (state: RefundsDueUrlState, take: number): Refun
   take,
 });
 
-const PARIS = 'Europe/Paris';
-const parisDay = new Intl.DateTimeFormat('fr-FR', {
-  timeZone: PARIS,
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-});
-const parisTime = new Intl.DateTimeFormat('fr-FR', {
-  timeZone: PARIS,
-  hour: '2-digit',
-  minute: '2-digit',
-});
-
-/**
- * `DD/MM/YYYY` in Europe/Paris whatever the browser's time zone: the clubs,
- * the payers and the back-office are in France.
- */
-export const formatParisDay = (iso: string): string => parisDay.format(new Date(iso));
-
-/** `DD/MM/YYYY HH:mm` in Europe/Paris (see {@link formatParisDay}). */
-export const formatParisDateTime = (iso: string): string => {
-  const date = new Date(iso);
-  return `${parisDay.format(date)} ${parisTime.format(date)}`;
-};
-
 const euros = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
 
 /** Amount of ONE payment (the API's `amountCents`), « — » when unknown. */

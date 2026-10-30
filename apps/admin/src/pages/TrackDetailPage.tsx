@@ -20,7 +20,6 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ListSkeleton } from '../components/ListStates';
@@ -45,6 +44,7 @@ import {
   type TrackPatch,
   TRACK_STATUS_BADGES,
 } from '../lib/tracks';
+import { formatParisDateTime } from '../lib/parisDate';
 
 interface ToggleCopy {
   title: string;
@@ -195,7 +195,7 @@ function TrackEditor({ id }: { id: string }) {
         </Badge>
       </Group>
       <Text c="dimmed">
-        Ajoutée le {dayjs(t.createdAt).format('DD/MM/YYYY HH:mm')}
+        Ajoutée le {formatParisDateTime(t.createdAt)}
         {t.sourceKey ? ` · source ${t.sourceKey}` : ''} · tempo détecté :{' '}
         {t.rawBpm > 0 ? `${Math.round(t.rawBpm)} BPM` : 'aucun'}
       </Text>
@@ -362,8 +362,8 @@ function TrackEditor({ id }: { id: string }) {
         history.data.data.map((h) => (
           <Card key={h.id} withBorder p="xs">
             <Text size="sm" fw={500}>
-              {dayjs(h.createdAt).format('DD/MM/YYYY HH:mm')} —{' '}
-              {ACTION_LABELS[h.action] ?? h.action} par {h.actorName ?? 'admin supprimé'}
+              {formatParisDateTime(h.createdAt)} — {ACTION_LABELS[h.action] ?? h.action} par{' '}
+              {h.actorName ?? 'admin supprimé'}
             </Text>
             {h.after && (
               <ChangeSummary

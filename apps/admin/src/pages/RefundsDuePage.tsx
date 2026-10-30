@@ -10,12 +10,11 @@ import { PageHeader } from '../components/PageHeader';
 import { RecordCard, RecordLine } from '../components/RecordCard';
 import { apiErrorMessage } from '../lib/apiError';
 import type { SortState } from '../lib/listSort';
+import { formatParisDateTime, formatParisDay } from '../lib/parisDate';
 import {
   clubLabel,
   clubPath,
   formatAmount,
-  formatParisDateTime,
-  formatParisDay,
   readRefundsDueParams,
   REFUNDS_DUE_FILTERS,
   REFUNDS_DUE_SORT_FIELDS,
