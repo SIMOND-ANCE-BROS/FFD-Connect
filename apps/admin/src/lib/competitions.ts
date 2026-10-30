@@ -1,10 +1,10 @@
-import dayjs from 'dayjs';
 import type {
   CompetitionListItemDto,
   CompetitionResultsStatusDto,
   ProgramEventDto,
 } from '../api/generated/types.gen';
 import { formatDiscipline } from './discipline';
+import { formatParisDay } from './parisDate';
 
 /** A competition as the back-office lists it. */
 export interface CompetitionSummary {
@@ -44,8 +44,8 @@ export const COMPETITION_STATUS_BADGES: Record<string, { label: string; color: s
 /** « 12/10/2026 », or « 12/10/2026 → 13/10/2026 » over several days; « — » when unknown. */
 export function competitionDates(c: { date: string | null; endDate: string | null }): string {
   if (!c.date) return '—';
-  const start = dayjs(c.date).format('DD/MM/YYYY');
-  const end = c.endDate ? dayjs(c.endDate).format('DD/MM/YYYY') : start;
+  const start = formatParisDay(c.date);
+  const end = c.endDate ? formatParisDay(c.endDate) : start;
   return end === start ? start : `${start} → ${end}`;
 }
 

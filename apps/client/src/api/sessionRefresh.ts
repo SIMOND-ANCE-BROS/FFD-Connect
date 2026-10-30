@@ -16,6 +16,7 @@ import axios from "axios";
 
 import { API_TIMEOUT_MS, API_URL } from "../config";
 import { clearLicenseSnapshot } from "../features/license/utils/licenseSnapshot";
+import { runSessionEndCleanups } from "../services/sessionCleanup";
 import { useAuthStore } from "../stores/auth.store";
 import { createLogger } from "../utils/logger";
 import {
@@ -62,6 +63,9 @@ async function setLoggedInFlag(value: boolean): Promise<void> {
  */
 async function endSessionState(): Promise<void> {
   await setLoggedInFlag(false);
+  // The next account to sign in must not find this one's server cache (#879):
+  // memory + persisted copy, as at a logout. Never throws.
+  await runSessionEndCleanups();
   try {
     await Promise.all([
       AsyncStorage.removeItem(IMPERSONATION_BACKUP_KEY),

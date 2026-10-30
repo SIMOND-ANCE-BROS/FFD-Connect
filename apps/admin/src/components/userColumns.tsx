@@ -1,5 +1,4 @@
 import { Anchor, Badge, Group, Text } from '@mantine/core';
-import dayjs from 'dayjs';
 import { Link } from 'react-router';
 import type { AdminUserListItemDto } from '../api/generated/types.gen';
 import { formatDiscipline } from '../lib/discipline';
@@ -7,13 +6,14 @@ import { extraRoleLabels, ROLE_LABELS } from '../lib/labels';
 import type { UsersFilterField } from '../lib/userList';
 import type { ColumnFilter, DataTableColumn } from './DataTable';
 import { StoreReviewBadge } from './StoreReview';
+import { formatParisDay } from '../lib/parisDate';
 
 export const LICENSE_LABEL: Record<'ACTIVE' | 'EXPIRED', string> = {
   ACTIVE: 'Active',
   EXPIRED: 'Expirée',
 };
 
-export const formatDay = (iso: string | null) => (iso ? dayjs(iso).format('DD/MM/YYYY') : '—');
+export const formatDay = (iso: string | null) => formatParisDay(iso);
 
 export function ExtraRoles({ user }: { user: AdminUserListItemDto }) {
   if (user.extraRoles.length === 0) return <>—</>;

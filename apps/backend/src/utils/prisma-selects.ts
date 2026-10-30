@@ -205,6 +205,16 @@ export const licenseIdHolderSelect = {
 } as const;
 
 /**
+ * Licence de recette staging (#887) : titulaire (pour chercher une demande de
+ * renouvellement) et fin de validité actuelle (déjà dans l'état visé ?).
+ */
+export const licenseRecetteStateSelect = {
+  id: true,
+  userId: true,
+  validUntil: true,
+} as const;
+
+/**
  * Sélecteur pour l'envoi push : seul le token est nécessaire pour appeler FCM
  * et pour nettoyer les tokens rejetés.
  */

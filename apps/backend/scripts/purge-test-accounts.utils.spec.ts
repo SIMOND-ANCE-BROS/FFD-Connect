@@ -1,6 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import { mockDeep, MockProxy } from "jest-mock-extended";
-import { licenseRenewalDocumentFileSelect } from "../src/utils/prisma-selects";
+import {
+  licenseNumbersOfUserSelect,
+  licenseRenewalDocumentFileSelect,
+  retiredLicenseNumberSelect,
+} from "../src/utils/prisma-selects";
 import {
   DELETED_USER_ID,
   buildAccountDeletionOperations,
@@ -265,14 +269,61 @@ describe("buildPurgeUserOperations (#412)", () => {
     notificationNameScrub: [{ op: "notificationNameScrub" } as never],
   };
 
-  it("deletes the seeded licenses, then runs the exact account deletion core", () => {
-    const ops = buildPurgeUserOperations(recordingPrisma(), "u1", ["l1"], plan);
+  it("deletes the seeded licenses, retires their numbers, then runs the exact account deletion core", () => {
+    const ops = buildPurgeUserOperations(
+      recordingPrisma(),
+      "u1",
+      [{ id: "l1", number: "SCAN-TEST-1" }],
+      plan,
+    ) as unknown as { op: string; args: unknown }[];
 
     expect(ops[0]).toEqual({
       op: "license.deleteMany",
       args: { where: { id: { in: ["l1"] } } },
     });
+    // #491: the freed number is retired in the same transaction.
+    expect(ops[1]).toEqual({
+      op: "retiredLicenseNumber.upsert",
+      args: {
+        where: { number: "SCAN-TEST-1" },
+        create: { number: "SCAN-TEST-1", licenseId: "l1" },
+        update: { licenseId: "l1", retiredAt: expect.any(Date) },
+        select: retiredLicenseNumberSelect,
+      },
+    });
     // Single list of relations: whatever the core does, the purge does too.
+    expect(ops.slice(2)).toEqual(
+      buildAccountDeletionOperations(recordingPrisma(), "u1", plan),
+    );
+  });
+
+  it("retires one number per deleted seeded license", () => {
+    const ops = buildPurgeUserOperations(
+      recordingPrisma(),
+      "u1",
+      [
+        { id: "l1", number: "SCAN-TEST-1" },
+        { id: "l2", number: "BETA-EXPIRY-TEST" },
+      ],
+      plan,
+    ) as unknown as { op: string; args: { where: { number?: string } } }[];
+
+    const retired = ops.filter((o) => o.op === "retiredLicenseNumber.upsert");
+    expect(retired.map((o) => o.args.where.number)).toEqual([
+      "SCAN-TEST-1",
+      "BETA-EXPIRY-TEST",
+    ]);
+  });
+
+  it("retires nothing when no seeded license is deleted", () => {
+    const ops = buildPurgeUserOperations(
+      recordingPrisma(),
+      "u1",
+      [],
+      plan,
+    ) as unknown as { op: string }[];
+
+    expect(ops.map((o) => o.op)).not.toContain("retiredLicenseNumber.upsert");
     expect(ops.slice(1)).toEqual(
       buildAccountDeletionOperations(recordingPrisma(), "u1", plan),
     );
@@ -371,6 +422,39 @@ describe("purgeTestUser (#430)", () => {
       renewalFilesDeleted: 1,
       renewalFilesFailed: 1,
     });
+  });
+
+  it("retires the number of the deleted seeded license only, never a kept one (#491)", async () => {
+    await run();
+
+    expect(prisma.license.findMany).toHaveBeenCalledWith({
+      where: { userId: "u1" },
+      select: licenseNumbersOfUserSelect,
+      take: 10,
+    });
+    expect(prisma.license.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ["l1"] } },
+    });
+    expect(prisma.retiredLicenseNumber.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.retiredLicenseNumber.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { number: "SCAN-TEST-1" },
+        create: { number: "SCAN-TEST-1", licenseId: "l1" },
+      }),
+    );
+  });
+
+  it("retires nothing when the account holds no seeded license", async () => {
+    prisma.license.findMany.mockResolvedValue([
+      { id: "l2", number: "123456" },
+    ] as never);
+    prisma.$transaction.mockResolvedValue([{ count: 0 }] as never);
+
+    const report = await run();
+
+    expect(prisma.retiredLicenseNumber.upsert).not.toHaveBeenCalled();
+    expect(report.seededLicensesDeleted).toBe(0);
+    expect(report.licensesUnlinked).toBe(1);
   });
 
   it("touches no file when the transaction fails", async () => {

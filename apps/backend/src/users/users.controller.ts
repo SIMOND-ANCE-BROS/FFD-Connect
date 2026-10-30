@@ -166,20 +166,20 @@ export class UsersController {
         category: {
           type: "string",
           nullable: true,
-          enum: ["Latin", "Standard", "Ten Dance"],
+          enum: ["Latin", "Standard", "Ten Dance", null],
           description: "Discipline déclarée (valeur stockée, non traduite)",
         },
         ageGroup: { type: "string", nullable: true },
         competitionLevelLatin: {
           type: "string",
           nullable: true,
-          enum: ["Débutant", "Intermédiaire", "Avancé", "International"],
+          enum: ["Débutant", "Intermédiaire", "Avancé", "International", null],
           description: "Niveau de compétition en Latines",
         },
         competitionLevelStandard: {
           type: "string",
           nullable: true,
-          enum: ["Débutant", "Intermédiaire", "Avancé", "International"],
+          enum: ["Débutant", "Intermédiaire", "Avancé", "International", null],
           description: "Niveau de compétition en Standards",
         },
         competitionLevel: {

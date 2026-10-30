@@ -12,15 +12,23 @@ import {
   clearDeadlineMarker,
 } from "../../../../utils/scheduleDeadlineNotification";
 import {
+  EXHAUSTED_REASONS,
   QUEUE_MESSAGES,
+  REFUSAL_REASONS,
   RegistrationDeadlinePassedError,
+  beginRegistrationReplayBatch,
+  buildReplayRecap,
+  endRegistrationReplayBatch,
+  eventRecapLabel,
   activeRegistrationEventIds,
   applyPendingRegistrations,
   assertReplayable,
+  buildExhaustedAlert,
   classifyRegistrationReplayError,
   enqueueRegistrationAction,
   getPendingRegistrationActions,
   handleRegistrationReplayError,
+  handleRegistrationReplayExhausted,
   handleRegistrationReplaySuccess,
   isDeadlinePassed,
   isDeviceOffline,
@@ -214,6 +222,21 @@ describe("submitRegistrationAction", () => {
     const [queued] = await loadQueue();
     expect(queued.meta?.registrationDeadline).toBe(FUTURE);
   });
+
+  it("stores the names for the replay recap, never in the request (#859)", async () => {
+    await enqueueRegistrationAction("register", {
+      ...target,
+      competitionTitle: "Open de Lyon",
+      eventLabel: "Latines Adultes C",
+    });
+    const [queued] = await loadQueue();
+    expect(queued.meta).toMatchObject({
+      competitionTitle: "Open de Lyon",
+      eventLabel: "Latines Adultes C",
+    });
+    // The backend runs forbidNonWhitelisted: the body stays DTO-only.
+    expect(queued.payload).toEqual({ eventId: "e1", partnerName: "Jean" });
+  });
 });
 
 describe("helpers", () => {
@@ -307,19 +330,28 @@ describe("classifyRegistrationReplayError", () => {
     ).toEqual({
       decision: "drop",
       message: QUEUE_MESSAGES.DEADLINE_PASSED_ON_REPLAY,
+      reason: REFUSAL_REASONS.DEADLINE_PASSED,
     });
   });
 
   it("drops on 401 (silent refresh already failed)", () => {
     expect(
       classifyRegistrationReplayError(mutation("register"), httpError(401)),
-    ).toEqual({ decision: "drop", message: QUEUE_MESSAGES.SESSION_EXPIRED });
+    ).toEqual({
+      decision: "drop",
+      message: QUEUE_MESSAGES.SESSION_EXPIRED,
+      reason: REFUSAL_REASONS.SESSION_EXPIRED,
+    });
   });
 
   it("drops on 409 already registered", () => {
     expect(
       classifyRegistrationReplayError(mutation("register"), httpError(409)),
-    ).toEqual({ decision: "drop", message: QUEUE_MESSAGES.ALREADY_REGISTERED });
+    ).toEqual({
+      decision: "drop",
+      message: QUEUE_MESSAGES.ALREADY_REGISTERED,
+      reason: REFUSAL_REASONS.ALREADY_REGISTERED,
+    });
   });
 
   it("drops a 409 on unregister with the server message", () => {
@@ -328,7 +360,7 @@ describe("classifyRegistrationReplayError", () => {
         mutation("unregister"),
         httpError(409, { message: "Conflit" }),
       ),
-    ).toEqual({ decision: "drop", message: "Conflit" });
+    ).toEqual({ decision: "drop", message: "Conflit", reason: "Conflit" });
     expect(
       classifyRegistrationReplayError(mutation("unregister"), httpError(409)),
     ).toEqual({ decision: "drop", message: QUEUE_MESSAGES.UNREGISTER_REFUSED });
@@ -340,10 +372,15 @@ describe("classifyRegistrationReplayError", () => {
     ).toEqual({
       decision: "drop",
       message: QUEUE_MESSAGES.ALREADY_UNREGISTERED,
+      reason: REFUSAL_REASONS.ALREADY_UNREGISTERED,
     });
     expect(
       classifyRegistrationReplayError(mutation("register"), httpError(404)),
-    ).toEqual({ decision: "drop", message: QUEUE_MESSAGES.EVENT_NOT_FOUND });
+    ).toEqual({
+      decision: "drop",
+      message: QUEUE_MESSAGES.EVENT_NOT_FOUND,
+      reason: REFUSAL_REASONS.EVENT_NOT_FOUND,
+    });
   });
 
   it("drops a full event / refused registration with the server message", () => {
@@ -355,6 +392,7 @@ describe("classifyRegistrationReplayError", () => {
     ).toEqual({
       decision: "drop",
       message: `${QUEUE_MESSAGES.REGISTER_REFUSED}\nÉpreuve complète`,
+      reason: "Épreuve complète",
     });
     expect(
       classifyRegistrationReplayError(
@@ -411,5 +449,298 @@ describe("engine handlers", () => {
       QUEUE_MESSAGES.REPLAYED_TITLE,
       QUEUE_MESSAGES.REPLAYED_UNREGISTER,
     );
+  });
+});
+
+describe("replay exhausted (#874)", () => {
+  const named = {
+    competitionTitle: "Open de Lyon",
+    eventLabel: "Latines Adultes C",
+  };
+
+  it("names the competition and event, gives the reason and invites a retry", () => {
+    expect(
+      buildExhaustedAlert(mutation("register", named), httpError(503)),
+    ).toEqual({
+      title: QUEUE_MESSAGES.EXHAUSTED_TITLE,
+      message: [
+        "Votre inscription en attente n'a pas pu être envoyée :",
+        `• Open de Lyon — Latines Adultes C : inscription abandonnée. Motif : ${EXHAUSTED_REASONS.SERVER_ERROR} malgré plusieurs tentatives`,
+        QUEUE_MESSAGES.EXHAUSTED_RETRY_REGISTER,
+      ].join("\n"),
+    });
+  });
+
+  it("words an abandoned unregister as such", () => {
+    const { message } = buildExhaustedAlert(
+      mutation("unregister", named),
+      networkError(),
+    );
+    expect(message).toContain(
+      "Votre désinscription en attente n'a pas pu être envoyée",
+    );
+    expect(message).toContain("désinscription abandonnée");
+    expect(message).toContain(EXHAUSTED_REASONS.UNREACHABLE);
+    expect(message).toContain(QUEUE_MESSAGES.EXHAUSTED_RETRY_UNREGISTER);
+  });
+
+  it("falls back to a generic name when the entry carries none", () => {
+    const { message } = buildExhaustedAlert(
+      mutation("register"),
+      httpError(408),
+    );
+    expect(message).toContain(
+      `• ${QUEUE_MESSAGES.EXHAUSTED_UNNAMED_EVENT} : inscription abandonnée`,
+    );
+    expect(message).toContain(EXHAUSTED_REASONS.UNREACHABLE);
+  });
+
+  it("keeps the event label alone when the title is missing", () => {
+    const { message } = buildExhaustedAlert(
+      mutation("register", { eventLabel: "Standard Juniors B" }),
+      httpError(429),
+    );
+    expect(message).toContain("• Standard Juniors B : inscription abandonnée");
+    expect(message).toContain(EXHAUSTED_REASONS.OVERLOADED);
+  });
+
+  it("alerts the user for a registration entry", () => {
+    handleRegistrationReplayExhausted(
+      mutation("register", named),
+      httpError(500),
+    );
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(
+      QUEUE_MESSAGES.EXHAUSTED_TITLE,
+      expect.stringContaining("Open de Lyon — Latines Adultes C"),
+    );
+  });
+
+  it("ignores non-registration entries", () => {
+    handleRegistrationReplayExhausted(
+      { ...mutation("register"), kind: undefined },
+      httpError(500),
+    );
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it("shows the standalone alert when given up outside a replay run", () => {
+    handleRegistrationReplayExhausted(
+      mutation("register", named),
+      httpError(503),
+    );
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(
+      QUEUE_MESSAGES.EXHAUSTED_TITLE,
+      buildExhaustedAlert(mutation("register", named), httpError(503)).message,
+    );
+  });
+
+  describe("inside a replay run", () => {
+    afterEach(() => {
+      // Never leak an open batch into the next test.
+      endRegistrationReplayBatch();
+    });
+
+    it("joins the single recap of the run, with its reason and retry hint", () => {
+      beginRegistrationReplayBatch();
+      handleRegistrationReplaySuccess({
+        ...mutation("register", {
+          competitionTitle: "Coupe de Paris",
+          eventLabel: "Standard Juniors B",
+        }),
+        id: "m2",
+      });
+      handleRegistrationReplayExhausted(
+        mutation("register", named),
+        networkError(),
+      );
+      // Nothing is shown while the run is in progress.
+      expect(alertSpy).not.toHaveBeenCalled();
+
+      endRegistrationReplayBatch();
+
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      expect(alertSpy).toHaveBeenCalledWith(
+        QUEUE_MESSAGES.RECAP_TITLE,
+        [
+          "2 actions en attente ont été traitées (1 envoyée, 1 abandonnée) :",
+          "• Coupe de Paris — Standard Juniors B : inscription envoyée",
+          `• Open de Lyon — Latines Adultes C : inscription abandonnée. Motif : ${EXHAUSTED_REASONS.UNREACHABLE} malgré plusieurs tentatives`,
+          QUEUE_MESSAGES.EXHAUSTED_RETRY_REGISTER,
+        ].join("\n"),
+      );
+    });
+
+    it("gives each retry hint once, for register and unregister", () => {
+      beginRegistrationReplayBatch();
+      handleRegistrationReplayExhausted(
+        mutation("register", named),
+        httpError(500),
+      );
+      handleRegistrationReplayExhausted(
+        { ...mutation("register"), id: "m2" },
+        httpError(429),
+      );
+      handleRegistrationReplayExhausted(
+        { ...mutation("unregister", named), id: "m3" },
+        httpError(502),
+      );
+      endRegistrationReplayBatch();
+
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      const message = alertSpy.mock.calls[0][1] as string;
+      expect(message).toContain("(3 abandonnées) :");
+      expect(message).toContain(
+        `• ${QUEUE_MESSAGES.RECAP_UNNAMED_EVENT} : inscription abandonnée. Motif : ${EXHAUSTED_REASONS.OVERLOADED}`,
+      );
+      expect(
+        message.split(QUEUE_MESSAGES.EXHAUSTED_RETRY_REGISTER),
+      ).toHaveLength(2);
+      expect(message).toContain(QUEUE_MESSAGES.EXHAUSTED_RETRY_UNREGISTER);
+    });
+
+    it("keeps the standalone alert when it is the only outcome of the run", () => {
+      beginRegistrationReplayBatch();
+      handleRegistrationReplayExhausted(
+        mutation("unregister", named),
+        httpError(500),
+      );
+      endRegistrationReplayBatch();
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      expect(alertSpy).toHaveBeenCalledWith(
+        QUEUE_MESSAGES.EXHAUSTED_TITLE,
+        buildExhaustedAlert(mutation("unregister", named), httpError(500))
+          .message,
+      );
+    });
+  });
+});
+
+describe("replay recap (#859)", () => {
+  const named = (
+    action: "register" | "unregister",
+    id: string,
+    competitionTitle: string,
+    eventLabel: string,
+  ): PendingMutation => ({
+    ...mutation(action, { competitionTitle, eventLabel }),
+    id,
+  });
+
+  afterEach(() => {
+    // Never leak an open batch into the next test.
+    endRegistrationReplayBatch();
+  });
+
+  it("names an event from its discipline, dance, age group and level", () => {
+    expect(
+      eventRecapLabel({
+        category: "LATIN",
+        dance: "Samba",
+        ageGroup: "Adultes",
+        level: "C",
+      }),
+    ).toBe("Latines Samba Adultes C");
+    expect(eventRecapLabel({ category: "STANDARD", level: null })).toBe(
+      "Standards",
+    );
+  });
+
+  it("shows one recap for several replays, refusals with their reason", () => {
+    beginRegistrationReplayBatch();
+    handleRegistrationReplaySuccess(
+      named("register", "m1", "Open de Lyon", "Latines Adultes C"),
+    );
+    handleRegistrationReplayError(
+      named("register", "m2", "Coupe de Paris", "Standard Juniors B"),
+      new RegistrationDeadlinePassedError(),
+    );
+    handleRegistrationReplayError(
+      named("unregister", "m3", "Gala de Nice", "Standard Adultes A"),
+      httpError(422, { message: "Désinscription impossible le jour J" }),
+    );
+    // Nothing is shown while the run is in progress.
+    expect(alertSpy).not.toHaveBeenCalled();
+
+    endRegistrationReplayBatch();
+
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(
+      QUEUE_MESSAGES.RECAP_TITLE,
+      [
+        "3 actions en attente ont été traitées (1 envoyée, 2 refusées) :",
+        "• Open de Lyon — Latines Adultes C : inscription envoyée",
+        `• Coupe de Paris — Standard Juniors B : inscription refusée. Motif : ${REFUSAL_REASONS.DEADLINE_PASSED}`,
+        "• Gala de Nice — Standard Adultes A : désinscription refusée. Motif : Désinscription impossible le jour J",
+      ].join("\n"),
+    );
+    // The side effects of a success still run.
+    expect(cancelDeadlineNotificationForCompetition).toHaveBeenCalledWith("c1");
+  });
+
+  it("keeps the single alert unchanged when one registration was pending", () => {
+    beginRegistrationReplayBatch();
+    handleRegistrationReplaySuccess(
+      named("register", "m1", "Open de Lyon", "Latines Adultes C"),
+    );
+    endRegistrationReplayBatch();
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(
+      QUEUE_MESSAGES.REPLAYED_TITLE,
+      QUEUE_MESSAGES.REPLAYED_REGISTER,
+    );
+
+    alertSpy.mockClear();
+    beginRegistrationReplayBatch();
+    handleRegistrationReplayError(mutation("register"), httpError(409));
+    endRegistrationReplayBatch();
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(
+      QUEUE_MESSAGES.REPLAY_REJECTED_TITLE,
+      QUEUE_MESSAGES.ALREADY_REGISTERED,
+    );
+  });
+
+  it("says nothing for a run without a final outcome (kept for later)", () => {
+    beginRegistrationReplayBatch();
+    expect(
+      handleRegistrationReplayError(mutation("register"), networkError()),
+    ).toBe("retry");
+    endRegistrationReplayBatch();
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it("names entries queued before the names were stored", () => {
+    const recap = buildReplayRecap([
+      {
+        action: "register",
+        result: "sent",
+        alert: { title: "t", message: "m" },
+      },
+      {
+        action: "register",
+        result: "refused",
+        competitionTitle: "Open de Lyon",
+        alert: { title: "t", message: "m" },
+      },
+    ]);
+    expect(recap?.message).toBe(
+      [
+        "2 actions en attente ont été traitées (1 envoyée, 1 refusée) :",
+        "• Épreuve : inscription envoyée",
+        "• Open de Lyon : inscription refusée",
+      ].join("\n"),
+    );
+  });
+
+  it("counts several successes in the plural", () => {
+    const sent = {
+      action: "register" as const,
+      result: "sent" as const,
+      alert: { title: "t", message: "m" },
+    };
+    expect(buildReplayRecap([sent, sent])?.message).toContain("(2 envoyées) :");
+    expect(buildReplayRecap([])).toBeNull();
   });
 });

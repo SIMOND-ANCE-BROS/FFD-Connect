@@ -75,7 +75,7 @@
 **a) Live timing WebSocket**
 
 - Gateway réelle `apps/backend/src/competitions/live.gateway.ts` (Socket.io, namespace `live`, JWT) exposant `broadcastHeatUpdate/DelayUpdate/ResultPublished` — mais ces émetteurs ne sont appelés **que dans le gateway + ses tests** (0 appelant en prod).
-- Hook client `apps/client/src/features/competitions/hooks/useLiveTiming.ts` importé **uniquement par son propre test** (aucun écran).
+- Aucun client WebSocket côté app : l'ancien hook `useLiveTiming`, orphelin et désaligné du backend, a été retiré (#433).
 - L'écran « en direct » fait du **polling 30 s** : `apps/client/src/features/competitions/hooks/useLiveResultsLogic.ts:72` (`setInterval(..., 30000)`).
 - Aucun modèle `Heat` en base ; `delayMinutes` n'a aucun chemin d'écriture (reste à 0).
 
@@ -228,19 +228,18 @@ Pôle bloquant = **légal & sécurité** :
 
 Éléments présents mais **non câblés en production** :
 
-| Élément                         | Fichier                                                        | Statut                          |
-| ------------------------------- | -------------------------------------------------------------- | ------------------------------- |
-| `broadcastHeat/Delay/Result`    | `apps/backend/src/competitions/live.gateway.ts`                | Déclarés, jamais appelés (prod) |
-| `useLiveTiming`                 | `apps/client/src/features/competitions/hooks/useLiveTiming.ts` | Importé par son test seul       |
-| `SkatingSystem.calculatePlaces` | `apps/backend/src/competitions/skating.util.ts`                | Rule 5&6, jamais appelé (prod)  |
-| `delayMinutes`                  | payload live timing (aucun modèle `Heat`)                      | Jamais écrit (=0)               |
-| `qrCodeSignature`               | `apps/backend/prisma/schema/license.prisma`                    | Jamais peuplée (`null`)         |
-| Stockage token push             | schéma `User` (`apps/backend/prisma/schema/user.prisma`)       | Champ absent → push impossible  |
-| `sendToDevice` / `sendToTopic`  | `apps/backend/src/notifications/notifications.service.ts`      | Déclarés, jamais appelés (prod) |
-| OCR mode MOCK                   | `apps/backend/src/utils/ocr.service.ts`                        | Fallback si Azure non configuré |
-| `BigBarcode` (WDSF)             | `apps/client/src/features/license/components/BigBarcode.tsx`   | Décoratif (barres en dur)       |
-| `simulateScan`                  | scanner QR check-in (`useScannerLogic`)                        | Mock de démo                    |
-| Cartes STAFF/CLUB               | `apps/client/src/features/license` (getListItems)              | Données en dur                  |
+| Élément                         | Fichier                                                      | Statut                          |
+| ------------------------------- | ------------------------------------------------------------ | ------------------------------- |
+| `broadcastHeat/Delay/Result`    | `apps/backend/src/competitions/live.gateway.ts`              | Déclarés, jamais appelés (prod) |
+| `SkatingSystem.calculatePlaces` | `apps/backend/src/competitions/skating.util.ts`              | Rule 5&6, jamais appelé (prod)  |
+| `delayMinutes`                  | payload live timing (aucun modèle `Heat`)                    | Jamais écrit (=0)               |
+| `qrCodeSignature`               | `apps/backend/prisma/schema/license.prisma`                  | Jamais peuplée (`null`)         |
+| Stockage token push             | schéma `User` (`apps/backend/prisma/schema/user.prisma`)     | Champ absent → push impossible  |
+| `sendToDevice` / `sendToTopic`  | `apps/backend/src/notifications/notifications.service.ts`    | Déclarés, jamais appelés (prod) |
+| OCR mode MOCK                   | `apps/backend/src/utils/ocr.service.ts`                      | Fallback si Azure non configuré |
+| `BigBarcode` (WDSF)             | `apps/client/src/features/license/components/BigBarcode.tsx` | Décoratif (barres en dur)       |
+| `simulateScan`                  | scanner QR check-in (`useScannerLogic`)                      | Mock de démo                    |
+| Cartes STAFF/CLUB               | `apps/client/src/features/license` (getListItems)            | Données en dur                  |
 
 ---
 

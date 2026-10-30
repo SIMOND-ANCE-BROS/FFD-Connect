@@ -22,12 +22,20 @@ export interface SessionSnapshot {
   accessToken: string;
   refreshToken: string;
   user: SessionUser;
+  /**
+   * When this tab got these tokens (ms, browser clock), copied as-is when they
+   * come from another tab. Orders two sessions of the same account so a tab
+   * never swaps its refresh token for an older one (#687). Missing in a
+   * session saved before #687.
+   */
+  issuedAt?: number;
 }
 
 interface SessionState {
   accessToken: string | null;
   refreshToken: string | null;
   user: SessionUser | null;
+  issuedAt: number | null;
   /**
    * True while a fresh tab asks the other back-office tabs for their session
    * (#669, `sessionSync.ts`). Never persisted.
@@ -49,17 +57,20 @@ export const useSession = create<SessionState>()(
       accessToken: null,
       refreshToken: null,
       user: null,
+      issuedAt: null,
       restoring: false,
-      setSession: ({ accessToken, refreshToken, user }) => set({ accessToken, refreshToken, user }),
-      clear: () => set({ accessToken: null, refreshToken: null, user: null }),
+      setSession: ({ accessToken, refreshToken, user, issuedAt }) =>
+        set({ accessToken, refreshToken, user, issuedAt: issuedAt ?? Date.now() }),
+      clear: () => set({ accessToken: null, refreshToken: null, user: null, issuedAt: null }),
     }),
     {
       name: 'ffd-admin-session',
       storage: createJSONStorage(() => safeSessionStorage),
-      partialize: ({ accessToken, refreshToken, user }) => ({
+      partialize: ({ accessToken, refreshToken, user, issuedAt }) => ({
         accessToken,
         refreshToken,
         user,
+        issuedAt,
       }),
     },
   ),

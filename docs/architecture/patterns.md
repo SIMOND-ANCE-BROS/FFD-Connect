@@ -227,7 +227,6 @@ export const useCompetitionsLogic = () => {
 - `useScannerLogic`: Logique du scanner
 - `useAudioPlayerLogic`: Logique du lecteur audio
 - `useClubMembersLogic`: Logique des membres de club
-- `useLiveTiming`: Logique du timing en direct
 
 ## Exception Filter Pattern (Backend)
 

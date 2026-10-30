@@ -21,6 +21,7 @@ import { Link as RouterLink, useSearchParams } from 'react-router';
 import type { AdminStatsDto } from '../api/generated/types.gen';
 import { statsQuery } from '../api/queries';
 import { UNAVAILABLE_MESSAGE } from '../lib/apiError';
+import { formatParisDateTime } from '../lib/parisDate';
 import {
   bucketLabel,
   durationLabel,
@@ -32,12 +33,6 @@ import {
 
 const HISTORY_NOTE =
   "Les comptes supprimés (dont la purge après 3 ans d'inactivité) ne figurent plus dans les chiffres passés.";
-
-const generatedFormat = new Intl.DateTimeFormat('fr-FR', {
-  dateStyle: 'short',
-  timeStyle: 'short',
-  timeZone: 'Europe/Paris',
-});
 
 const ROLE_SERIES = [
   { name: 'LICENSEE', label: 'Licenciés', color: 'blue.6' },
@@ -277,7 +272,7 @@ export function StatsPage() {
       </Group>
       {stats.data ? (
         <Text size="sm" c="dimmed">
-          Calculé le {generatedFormat.format(new Date(stats.data.generatedAt))}
+          Calculé le {formatParisDateTime(stats.data.generatedAt)}
         </Text>
       ) : null}
       {stats.isError ? (

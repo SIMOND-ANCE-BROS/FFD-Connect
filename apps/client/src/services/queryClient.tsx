@@ -14,7 +14,10 @@ import { Alert, AppState, type AppStateStatus } from "react-native";
 import {
   assertReplayable,
   handleRegistrationReplayError,
+  handleRegistrationReplayExhausted,
   handleRegistrationReplaySuccess,
+  beginRegistrationReplayBatch,
+  endRegistrationReplayBatch,
 } from "../features/competitions/services/registrationQueue";
 import {
   CHECKIN_KIND,
@@ -127,11 +130,20 @@ export function shouldPersistQuery(query: Query): boolean {
 }
 
 /**
- * Purge à la déconnexion : cache mémoire ET copie persistée, pour que le
- * compte suivant (ou une personne qui récupère l'appareil) ne retrouve rien
- * de la session précédente.
+ * Purge at every end of an identity's session — logout, expired session, and
+ * both ends of a support access (« se connecter en tant que », #879): memory
+ * cache AND persisted copy, so the next account (or whoever picks the device
+ * up) finds nothing of the previous one, not even after a restart.
+ *
+ * In-flight queries are cancelled first, explicitly: a request sent with the
+ * previous identity's token must never land its answer in the cache once it
+ * is cleared (`clear()` cancels too, silently — this does not rely on it).
+ * Clearing also notifies the persister, whose next (throttled) write is the
+ * empty cache. Screens still mounted keep what they render: the navigator is
+ * re-mounted on a support-access switch (AppNavigator).
  */
 export async function clearQueryCache(): Promise<void> {
+  await queryClient.cancelQueries();
   queryClient.clear();
   await AsyncStorage.removeItem(QUERY_CACHE_KEY);
 }
@@ -156,11 +168,17 @@ const OfflineQueueRunner = () => {
       handleCheckinReplayError(mutation, error) ??
       handleRegistrationReplayError(mutation, error),
     onReplaySuccess: handleRegistrationReplaySuccess,
+    // One recap per reconnect when several registrations were pending (#859).
+    onReplayBatchStart: beginRegistrationReplayBatch,
+    onReplayBatchEnd: endRegistrationReplayBatch,
     onConflict: () =>
       Alert.alert(
         "Données mises à jour",
         "Tes modifications ont été ignorées car les données ont été mises à jour depuis une autre session.",
       ),
+    // Dropped after MAX_REPLAY_ATTEMPTS: tell the user instead of letting the
+    // registration vanish silently (#874).
+    onReplayExhausted: handleRegistrationReplayExhausted,
   });
   return null;
 };

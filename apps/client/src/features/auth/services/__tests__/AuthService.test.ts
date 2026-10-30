@@ -786,6 +786,9 @@ describe("AuthService", () => {
       mockClearTokens.mockImplementation(async () => {
         order.push("clearTokens");
       });
+      mockRunSessionEndCleanups.mockImplementation(async () => {
+        order.push("cleanups");
+      });
       (clearImpersonationBackupTokens as jest.Mock).mockImplementation(
         async () => {
           order.push("clearBackupTokens");
@@ -835,6 +838,12 @@ describe("AuthService", () => {
       // No direct token write: the atomic switch does it all.
       expect(setTokens).not.toHaveBeenCalled();
       expect(mockClearTokens).not.toHaveBeenCalled();
+      // The admin's cache and per-account state go once the target's token
+      // is in place, so a refetch can only bring the target's data (#879).
+      expect(order.filter((s) => s === "cleanups")).toHaveLength(1);
+      expect(order.indexOf("cleanups")).toBeGreaterThan(
+        order.indexOf("switch"),
+      );
     });
 
     it("start: a failed switch (incomplete or unreadable admin session) puts the admin's prefs back", async () => {
@@ -853,6 +862,8 @@ describe("AuthService", () => {
       expect(AsyncStorage.removeItem).not.toHaveBeenCalledWith(
         "license_snapshot_v1",
       );
+      // Still the admin: nothing of its session is dropped.
+      expect(mockRunSessionEndCleanups).not.toHaveBeenCalled();
     });
 
     it("start: a failed prefs write aborts before any token is touched", async () => {
@@ -890,6 +901,8 @@ describe("AuthService", () => {
 
       expect(order).toEqual([
         "restore",
+        // The target's cache goes with its token (#879).
+        "cleanups",
         "prefs:admin",
         "remove:license_snapshot_v1",
         // The rotating entry QR batch goes with the snapshot (#24).
@@ -963,6 +976,8 @@ describe("AuthService", () => {
 
       expect(writesOf("auth_config")).toHaveLength(0);
       expect(clearImpersonationBackupTokens).not.toHaveBeenCalled();
+      // Still the target, retrying later: its session is left as is.
+      expect(mockRunSessionEndCleanups).not.toHaveBeenCalled();
     });
 
     it("stop: a failed prefs write ends the session and keeps the backup for a retry", async () => {
@@ -978,7 +993,7 @@ describe("AuthService", () => {
       );
 
       // Never the admin's JWT behind "impersonating" preferences.
-      expect(order).toEqual(["restore", "clearTokens"]);
+      expect(order).toEqual(["restore", "cleanups", "clearTokens"]);
       expect(clearImpersonationBackupTokens).not.toHaveBeenCalled();
     });
 

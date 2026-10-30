@@ -19,7 +19,6 @@ Les hooks métier sont organisés par domaine métier et documentés dans leurs 
 
 - `useCompetitionDetailLogic` - Logique de détail des compétitions (inscription/désinscription, affichage des événements)
 - `useCompetitionsLogic` - Logique de liste des compétitions (filtrage, recherche)
-- `useLiveTiming` - Gestion du timing en direct des compétitions (WebSocket, mises à jour temps réel)
 
 #### Hooks de licence (`src/features/license/hooks/`)
 

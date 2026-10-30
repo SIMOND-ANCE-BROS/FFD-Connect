@@ -13,6 +13,8 @@ import { useTheme } from "../../../../context/ThemeContext";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useCompetitionDetailLogic } from "../../hooks/useCompetitionDetailLogic";
 import { CompetitionDetailScreen } from "../CompetitionDetailScreen";
+import { useCurrentPartner } from "../../../career/hooks/useCurrentPartner";
+import type { UserRole } from "../../../auth/context/AuthContext";
 import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 // Mock dependencies
@@ -20,6 +22,9 @@ jest.mock("../../../../context/ThemeContext", () => ({
   useTheme: jest.fn(),
 }));
 jest.mock("../../hooks/useCompetitionDetailLogic");
+jest.mock("../../../career/hooks/useCurrentPartner", () => ({
+  useCurrentPartner: jest.fn(() => ({ status: "unknown" })),
+}));
 
 jest.mock("../../../../components/FluidSegmentedTab", () => {
   const { TouchableOpacity, Text } = require("react-native");
@@ -144,6 +149,9 @@ preloadReactNative(
   "Alert",
   "ActivityIndicator",
   "Switch",
+  // Partner modal (#858).
+  "Modal",
+  "TextInput",
 );
 
 describe("CompetitionDetailScreen", () => {
@@ -636,6 +644,68 @@ describe("CompetitionDetailScreen", () => {
         details,
       );
       expect(queryByTestId("competition-detail-seat-booking")).toBeNull();
+    });
+  });
+
+  describe("couple event without a registered partner (#858)", () => {
+    const mockUseCurrentPartner = useCurrentPartner as jest.MockedFunction<
+      typeof useCurrentPartner
+    >;
+    const renderPartnerModal = async (userRole: UserRole = "LICENSEE") => {
+      const props = createTestProps();
+      mockUseLogic.mockReturnValue({
+        state: {
+          ...baseState,
+          userRole,
+          partnerInputEvent: mockCompetition.events[0],
+        },
+        actions: baseActions,
+      } as never);
+      const utils = await render(<CompetitionDetailScreen {...props} />);
+      return { props, ...utils };
+    };
+
+    afterEach(() =>
+      mockUseCurrentPartner.mockReturnValue({ status: "unknown" }),
+    );
+
+    it("asks for the partner only for a licensee", async () => {
+      await renderPartnerModal();
+      expect(mockUseCurrentPartner).toHaveBeenCalledWith(true);
+    });
+
+    it.each<UserRole>(["GUEST", "CLUB", "STAFF", "ADMIN"])(
+      "never reads the career of a %s (query disabled)",
+      async (role) => {
+        mockUseCurrentPartner.mockClear();
+        await renderPartnerModal(role);
+        expect(mockUseCurrentPartner).toHaveBeenCalled();
+        expect(mockUseCurrentPartner).not.toHaveBeenCalledWith(true);
+      },
+    );
+
+    it("names the cause and opens the partner screen (Career tab)", async () => {
+      mockUseCurrentPartner.mockReturnValue({ status: "none" });
+      const { props, getByText, getByTestId } = await renderPartnerModal();
+
+      expect(getByText("Aucun partenaire enregistré")).toBeTruthy();
+      await fireEvent.press(getByTestId("partner-input-manage"));
+
+      expect(baseActions.clearPartnerInput).toHaveBeenCalled();
+      expect(props.navigation.popTo).toHaveBeenCalledWith("Main", {
+        screen: "Career",
+      });
+    });
+
+    it("says nothing about a missing partner when one is registered", async () => {
+      mockUseCurrentPartner.mockReturnValue({
+        status: "registered",
+        name: "Jeanne Martin",
+      });
+      const { queryByTestId, getByDisplayValue } = await renderPartnerModal();
+
+      expect(queryByTestId("partner-input-no-partner")).toBeNull();
+      expect(getByDisplayValue("Jeanne Martin")).toBeTruthy();
     });
   });
 

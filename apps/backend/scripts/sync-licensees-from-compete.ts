@@ -33,6 +33,7 @@ import { Pool } from "pg";
 import * as https from "https";
 import * as iconv from "iconv-lite";
 import { normalizeEmail } from "../src/auth/email-identity";
+import { assertLocalDatabase } from "./local-database-guard";
 import { SEED_COUPLE } from "./seed-owner-couple";
 
 const connectionString = process.env.DATABASE_URL;
@@ -325,6 +326,13 @@ Exemples:
 `);
     return;
   }
+
+  // Wipes most of the database: local development only (#880).
+  assertLocalDatabase("sync-licensees-from-compete.ts", {
+    databaseUrl: connectionString,
+    nodeEnv: process.env.NODE_ENV,
+    argv: process.argv,
+  });
 
   const doScrape = process.argv.includes("--scrape");
   if (doScrape) {

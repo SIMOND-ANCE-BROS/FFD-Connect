@@ -47,6 +47,37 @@ describe('AuditLogPage', () => {
     expect(screen.getByText('Durand')).toBeInTheDocument();
   });
 
+  it('shows the time in Paris even when the browser is elsewhere (#683)', async () => {
+    vi.stubEnv('TZ', 'America/Los_Angeles');
+    try {
+      vi.spyOn(sdk, 'adminControllerAuditLog').mockResolvedValue({
+        data: {
+          data: [
+            {
+              id: 'l1',
+              action: 'USER_UPDATE',
+              targetType: 'USER',
+              targetId: 'u1',
+              before: null,
+              after: null,
+              actorId: 'a1',
+              actorName: 'Gabin S',
+              // 15:30 on Oct 11 in Los Angeles, 00:30 on Oct 12 in Paris.
+              createdAt: '2026-10-11T22:30:00.000Z',
+            },
+          ],
+          meta: { total: 1, skip: 0, take: 50, hasMore: false },
+        },
+        error: undefined,
+      } as never);
+      renderWithProviders(<AuditLogPage />);
+      expect(await screen.findAllByText('12/10/2026 00:30')).not.toHaveLength(0);
+      expect(screen.queryByText(/11\/10\/2026/)).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('links a results import to the competition page (#652, #690)', async () => {
     vi.spyOn(sdk, 'adminControllerAuditLog').mockResolvedValue({
       data: {

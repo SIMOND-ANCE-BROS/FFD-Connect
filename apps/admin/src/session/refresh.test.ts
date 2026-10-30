@@ -174,7 +174,9 @@ describe('refreshSession', () => {
     try {
       await expect(refreshSession()).resolves.toBeNull();
       await new Promise((r) => setTimeout(r, 30));
-      expect(received).toEqual([]);
+      // Only the check made before the first refresh of a tab started from a
+      // stored session (#687): no request after the 401.
+      expect(received).toEqual([{ type: 'request', id: expect.any(String) }]);
       expect(useSession.getState().user).toBeNull();
     } finally {
       peer.close();
@@ -222,5 +224,72 @@ describe('refreshSession', () => {
 
     await expect(refreshSession()).resolves.toBeNull();
     expect(useSession.getState().refreshToken).toBe('rt');
+  });
+  describe('tab discarded by the browser then reloaded (#687)', () => {
+    const replyWith = (peer: BroadcastChannel, session: unknown) => {
+      peer.onmessage = (event: MessageEvent<{ type: string; id: string }>) => {
+        if (event.data.type === 'request') {
+          peer.postMessage({ type: 'reply', id: event.data.id, session });
+        }
+      };
+    };
+
+    afterEach(() => {
+      Reflect.deleteProperty(document, 'wasDiscarded');
+      stopSessionSync();
+    });
+
+    it('takes the rotated session of an open tab and never sends its stale token', async () => {
+      // Discarded by Memory Saver: sessionStorage kept, rotations missed,
+      // reloaded with pageshow.persisted false.
+      Object.defineProperty(document, 'wasDiscarded', { value: true, configurable: true });
+      useSession
+        .getState()
+        .setSession({ accessToken: 'old', refreshToken: 'rt', user, issuedAt: 1 });
+      await startSessionSync();
+      const peer = new BroadcastChannel('ffd-admin-session');
+      replyWith(peer, { accessToken: 'peer-at', refreshToken: 'peer-rt', user, issuedAt: 2 });
+      const spy = vi.spyOn(sdk, 'authControllerRefresh');
+
+      try {
+        await expect(refreshSession()).resolves.toBe('peer-at');
+        expect(spy).not.toHaveBeenCalled();
+        expect(useSession.getState().refreshToken).toBe('peer-rt');
+      } finally {
+        peer.close();
+      }
+    });
+
+    it('refreshes normally when no other tab is open', async () => {
+      Object.defineProperty(document, 'wasDiscarded', { value: true, configurable: true });
+      await startSessionSync();
+      const spy = vi.spyOn(sdk, 'authControllerRefresh').mockResolvedValue({
+        data: { access_token: 'new', refresh_token: 'rt2' },
+        error: undefined,
+        response: new Response(null, { status: 200 }),
+      } as never);
+
+      await expect(refreshSession()).resolves.toBe('new');
+      expect(spy).toHaveBeenCalledWith({ body: { refresh_token: 'rt' } });
+    });
+
+    it('refreshes with its own token when the open tab holds the same one', async () => {
+      await startSessionSync();
+      const peer = new BroadcastChannel('ffd-admin-session');
+      replyWith(peer, { accessToken: 'old', refreshToken: 'rt', user });
+      const spy = vi.spyOn(sdk, 'authControllerRefresh').mockResolvedValue({
+        data: { access_token: 'new', refresh_token: 'rt2' },
+        error: undefined,
+        response: new Response(null, { status: 200 }),
+      } as never);
+
+      try {
+        await expect(refreshSession()).resolves.toBe('new');
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy).toHaveBeenCalledWith({ body: { refresh_token: 'rt' } });
+      } finally {
+        peer.close();
+      }
+    });
   });
 });

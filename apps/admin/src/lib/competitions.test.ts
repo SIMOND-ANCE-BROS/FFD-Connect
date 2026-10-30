@@ -52,13 +52,15 @@ describe('competition helpers', () => {
 
   it('formats one day or a range', () => {
     expect(competitionDates({ date: null, endDate: null })).toBe('—');
-    expect(competitionDates({ date: '2026-11-07T10:00:00', endDate: null })).toBe('07/11/2026');
-    expect(competitionDates({ date: '2026-11-07T10:00:00', endDate: '2026-11-07T18:00:00' })).toBe(
+    expect(competitionDates({ date: '2026-11-07T10:00:00.000Z', endDate: null })).toBe(
       '07/11/2026',
     );
-    expect(competitionDates({ date: '2026-11-07T10:00:00', endDate: '2026-11-08T18:00:00' })).toBe(
-      '07/11/2026 → 08/11/2026',
-    );
+    expect(
+      competitionDates({ date: '2026-11-07T10:00:00.000Z', endDate: '2026-11-07T18:00:00.000Z' }),
+    ).toBe('07/11/2026');
+    expect(
+      competitionDates({ date: '2026-11-07T10:00:00.000Z', endDate: '2026-11-08T18:00:00.000Z' }),
+    ).toBe('07/11/2026 → 08/11/2026');
   });
 
   it('names an event as the CSV accepts it', () => {

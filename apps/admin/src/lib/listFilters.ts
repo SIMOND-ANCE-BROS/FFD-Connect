@@ -242,7 +242,8 @@ export function withoutCondition<Field extends string>(
   return normalizeFilters(filters.filter((_, i) => i !== index));
 }
 
-const formatDay = (day: string) => dayjs(day).format('DD/MM/YYYY');
+/** `YYYY-MM-DD` → `DD/MM/YYYY`: a calendar day, not an instant, so no time zone. */
+const formatDay = (day: string) => day.split('-').reverse().join('/');
 
 function formatValue(spec: FilterFieldSpec, op: FilterOp, value: FilterValue | undefined): string {
   if (value === undefined) return '';

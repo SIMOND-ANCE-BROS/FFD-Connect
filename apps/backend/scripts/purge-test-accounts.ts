@@ -12,8 +12,9 @@
  * real beta tester (they do not use @test.com nor seeded ids).
  *
  * Per account, in one transaction: seeded licenses (SCAN-TEST-*,
- * BETA-EXPIRY-TEST) are deleted (any other license is only unlinked, Prisma
- * SetNull), then the SAME deletion core as AccountDeletionService
+ * BETA-EXPIRY-TEST) are deleted and their numbers retired (#491: a QR bound
+ * to the number alone never designates a license created later with it; any
+ * other license is only unlinked, Prisma SetNull), then the SAME deletion core as AccountDeletionService
  * (src/users/account-deletion.core.ts, #412) runs: competition results
  * anonymised (DELETED_USER_ID tombstone), rows without cascade deleted,
  * partner registrations, partners' copies of the name (#395) and admin

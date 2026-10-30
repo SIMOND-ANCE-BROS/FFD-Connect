@@ -1,6 +1,5 @@
 import { Anchor, Badge, Pagination, Radio, Stack, Text } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { Link } from 'react-router';
 import type { HealthDataAccessLogEntryDto } from '../api/generated/types.gen';
 import { healthAccessLogQuery } from '../api/queries';
@@ -24,13 +23,14 @@ import {
 } from '../lib/healthAccessLog';
 import { useListParams } from '../lib/useListParams';
 import { useUserNames } from '../lib/useUserNames';
+import { formatParisDateTime } from '../lib/parisDate';
 
 /** Each row resolves up to two names: a short page keeps that bounded. */
 const PAGE_SIZE = 25;
 
 type Entry = HealthDataAccessLogEntryDto;
 
-const createdAt = (e: Entry) => dayjs(e.createdAt).format('DD/MM/YYYY HH:mm');
+const createdAt = (e: Entry) => formatParisDateTime(e.createdAt);
 const subjectPath = (e: Entry) => `/users/${e.subjectUserId}`;
 
 /**

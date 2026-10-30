@@ -145,6 +145,9 @@ model RefreshToken {
   revoked   Boolean   @default(false)
   revokedAt DateTime?
   createdAt DateTime  @default(now())
+  /// Rotation chain (#687): every token rotated from the same login shares
+  /// it. Null on tokens issued before #687: their family is their own id.
+  familyId  String?
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([token])
@@ -152,6 +155,8 @@ model RefreshToken {
   @@index([expiresAt])
   // Index composite pour lookup token valide : WHERE userId = ? AND revoked = false
   @@index([userId, revoked])
+  // Family revocation on reuse: WHERE familyId = ? AND revoked = false
+  @@index([familyId, revoked])
 }
 
 model PasswordResetToken {

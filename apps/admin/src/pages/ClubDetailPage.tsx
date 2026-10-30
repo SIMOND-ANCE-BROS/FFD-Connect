@@ -20,7 +20,6 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ListSkeleton } from '../components/ListStates';
@@ -49,6 +48,7 @@ import {
   ROLE_LABELS,
 } from '../lib/labels';
 import { protectedActionError, type ProtectedAction } from '../lib/storeReview';
+import { formatParisDateTime, formatParisDay } from '../lib/parisDate';
 
 interface ClubForm {
   name: string;
@@ -227,13 +227,13 @@ export function ClubDetailPage() {
       {storeReview && <StoreReviewNotice target="club" />}
       {disabled && (
         <Alert color="red" title="Club désactivé">
-          Depuis le {dayjs(c.disabledAt).format('DD/MM/YYYY HH:mm')}, ses comptes Club ne peuvent
-          plus se connecter. Ses licenciés ne sont pas affectés.
+          Depuis le {formatParisDateTime(c.disabledAt)}, ses comptes Club ne peuvent plus se
+          connecter. Ses licenciés ne sont pas affectés.
         </Alert>
       )}
       <Card withBorder>
         <SimpleGrid cols={{ base: 1, sm: 3 }}>
-          <Text size="sm">Création : {dayjs(c.createdAt).format('DD/MM/YYYY')}</Text>
+          <Text size="sm">Création : {formatParisDay(c.createdAt)}</Text>
           <Text size="sm">
             Paiement en ligne : {paymentProviderLabel(c.paymentProvider)}
             {paymentConfigured(c) !== null &&
@@ -379,8 +379,8 @@ export function ClubDetailPage() {
         history.data.data.map((h) => (
           <Card key={h.id} withBorder p="xs">
             <Text size="sm" fw={500}>
-              {dayjs(h.createdAt).format('DD/MM/YYYY HH:mm')} —{' '}
-              {ACTION_LABELS[h.action] ?? h.action} par {h.actorName ?? 'admin supprimé'}
+              {formatParisDateTime(h.createdAt)} — {ACTION_LABELS[h.action] ?? h.action} par{' '}
+              {h.actorName ?? 'admin supprimé'}
             </Text>
             {h.after && <ChangeSummary before={h.before ?? {}} after={h.after} />}
           </Card>

@@ -49,6 +49,10 @@ const unreadableHandler = jest.requireMock<{
 jest.mock("../../features/license/utils/licenseSnapshot", () => ({
   clearLicenseSnapshot: () => mockClearLicenseSnapshot() as unknown,
 }));
+const mockRunSessionEndCleanups = jest.fn();
+jest.mock("../../services/sessionCleanup", () => ({
+  runSessionEndCleanups: () => mockRunSessionEndCleanups() as unknown,
+}));
 
 const post = axios.post as jest.Mock;
 const isAxiosError = axios.isAxiosError as unknown as jest.Mock;
@@ -96,6 +100,7 @@ describe("refreshSession", () => {
     await unreadableHandler?.();
 
     expect(mockClearLicenseSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockRunSessionEndCleanups).toHaveBeenCalledTimes(1);
     expect(mockRefreshAuth).toHaveBeenCalledTimes(1);
     const saved = JSON.parse(setItem.mock.calls[0][1] as string);
     expect(saved.isLoggedIn).toBe(false);
@@ -163,6 +168,7 @@ describe("refreshSession", () => {
     expect(setItem).not.toHaveBeenCalled();
     expect(mockClearBackupTokens).not.toHaveBeenCalled();
     expect(mockRefreshAuth).not.toHaveBeenCalled();
+    expect(mockRunSessionEndCleanups).not.toHaveBeenCalled();
   });
 
   it("waitForPendingRefresh resolves once the refresh in flight settles", async () => {
@@ -201,6 +207,8 @@ describe("refreshSession", () => {
     expect(mockRefreshAuth).toHaveBeenCalledTimes(1);
     const saved = JSON.parse(setItem.mock.calls[0][1] as string);
     expect(saved.isLoggedIn).toBe(false);
+    // The next account must not find this one's server cache (#879).
+    expect(mockRunSessionEndCleanups).toHaveBeenCalledTimes(1);
     // An impersonation backup never outlives the session (#598 review).
     expect(mockClearBackupTokens).toHaveBeenCalledTimes(1);
     expect(AsyncStorage.removeItem).toHaveBeenCalledWith(
