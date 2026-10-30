@@ -4,6 +4,7 @@ import {
   type CareerPartnership,
 } from "../../../services/api/career-api";
 import { queryKeys } from "../../../services/queryKeys";
+import { useAuthStore } from "../../../stores/auth.store";
 import { useAuthRepository } from "../../auth/context/AuthContext";
 
 /**
@@ -38,13 +39,30 @@ export function toCurrentPartner(
   return name === null ? { status: "none" } : { status: "registered", name };
 }
 
+/**
+ * Cache scope of the account the session acts as, like
+ * `renewalStatusQueryKey` (useRenewalPending.ts): an impersonation keeps the
+ * session and the persisted cache, so the admin's own partner must never be
+ * offered for the impersonated account, nor the other way round.
+ */
+export function partnerScope(
+  impersonating: boolean,
+  impersonatedName: string | null,
+): string {
+  return impersonating ? `impersonating:${impersonatedName ?? ""}` : "self";
+}
+
 /** Five minutes: a partnership changes rarely, the club declares it. */
 const STALE_TIME_MS = 5 * 60 * 1000;
 
 export function useCurrentPartner(enabled: boolean): CurrentPartner {
   const auth = useAuthRepository();
+  const impersonating = useAuthStore((s) => s.impersonating);
+  const impersonatedName = useAuthStore((s) => s.impersonatedName);
   const { data } = useQuery({
-    queryKey: queryKeys.career.me,
+    queryKey: queryKeys.career.me(
+      partnerScope(impersonating, impersonatedName),
+    ),
     queryFn: async () => {
       const config = await auth.getAuthConfig();
       if (!config.authToken) throw new Error("Not signed in");

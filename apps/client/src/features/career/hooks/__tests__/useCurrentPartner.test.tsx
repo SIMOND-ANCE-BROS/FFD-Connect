@@ -5,9 +5,12 @@ import {
   CareerApi,
   type CareerPartnership,
 } from "../../../../services/api/career-api";
+import { queryKeys } from "../../../../services/queryKeys";
+import { useAuthStore } from "../../../../stores/auth.store";
 import * as AuthContext from "../../../auth/context/AuthContext";
 import {
   getCurrentPartnerName,
+  partnerScope,
   toCurrentPartner,
   useCurrentPartner,
 } from "../useCurrentPartner";
@@ -94,7 +97,10 @@ describe("useCurrentPartner", () => {
     getAuthConfig.mockResolvedValue({ authToken: "tok", isLoggedIn: true });
   });
 
-  afterEach(() => queryClient.clear());
+  afterEach(() => {
+    queryClient.clear();
+    useAuthStore.setState({ impersonating: false, impersonatedName: null });
+  });
 
   it("loads the career with the session token", async () => {
     getMyCareer.mockResolvedValue({
@@ -144,6 +150,38 @@ describe("useCurrentPartner", () => {
     await waitFor(() => expect(getAuthConfig).toHaveBeenCalled());
     expect(getMyCareer).not.toHaveBeenCalled();
     expect(result.current).toEqual({ status: "unknown" });
+  });
+
+  it("never serves the admin's partner to an impersonated account", async () => {
+    // The admin's own career is in the (persisted) cache.
+    queryClient.setQueryData(queryKeys.career.me(partnerScope(false, null)), [
+      partnership({
+        partner: {
+          id: "u9",
+          firstName: "Admin",
+          lastName: "Own",
+          clubName: null,
+        },
+      }),
+    ]);
+    useAuthStore.setState({ impersonating: true, impersonatedName: "Lucie" });
+    getMyCareer.mockResolvedValue({
+      partnerships: [],
+      registrations: [],
+      results: [],
+    });
+    const { result } = await renderHook(() => useCurrentPartner(true), {
+      wrapper,
+    });
+
+    // Fetched for the impersonated account, under its own key.
+    await waitFor(() => expect(result.current).toEqual({ status: "none" }));
+    expect(getMyCareer).toHaveBeenCalledTimes(1);
+    expect(
+      queryClient.getQueryData(
+        queryKeys.career.me(partnerScope(true, "Lucie")),
+      ),
+    ).toEqual([]);
   });
 
   it("does nothing when disabled (not a licensee)", async () => {

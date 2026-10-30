@@ -24,8 +24,12 @@ export const queryKeys = {
     my: ["myRegistrations"] as const,
   },
   career: {
-    /** The signed-in dancer's partnerships (/career/me). */
-    me: ["career", "me", "partnerships"] as const,
+    /**
+     * Partnerships (/career/me) of the account the session acts as. `scope`
+     * keeps an impersonated account apart from the admin's own one:
+     * impersonation keeps the persisted cache, only logout clears it.
+     */
+    me: (scope: string) => ["career", "me", "partnerships", scope] as const,
   },
   club: {
     members: ["clubMembers"] as const,
