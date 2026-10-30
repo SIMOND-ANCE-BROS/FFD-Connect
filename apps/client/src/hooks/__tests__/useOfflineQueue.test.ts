@@ -1,6 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { renderHook, act } from "@testing-library/react-native";
-import { AppState } from "react-native";
+import { Alert, AppState } from "react-native";
+import {
+  handleRegistrationReplayError,
+  handleRegistrationReplayExhausted,
+} from "../../features/competitions/services/registrationQueue";
 import {
   dispatchMutation,
   MAX_REPLAY_ATTEMPTS,
@@ -8,6 +12,11 @@ import {
 } from "../useOfflineQueue";
 import { queryClient } from "../../services/queryClient";
 import { useOfflineQueueStore } from "../../stores/offlineQueue.store";
+
+jest.mock("../../utils/scheduleDeadlineNotification", () => ({
+  cancelDeadlineNotificationForCompetition: jest.fn(),
+  clearDeadlineMarker: jest.fn(),
+}));
 
 // NetInfo mock
 jest.mock("@react-native-community/netinfo", () => ({
@@ -606,6 +615,58 @@ describe("useOfflineQueue — replay policy", () => {
 
     expect(onReplayExhausted).toHaveBeenCalledTimes(1);
     expect(await stored()).toEqual([]);
+  });
+
+  it("tells the user which registration was abandoned after MAX_REPLAY_ATTEMPTS (#874)", async () => {
+    const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    // 503 = transient for the registration policy: retried, never dropped,
+    // until the engine gives up.
+    const mutationFn = jest.fn().mockRejectedValue(
+      Object.assign(new Error("503"), {
+        isAxiosError: true,
+        response: { status: 503 },
+      }),
+    );
+    const { result } = await renderHook(() =>
+      useOfflineQueue({
+        mutationFn,
+        onReplayError: handleRegistrationReplayError,
+        onReplayExhausted: handleRegistrationReplayExhausted,
+      }),
+    );
+    await act(async () => {
+      await result.current.enqueue({
+        endpoint: "POST /competitions/c1/register",
+        payload: { eventId: "e1" },
+        queryKeysToInvalidate: [],
+        kind: "registration",
+        collapseKey: "registration:c1:e1",
+        meta: {
+          action: "register",
+          competitionId: "c1",
+          eventId: "e1",
+          competitionTitle: "Open de Lyon",
+          eventLabel: "Latines Adultes C",
+        },
+      });
+    });
+
+    for (let i = 0; i < MAX_REPLAY_ATTEMPTS - 1; i++) await reconnect();
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(await stored()).toHaveLength(1);
+
+    await reconnect();
+
+    expect(mutationFn).toHaveBeenCalledTimes(MAX_REPLAY_ATTEMPTS);
+    expect(await stored()).toEqual([]);
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    const [title, message] = alertSpy.mock.calls[0];
+    expect(title).toBe("Action en attente abandonnée");
+    expect(message).toContain(
+      "• Open de Lyon — Latines Adultes C : inscription abandonnée.",
+    );
+    expect(message).toContain("Motif : le serveur a répondu par une erreur");
+    expect(message).toContain("recommencez l'inscription");
   });
 
   it("replays straight away when enqueuing while still connected (#416)", async () => {

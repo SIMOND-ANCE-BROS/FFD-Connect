@@ -71,6 +71,19 @@ export const QUEUE_MESSAGES = {
   REPLAYED_TITLE: "Connexion rétablie",
   REPLAYED_REGISTER: "Votre inscription en attente a bien été envoyée.",
   REPLAYED_UNREGISTER: "Votre désinscription en attente a bien été envoyée.",
+  EXHAUSTED_TITLE: "Action en attente abandonnée",
+  EXHAUSTED_UNNAMED_EVENT: "Épreuve",
+  EXHAUSTED_RETRY_REGISTER:
+    "Rien n'a été enregistré : recommencez l'inscription depuis la fiche de la compétition.",
+  EXHAUSTED_RETRY_UNREGISTER:
+    "Rien n'a été enregistré : recommencez la désinscription depuis la fiche de la compétition.",
+} as const;
+
+/** Why a replay was given up after MAX_REPLAY_ATTEMPTS failures (#874). */
+export const EXHAUSTED_REASONS = {
+  UNREACHABLE: "le serveur est resté injoignable",
+  SERVER_ERROR: "le serveur a répondu par une erreur",
+  OVERLOADED: "le serveur était surchargé",
 } as const;
 
 /** Thrown before replay when the deadline passed while the phone was offline. */
@@ -344,6 +357,61 @@ export function handleRegistrationReplayError(
     Alert.alert(QUEUE_MESSAGES.REPLAY_REJECTED_TITLE, message);
   }
   return decision;
+}
+
+function exhaustedReasonOf(err: unknown): string {
+  const status = statusOf(err);
+  if (status === 429) return EXHAUSTED_REASONS.OVERLOADED;
+  if (status !== undefined && status >= 500) {
+    return EXHAUSTED_REASONS.SERVER_ERROR;
+  }
+  // No HTTP answer, or a 408: the request never got through.
+  return EXHAUSTED_REASONS.UNREACHABLE;
+}
+
+/**
+ * The alert for a registration action the engine gave up on (#874). Names
+ * come from the entry's metadata (competition title and event label, stored
+ * at enqueue time since #859); without them the wording stays generic.
+ */
+export function buildExhaustedAlert(
+  m: PendingMutation,
+  err: unknown,
+): { title: string; message: string } {
+  const action = actionOf(m);
+  const what = action === "register" ? "inscription" : "désinscription";
+  const name =
+    [m.meta?.competitionTitle, m.meta?.eventLabel]
+      .filter(Boolean)
+      .join(" — ") || QUEUE_MESSAGES.EXHAUSTED_UNNAMED_EVENT;
+  // No count here: MAX_REPLAY_ATTEMPTS lives in the engine, and importing a
+  // value from it would close a require cycle through queryClient.tsx.
+  const reason = `${exhaustedReasonOf(err)} malgré plusieurs tentatives`;
+  return {
+    title: QUEUE_MESSAGES.EXHAUSTED_TITLE,
+    message: [
+      `Votre ${what} en attente n'a pas pu être envoyée :`,
+      `• ${name} : ${what} abandonnée. Motif : ${reason}`,
+      action === "register"
+        ? QUEUE_MESSAGES.EXHAUSTED_RETRY_REGISTER
+        : QUEUE_MESSAGES.EXHAUSTED_RETRY_UNREGISTER,
+    ].join("\n"),
+  };
+}
+
+/**
+ * `onReplayExhausted` for the engine (#874): the entry has been dropped after
+ * MAX_REPLAY_ATTEMPTS transient failures. Without this the registration
+ * vanished silently and the dancer believed they were registered.
+ */
+export function handleRegistrationReplayExhausted(
+  m: PendingMutation,
+  err: unknown,
+): void {
+  if (!isRegistrationMutation(m)) return;
+  log.warn(`Registration ${actionOf(m)} abandoned after replays`);
+  const { title, message } = buildExhaustedAlert(m, err);
+  Alert.alert(title, message);
 }
 
 /** `onReplaySuccess` for the engine: mirrors the online success side effects. */

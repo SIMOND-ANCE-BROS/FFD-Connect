@@ -12,15 +12,18 @@ import {
   clearDeadlineMarker,
 } from "../../../../utils/scheduleDeadlineNotification";
 import {
+  EXHAUSTED_REASONS,
   QUEUE_MESSAGES,
   RegistrationDeadlinePassedError,
   activeRegistrationEventIds,
   applyPendingRegistrations,
   assertReplayable,
+  buildExhaustedAlert,
   classifyRegistrationReplayError,
   enqueueRegistrationAction,
   getPendingRegistrationActions,
   handleRegistrationReplayError,
+  handleRegistrationReplayExhausted,
   handleRegistrationReplaySuccess,
   isDeadlinePassed,
   isDeviceOffline,
@@ -411,5 +414,78 @@ describe("engine handlers", () => {
       QUEUE_MESSAGES.REPLAYED_TITLE,
       QUEUE_MESSAGES.REPLAYED_UNREGISTER,
     );
+  });
+});
+
+describe("replay exhausted (#874)", () => {
+  const named = {
+    competitionTitle: "Open de Lyon",
+    eventLabel: "Latines Adultes C",
+  };
+
+  it("names the competition and event, gives the reason and invites a retry", () => {
+    expect(
+      buildExhaustedAlert(mutation("register", named), httpError(503)),
+    ).toEqual({
+      title: QUEUE_MESSAGES.EXHAUSTED_TITLE,
+      message: [
+        "Votre inscription en attente n'a pas pu être envoyée :",
+        `• Open de Lyon — Latines Adultes C : inscription abandonnée. Motif : ${EXHAUSTED_REASONS.SERVER_ERROR} malgré plusieurs tentatives`,
+        QUEUE_MESSAGES.EXHAUSTED_RETRY_REGISTER,
+      ].join("\n"),
+    });
+  });
+
+  it("words an abandoned unregister as such", () => {
+    const { message } = buildExhaustedAlert(
+      mutation("unregister", named),
+      networkError(),
+    );
+    expect(message).toContain(
+      "Votre désinscription en attente n'a pas pu être envoyée",
+    );
+    expect(message).toContain("désinscription abandonnée");
+    expect(message).toContain(EXHAUSTED_REASONS.UNREACHABLE);
+    expect(message).toContain(QUEUE_MESSAGES.EXHAUSTED_RETRY_UNREGISTER);
+  });
+
+  it("falls back to a generic name when the entry carries none", () => {
+    const { message } = buildExhaustedAlert(
+      mutation("register"),
+      httpError(408),
+    );
+    expect(message).toContain(
+      `• ${QUEUE_MESSAGES.EXHAUSTED_UNNAMED_EVENT} : inscription abandonnée`,
+    );
+    expect(message).toContain(EXHAUSTED_REASONS.UNREACHABLE);
+  });
+
+  it("keeps the event label alone when the title is missing", () => {
+    const { message } = buildExhaustedAlert(
+      mutation("register", { eventLabel: "Standard Juniors B" }),
+      httpError(429),
+    );
+    expect(message).toContain("• Standard Juniors B : inscription abandonnée");
+    expect(message).toContain(EXHAUSTED_REASONS.OVERLOADED);
+  });
+
+  it("alerts the user for a registration entry", () => {
+    handleRegistrationReplayExhausted(
+      mutation("register", named),
+      httpError(500),
+    );
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(
+      QUEUE_MESSAGES.EXHAUSTED_TITLE,
+      expect.stringContaining("Open de Lyon — Latines Adultes C"),
+    );
+  });
+
+  it("ignores non-registration entries", () => {
+    handleRegistrationReplayExhausted(
+      { ...mutation("register"), kind: undefined },
+      httpError(500),
+    );
+    expect(alertSpy).not.toHaveBeenCalled();
   });
 });
