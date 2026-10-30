@@ -6,6 +6,7 @@ import { isSensitiveScreenShown } from "../../../../utils/sentryPrivacy";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useLicenseRenewalLogic } from "../../hooks/useLicenseRenewalLogic";
 import { LicenseRenewalScreen } from "../LicenseRenewalScreen";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 // Parental consent banner (#61): own suite; reads the server state.
 jest.mock("../../../parental-consent/ParentalConsentBanner", () => ({
@@ -16,6 +17,19 @@ jest.mock("../../../../context/ThemeContext", () => ({
   ThemeProvider: ({ children }: PropsWithChildren) => <>{children}</>,
   useTheme: jest.fn(),
 }));
+
+// One-off react-native module loading, out of the first test's budget
+// (#862). The first render (loading state) reads these lazy getters: cold
+// and under full-suite load they cost ~25 s (TouchableOpacity 12.6 s,
+// ScrollView 4.5 s, Text 3.2 s), so the first test timed out while the
+// others took < 110 ms.
+preloadReactNative(
+  "View",
+  "Text",
+  "ScrollView",
+  "TouchableOpacity",
+  "ActivityIndicator",
+);
 
 describe("LicenseRenewalScreen — Sentry screenshots (#242)", () => {
   beforeEach(() => {
