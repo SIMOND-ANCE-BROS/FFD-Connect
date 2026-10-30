@@ -305,9 +305,10 @@ export class AdminLicenseRenewalDetailDto extends AdminLicenseRenewalBaseDto {
    * Only in the (audited) detail, never in the queue: `MEDICAL_RESTRICTION`
    * is health data. Neutralised to `OTHER` by the retention purge.
    */
+  // `null` in the enum too: generators ignore `nullable` on an enum (#290).
   @ApiProperty({
     nullable: true,
-    enum: RENEWAL_REJECTION_REASONS,
+    enum: [...RENEWAL_REJECTION_REASONS, null],
   })
   rejectionReason!: RenewalRejectionReason | null;
   @ApiProperty({ nullable: true, type: String }) reviewComment!: string | null;

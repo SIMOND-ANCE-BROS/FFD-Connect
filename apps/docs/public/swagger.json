@@ -7021,7 +7021,7 @@
                     "category": {
                       "type": "string",
                       "nullable": true,
-                      "enum": ["Latin", "Standard", "Ten Dance"],
+                      "enum": ["Latin", "Standard", "Ten Dance", null],
                       "description": "Discipline déclarée (valeur stockée, non traduite)"
                     },
                     "ageGroup": {
@@ -7031,13 +7031,13 @@
                     "competitionLevelLatin": {
                       "type": "string",
                       "nullable": true,
-                      "enum": ["Débutant", "Intermédiaire", "Avancé", "International"],
+                      "enum": ["Débutant", "Intermédiaire", "Avancé", "International", null],
                       "description": "Niveau de compétition en Latines"
                     },
                     "competitionLevelStandard": {
                       "type": "string",
                       "nullable": true,
-                      "enum": ["Débutant", "Intermédiaire", "Avancé", "International"],
+                      "enum": ["Débutant", "Intermédiaire", "Avancé", "International", null],
                       "description": "Niveau de compétition en Standards"
                     },
                     "competitionLevel": {
@@ -24473,7 +24473,7 @@
                     "discipline": {
                       "type": "string",
                       "nullable": true,
-                      "enum": ["Latin", "Standard", "Ten Dance"],
+                      "enum": ["Latin", "Standard", "Ten Dance", null],
                       "example": "Latin",
                       "description": "Discipline(s) réellement pratiquée(s), déduite(s) du profil du titulaire (discipline déclarée, niveaux par discipline) puis de la licence : « Ten Dance » seulement si Latines ET Standards. Même valeur que le pass Apple Wallet. Null si inconnue."
                     },
@@ -28385,7 +28385,7 @@
           },
           "lastOutcome": {
             "type": "string",
-            "enum": ["EXPIRED", "REVOKED"],
+            "enum": ["EXPIRED", "REVOKED", null],
             "nullable": true,
             "description": "Pourquoi un mineur est revenu à REQUIRED"
           },
@@ -33795,7 +33795,8 @@
               "IDENTITY_MISMATCH",
               "LICENSE_MISMATCH",
               "MEDICAL_RESTRICTION",
-              "OTHER"
+              "OTHER",
+              null
             ]
           },
           "reviewComment": {
