@@ -18,6 +18,7 @@ import {
   BETA_LICENSE_PLACEHOLDER_CATEGORY,
 } from "../licenses/beta-license-placeholder";
 import { isLicenseExpired } from "../licenses/license-expiry";
+import { linkUnclaimedLicence } from "../licenses/license-relink";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   accountStatusSelect,
@@ -357,10 +358,14 @@ export class AuthService {
           throw err;
         }
       } else {
-        await tx.license.update({
-          where: { id: license.id },
-          data: { userId: newUser.id },
-        });
+        // New licence id (#881): QR codes issued to a previous holder of this
+        // licence (account deleted, link set to null) never designate the
+        // new account. Conditional on the licence being still unclaimed.
+        if (!(await linkUnclaimedLicence(tx, license.id, newUser.id))) {
+          throw new ConflictException(
+            "Cette licence est déjà associée à un compte",
+          );
+        }
       }
 
       return { ...newUser, license: { number: license.number } };
