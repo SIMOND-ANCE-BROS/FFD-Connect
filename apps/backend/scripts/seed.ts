@@ -8,6 +8,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { Pool } from "pg";
 import { normalizeEmail } from "../src/auth/email-identity";
+import { assertLocalDatabase } from "./local-database-guard";
 import { fullName, SEED_COUPLE } from "./seed-owner-couple";
 
 const connectionString = process.env.DATABASE_URL;
@@ -146,6 +147,12 @@ function resolveBpm(
 // (scraping types and license number helpers are now defined in sync-licensees-from-compete script)
 
 async function main() {
+  // Wipes the database: local development only (#880).
+  assertLocalDatabase("seed.ts", {
+    databaseUrl: connectionString,
+    nodeEnv: process.env.NODE_ENV,
+    argv: process.argv,
+  });
   console.warn("🌱 Starting Advanced Seed...");
 
   // 1. CLEAN DB
