@@ -18,7 +18,11 @@ import {
   buildAccountDeletionOperations,
   prepareAccountDeletion,
 } from "../src/users/account-deletion.core";
-import { licenseRenewalDocumentFileSelect } from "../src/utils/prisma-selects";
+import { retireLicenseNumberOperation } from "../src/licenses/retired-license-number";
+import {
+  licenseNumbersOfUserSelect,
+  licenseRenewalDocumentFileSelect,
+} from "../src/utils/prisma-selects";
 
 /**
  * Domain of every account the staging seeds created (profile switch,
@@ -163,7 +167,7 @@ export function selectTestClubs<T extends PurgeClubCandidate>(
 
 /**
  * Seeded licenses of purged accounts are deleted too, so nobody can claim
- * them at registration. Any other license (a real tester's number from
+ * them at registration, and their numbers retired (#491). Any other license (a real tester's number from
  * seed-beta-testers, a federation import) is kept and simply unlinked.
  */
 export function isTestLicenseNumber(number: string): boolean {
@@ -171,24 +175,39 @@ export function isTestLicenseNumber(number: string): boolean {
 }
 
 export type PurgeUserPrisma = AccountDeletionPrisma &
-  Pick<PrismaClient, "license">;
+  Pick<PrismaClient, "license" | "retiredLicenseNumber">;
+
+/** A seeded license the purge deletes: its id and the number it frees. */
+export interface SeededLicense {
+  id: string;
+  number: string;
+}
 
 /**
- * Transaction of one purged account: the purge's own step (seeded licenses
- * deleted, first so the count is the first result) followed by the SAME
- * deletion core as AccountDeletionService (#412) — results anonymised with
- * the DELETED_USER_ID tombstone, partners' copies of the name scrubbed
- * (#395), admin audit rows stripped, user row deleted
- * last. Never re-list the user's relations here.
+ * Transaction of one purged account: the purge's own steps (seeded licenses
+ * deleted, first so the count is the first result, and their numbers
+ * retired) followed by the SAME deletion core as AccountDeletionService
+ * (#412) — results anonymised with the DELETED_USER_ID tombstone, partners'
+ * copies of the name scrubbed (#395), admin audit rows stripped, user row
+ * deleted last. Never re-list the user's relations here.
+ *
+ * A deleted license frees its number: it is retired in the same transaction
+ * (#491), like a renamed one (#466), so a QR bound to the number alone (signed
+ * v1, legacy unsigned) never designates a license created later with it.
  */
 export function buildPurgeUserOperations(
   prisma: PurgeUserPrisma,
   userId: string,
-  seededLicenseIds: readonly string[],
+  seededLicenses: readonly SeededLicense[],
   plan: AccountDeletionPlan,
 ): ReturnType<typeof buildAccountDeletionOperations> {
   return [
-    prisma.license.deleteMany({ where: { id: { in: [...seededLicenseIds] } } }),
+    prisma.license.deleteMany({
+      where: { id: { in: seededLicenses.map((l) => l.id) } },
+    }),
+    ...seededLicenses.map((l) =>
+      retireLicenseNumberOperation(prisma, l.number, l.id),
+    ),
     ...buildAccountDeletionOperations(prisma, userId, plan),
   ];
 }
@@ -235,12 +254,10 @@ export async function purgeTestUser(
   const { prisma } = deps;
   const licenses = await prisma.license.findMany({
     where: { userId },
-    select: { id: true, number: true },
+    select: licenseNumbersOfUserSelect,
     take: MAX_LICENSES_PER_USER,
   });
-  const seededLicenseIds = licenses
-    .filter((l) => isTestLicenseNumber(l.number))
-    .map((l) => l.id);
+  const seededLicenses = licenses.filter((l) => isTestLicenseNumber(l.number));
   const documents = await prisma.licenseRenewalDocument.findMany({
     where: { request: { userId } },
     select: licenseRenewalDocumentFileSelect,
@@ -256,7 +273,7 @@ export async function purgeTestUser(
   });
 
   const [licensesDeleted] = (await prisma.$transaction(
-    buildPurgeUserOperations(prisma, userId, seededLicenseIds, plan),
+    buildPurgeUserOperations(prisma, userId, seededLicenses, plan),
   )) as [Prisma.BatchPayload, ...unknown[]];
 
   const filePaths = documents.map((d) => d.filePath);
