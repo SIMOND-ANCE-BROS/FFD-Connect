@@ -479,6 +479,71 @@ describe("useOfflineQueue — replay policy", () => {
     expect(await stored()).toHaveLength(0);
   });
 
+  it("brackets a whole run with the batch hooks (#859)", async () => {
+    const calls: string[] = [];
+    const mutationFn = jest.fn(async (request: { endpoint: string }) => {
+      calls.push(`send ${request.endpoint}`);
+    });
+    const { result } = await renderHook(() =>
+      useOfflineQueue({
+        mutationFn,
+        onReplaySuccess: (m) => calls.push(`ok ${m.endpoint}`),
+        onReplayBatchStart: () => calls.push("start"),
+        onReplayBatchEnd: () => calls.push("end"),
+      }),
+    );
+    await act(async () => {
+      await result.current.enqueue({
+        endpoint: "POST /a",
+        payload: {},
+        queryKeysToInvalidate: [],
+      });
+      await result.current.enqueue({
+        endpoint: "POST /b",
+        payload: {},
+        queryKeysToInvalidate: [],
+      });
+    });
+
+    await reconnect();
+
+    expect(calls).toEqual([
+      "start",
+      "send POST /a",
+      "ok POST /a",
+      "send POST /b",
+      "ok POST /b",
+      "end",
+    ]);
+  });
+
+  it("ends the batch even when a handler throws", async () => {
+    const onReplayBatchEnd = jest.fn();
+    await AsyncStorage.setItem(
+      QUEUE_KEY,
+      JSON.stringify([
+        {
+          id: "x",
+          endpoint: "POST /x",
+          payload: {},
+          queryKeysToInvalidate: [],
+          enqueuedAt: 1,
+        },
+      ]),
+    );
+    await renderHook(() =>
+      useOfflineQueue({
+        mutationFn: jest.fn().mockResolvedValue(undefined),
+        onReplaySuccess: () => {
+          throw new Error("boom");
+        },
+        onReplayBatchEnd,
+      }),
+    );
+    await reconnect();
+    expect(onReplayBatchEnd).toHaveBeenCalledTimes(1);
+  });
+
   it("ignores 'connected' events without internet", async () => {
     const mutationFn = jest.fn().mockResolvedValue(undefined);
     const { result } = await renderHook(() => useOfflineQueue({ mutationFn }));

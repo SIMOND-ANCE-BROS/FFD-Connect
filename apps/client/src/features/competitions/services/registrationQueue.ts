@@ -8,6 +8,7 @@ import {
   type PendingMutation,
 } from "../../../services/offlineQueueStorage";
 import { queryKeys } from "../../../services/queryKeys";
+import { formatDiscipline } from "../../../utils/discipline";
 import { createLogger } from "../../../utils/logger";
 import {
   cancelDeadlineNotificationForCompetition,
@@ -34,6 +35,9 @@ export interface RegistrationTarget {
   partnerName?: string;
   /** ISO date — replaying a register after it is dropped client-side. */
   registrationDeadline?: string;
+  /** Names for the replay recap (#859); never sent to the API. */
+  competitionTitle?: string;
+  eventLabel?: string;
 }
 
 export type SubmitOutcome<T = unknown> =
@@ -71,6 +75,17 @@ export const QUEUE_MESSAGES = {
   REPLAYED_TITLE: "Connexion rétablie",
   REPLAYED_REGISTER: "Votre inscription en attente a bien été envoyée.",
   REPLAYED_UNREGISTER: "Votre désinscription en attente a bien été envoyée.",
+  RECAP_TITLE: "Connexion rétablie",
+  RECAP_UNNAMED_EVENT: "Épreuve",
+} as const;
+
+/** Short refusal reasons, for the recap of several replays (#859). */
+export const REFUSAL_REASONS = {
+  DEADLINE_PASSED: "la date limite d'inscription est dépassée",
+  SESSION_EXPIRED: "votre session a expiré, reconnectez-vous puis recommencez",
+  ALREADY_REGISTERED: "vous étiez déjà inscrit(e)",
+  ALREADY_UNREGISTERED: "aucune inscription active n'a été trouvée",
+  EVENT_NOT_FOUND: "l'épreuve n'existe plus",
 } as const;
 
 /** Thrown before replay when the deadline passed while the phone was offline. */
@@ -79,6 +94,24 @@ export class RegistrationDeadlinePassedError extends Error {
     super("Registration deadline passed");
     this.name = "RegistrationDeadlinePassedError";
   }
+}
+
+/** « Latines Samba Adultes C »: names an event in the replay recap. */
+export function eventRecapLabel(event: {
+  category?: string | null;
+  dance?: string | null;
+  ageGroup?: string | null;
+  level?: string | null;
+}): string {
+  return [
+    formatDiscipline(event.category),
+    event.dance,
+    event.ageGroup,
+    event.level,
+  ]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(" ");
 }
 
 export function registrationEndpoint(
@@ -142,9 +175,18 @@ export function enqueueRegistrationAction(
   action: RegistrationAction,
   target: RegistrationTarget,
 ): Promise<EnqueueResult> {
-  const { competitionId, eventId, partnerName, registrationDeadline } = target;
+  const {
+    competitionId,
+    eventId,
+    partnerName,
+    registrationDeadline,
+    competitionTitle,
+    eventLabel,
+  } = target;
   const meta: Record<string, string> = { action, competitionId, eventId };
   if (registrationDeadline) meta.registrationDeadline = registrationDeadline;
+  if (competitionTitle) meta.competitionTitle = competitionTitle;
+  if (eventLabel) meta.eventLabel = eventLabel;
   return enqueueMutation({
     endpoint: registrationEndpoint(action, competitionId),
     // Body must stay DTO-only: the backend runs forbidNonWhitelisted.
@@ -279,12 +321,18 @@ export function assertReplayable(m: PendingMutation): void {
 export function classifyRegistrationReplayError(
   m: PendingMutation,
   err: unknown,
-): { decision: ReplayDecision; message?: string } {
+): {
+  decision: ReplayDecision;
+  message?: string;
+  /** Short refusal reason for the recap, when one is known. */
+  reason?: string;
+} {
   const action = actionOf(m);
   if (err instanceof RegistrationDeadlinePassedError) {
     return {
       decision: "drop",
       message: QUEUE_MESSAGES.DEADLINE_PASSED_ON_REPLAY,
+      reason: REFUSAL_REASONS.DEADLINE_PASSED,
     };
   }
   const status = statusOf(err);
@@ -299,25 +347,39 @@ export function classifyRegistrationReplayError(
   // 401 reaching us means the silent refresh already failed: the session is
   // over, retrying would only replay under whoever logs in next.
   if (status === 401) {
-    return { decision: "drop", message: QUEUE_MESSAGES.SESSION_EXPIRED };
-  }
-  if (status === 409) {
     return {
       decision: "drop",
-      message:
-        action === "register"
-          ? QUEUE_MESSAGES.ALREADY_REGISTERED
-          : (serverMessageOf(err) ?? QUEUE_MESSAGES.UNREGISTER_REFUSED),
+      message: QUEUE_MESSAGES.SESSION_EXPIRED,
+      reason: REFUSAL_REASONS.SESSION_EXPIRED,
+    };
+  }
+  if (status === 409) {
+    if (action === "register") {
+      return {
+        decision: "drop",
+        message: QUEUE_MESSAGES.ALREADY_REGISTERED,
+        reason: REFUSAL_REASONS.ALREADY_REGISTERED,
+      };
+    }
+    const serverMessage = serverMessageOf(err);
+    return {
+      decision: "drop",
+      message: serverMessage ?? QUEUE_MESSAGES.UNREGISTER_REFUSED,
+      reason: serverMessage ?? undefined,
     };
   }
   if (status === 404) {
-    return {
-      decision: "drop",
-      message:
-        action === "unregister"
-          ? QUEUE_MESSAGES.ALREADY_UNREGISTERED
-          : QUEUE_MESSAGES.EVENT_NOT_FOUND,
-    };
+    return action === "unregister"
+      ? {
+          decision: "drop",
+          message: QUEUE_MESSAGES.ALREADY_UNREGISTERED,
+          reason: REFUSAL_REASONS.ALREADY_UNREGISTERED,
+        }
+      : {
+          decision: "drop",
+          message: QUEUE_MESSAGES.EVENT_NOT_FOUND,
+          reason: REFUSAL_REASONS.EVENT_NOT_FOUND,
+        };
   }
   // 400/403/410/422…: eligibility, club-only mode, and — should the backend
   // start enforcing them — full event / closed registrations. The server
@@ -330,7 +392,104 @@ export function classifyRegistrationReplayError(
   return {
     decision: "drop",
     message: serverMessage ? `${fallback}\n${serverMessage}` : fallback,
+    reason: serverMessage ?? undefined,
   };
+}
+
+/** What one replayed registration action ended with (#859). */
+export interface RegistrationReplayOutcome {
+  action: RegistrationAction;
+  result: "sent" | "refused";
+  competitionTitle?: string;
+  eventLabel?: string;
+  /** Refusal reason, short form (recap only). */
+  reason?: string;
+  /** The alert shown when this outcome is the only one of its run. */
+  alert: { title: string; message: string };
+}
+
+function outcomeOf(
+  m: PendingMutation,
+  result: RegistrationReplayOutcome["result"],
+  alert: RegistrationReplayOutcome["alert"],
+  reason?: string,
+): RegistrationReplayOutcome {
+  return {
+    action: actionOf(m),
+    result,
+    competitionTitle: m.meta?.competitionTitle,
+    eventLabel: m.meta?.eventLabel,
+    reason,
+    alert,
+  };
+}
+
+function plural(n: number, singular: string, pluralForm: string): string {
+  return `${n} ${n > 1 ? pluralForm : singular}`;
+}
+
+/** One recap line: « Open de Lyon — Latines Adultes C : inscription envoyée ». */
+function recapLine(o: RegistrationReplayOutcome): string {
+  const name =
+    [o.competitionTitle, o.eventLabel].filter(Boolean).join(" — ") ||
+    QUEUE_MESSAGES.RECAP_UNNAMED_EVENT;
+  const what = o.action === "register" ? "inscription" : "désinscription";
+  if (o.result === "sent") return `• ${name} : ${what} envoyée`;
+  return o.reason
+    ? `• ${name} : ${what} refusée. Motif : ${o.reason}`
+    : `• ${name} : ${what} refusée`;
+}
+
+/**
+ * The alert for a whole replay run (#859). A single outcome keeps its own
+ * alert, exactly as before; several are listed in one recap, refusals with
+ * their reason.
+ */
+export function buildReplayRecap(
+  outcomes: readonly RegistrationReplayOutcome[],
+): { title: string; message: string } | null {
+  if (outcomes.length === 0) return null;
+  if (outcomes.length === 1) return outcomes[0].alert;
+  const sent = outcomes.filter((o) => o.result === "sent").length;
+  const refused = outcomes.length - sent;
+  const counts = [
+    sent > 0 ? plural(sent, "envoyée", "envoyées") : null,
+    refused > 0 ? plural(refused, "refusée", "refusées") : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const header = `${outcomes.length} actions en attente ont été traitées (${counts}) :`;
+  return {
+    title: QUEUE_MESSAGES.RECAP_TITLE,
+    message: [header, ...outcomes.map(recapLine)].join("\n"),
+  };
+}
+
+/**
+ * Outcomes of the replay run in progress; null outside a run, where each
+ * outcome is shown on its own (a direct call of the handlers).
+ */
+let replayBatch: RegistrationReplayOutcome[] | null = null;
+
+function report(outcome: RegistrationReplayOutcome): void {
+  if (replayBatch) {
+    replayBatch.push(outcome);
+    return;
+  }
+  Alert.alert(outcome.alert.title, outcome.alert.message);
+}
+
+/** `onReplayBatchStart` for the engine. */
+export function beginRegistrationReplayBatch(): void {
+  replayBatch = [];
+}
+
+/** `onReplayBatchEnd` for the engine: one alert for the whole run. */
+export function endRegistrationReplayBatch(): void {
+  const outcomes = replayBatch ?? [];
+  replayBatch = null;
+  const recap = buildReplayRecap(outcomes);
+  if (recap) Alert.alert(recap.title, recap.message);
 }
 
 /** `onReplayError` for the engine; `undefined` for non-registration items. */
@@ -339,9 +498,16 @@ export function handleRegistrationReplayError(
   err: unknown,
 ): ReplayDecision | undefined {
   if (!isRegistrationMutation(m)) return undefined;
-  const { decision, message } = classifyRegistrationReplayError(m, err);
+  const { decision, message, reason } = classifyRegistrationReplayError(m, err);
   if (decision === "drop" && message) {
-    Alert.alert(QUEUE_MESSAGES.REPLAY_REJECTED_TITLE, message);
+    report(
+      outcomeOf(
+        m,
+        "refused",
+        { title: QUEUE_MESSAGES.REPLAY_REJECTED_TITLE, message },
+        reason,
+      ),
+    );
   }
   return decision;
 }
@@ -356,10 +522,13 @@ export function handleRegistrationReplaySuccess(m: PendingMutation): void {
       void cancelDeadlineNotificationForCompetition(competitionId);
     else void clearDeadlineMarker(competitionId);
   }
-  Alert.alert(
-    QUEUE_MESSAGES.REPLAYED_TITLE,
-    action === "register"
-      ? QUEUE_MESSAGES.REPLAYED_REGISTER
-      : QUEUE_MESSAGES.REPLAYED_UNREGISTER,
+  report(
+    outcomeOf(m, "sent", {
+      title: QUEUE_MESSAGES.REPLAYED_TITLE,
+      message:
+        action === "register"
+          ? QUEUE_MESSAGES.REPLAYED_REGISTER
+          : QUEUE_MESSAGES.REPLAYED_UNREGISTER,
+    }),
   );
 }
