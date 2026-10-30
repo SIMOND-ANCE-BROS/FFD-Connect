@@ -59,6 +59,16 @@ if [ "$SEED_TEST_TRACKS" = "true" ]; then
       echo "[seed] WARNING: beta licenses seed failed (non-fatal)."
     fi
 
+    # Licences de recette (#887) : place une seule fois une licence
+    # renouvelable et une licence expirée ; plus jamais touchées dès qu'une
+    # demande de renouvellement existe. Ne crée ni licence ni compte.
+    echo "[seed] Setting recette license states..."
+    if node dist/scripts/seed-recette-licenses.js; then
+      echo "[seed] Recette licenses seed completed."
+    else
+      echo "[seed] WARNING: recette licenses seed failed (non-fatal)."
+    fi
+
     # Compte de validation des stores (demo@ffd.gabin-simond.fr, ex
     # licensee@test.com, renommé en place) : ADMIN + tous les rôles, club
     # « Club Démo FFD Connect », drapeau isStoreReview (écritures simulées, ni
