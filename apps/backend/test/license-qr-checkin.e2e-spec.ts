@@ -363,4 +363,132 @@ describe("Signed license QR check-in (e2e)", () => {
     const ok = await checkIn(newHolderQr).expect(201);
     expect(ok.body.user.firstName).toBe("New");
   });
+
+  it("never lets a QR issued to a deleted account designate the next account registered with the licence (#881)", async () => {
+    const number = "FFD-QR-8810";
+    const formerHolder = await prisma.user.create({
+      data: {
+        email: "qr-former-holder@ffd.com",
+        password: "hash",
+        firstName: "Former",
+        lastName: "Holder",
+        role: UserRole.LICENSEE,
+        license: {
+          create: {
+            number,
+            validUntil: new Date(Date.now() + 120 * 86_400_000),
+            category: "Standard",
+            clubName: "Club QR",
+          },
+        },
+      },
+      select: { id: true, email: true, role: true },
+    });
+    const formerQr = await fetchSignedQr(
+      jwtService.sign({
+        sub: formerHolder.id,
+        email: formerHolder.email,
+        role: formerHolder.role,
+      }),
+    );
+    const formerLicenceId = (JSON.parse(formerQr) as { lid: string }).lid;
+    await prisma.retiredLicenseNumber.create({
+      data: { number: "FFD-QR-8810-OLD", licenseId: formerLicenceId },
+    });
+
+    // The account is deleted: the licence stays, unlinked (ON DELETE SET NULL).
+    await prisma.user.delete({ where: { id: formerHolder.id } });
+
+    // Someone registers with the same number.
+    const registered = await request(server())
+      .post("/api/v1/auth/register")
+      .send({
+        email: "qr-relinked@ffd.com",
+        password: "Brand-New-Pass1!",
+        licenseNumber: number,
+        lastName: "Relinked",
+        firstName: "Next",
+      })
+      .expect(201);
+    const nextId = (registered.body as { user: { id: string } }).user.id;
+    const licence = await prisma.license.findUniqueOrThrow({
+      where: { number },
+      select: { id: true, userId: true },
+    });
+    expect(licence.userId).toBe(nextId);
+    expect(licence.id).not.toBe(formerLicenceId);
+    await expect(
+      prisma.retiredLicenseNumber.findUnique({
+        where: { number: "FFD-QR-8810-OLD" },
+        select: { licenseId: true },
+      }),
+    ).resolves.toEqual({ licenseId: licence.id });
+    await prisma.registration.create({
+      data: {
+        eventId,
+        userId: nextId,
+        status: RegistrationStatus.CONFIRMED,
+        feePaid: true,
+      },
+    });
+
+    // The former holder's QR is refused; nobody is checked in.
+    const stale = await checkIn(formerQr).expect(400);
+    expect(String(stale.body.message)).toBe(STALE_LICENSE_QR_MESSAGE);
+    const registration = await prisma.registration.findFirst({
+      where: { userId: nextId },
+      select: { checkedIn: true },
+    });
+    expect(registration?.checkedIn).toBe(false);
+
+    // The new account's own QR carries the new licence id and works.
+    const nextQr = await fetchSignedQr(
+      (registered.body as { access_token: string }).access_token,
+    );
+    expect(JSON.parse(nextQr)).toMatchObject({ id: number, lid: licence.id });
+    const ok = await checkIn(nextQr).expect(201);
+    expect(ok.body.user.firstName).toBe("Next");
+  });
+
+  it("links an unclaimed licence to one account only when two registrations race (#881)", async () => {
+    const number = "FFD-QR-8811";
+    await prisma.license.create({
+      data: {
+        number,
+        validUntil: new Date(Date.now() + 120 * 86_400_000),
+        category: "Standard",
+        clubName: "Club QR",
+      },
+      select: { id: true },
+    });
+    const register = (email: string) =>
+      request(server()).post("/api/v1/auth/register").send({
+        email,
+        password: "Brand-New-Pass1!",
+        licenseNumber: number,
+        lastName: "Race",
+        firstName: "Concurrent",
+      });
+
+    const responses = await Promise.all([
+      register("qr-race-1@ffd.com"),
+      register("qr-race-2@ffd.com"),
+    ]);
+
+    expect(responses.map((r) => r.status).sort()).toEqual([201, 409]);
+    const winner = responses.find((r) => r.status === 201);
+    const licence = await prisma.license.findUniqueOrThrow({
+      where: { number },
+      select: { userId: true },
+    });
+    expect(licence.userId).toBe(
+      (winner?.body as { user: { id: string } }).user.id,
+    );
+    // The losing registration is rolled back: no account without a licence.
+    await expect(
+      prisma.user.count({
+        where: { email: { in: ["qr-race-1@ffd.com", "qr-race-2@ffd.com"] } },
+      }),
+    ).resolves.toBe(1);
+  });
 });
