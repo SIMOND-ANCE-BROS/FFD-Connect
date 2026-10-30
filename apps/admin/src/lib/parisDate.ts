@@ -28,7 +28,12 @@ const parisTime = new Intl.DateTimeFormat('fr-FR', {
   minute: '2-digit',
 });
 
-/** The instant, or null when missing or unparseable. */
+/**
+ * The instant, or null when missing or unparseable. An ISO datetime string
+ * without an offset (`2026-10-11T22:30`) is parsed in the browser's zone,
+ * not in Paris: the API always sends UTC with a `Z`, so server data never
+ * hits this. A date-only string (`2026-11-14`) is UTC midnight.
+ */
 export function parseInstant(value: DateInput): Date | null {
   if (value === null || value === undefined || value === '') return null;
   const date = value instanceof Date ? value : new Date(value);
