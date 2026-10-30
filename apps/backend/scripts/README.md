@@ -2,6 +2,13 @@
 
 ## Scripts Disponibles
 
+> **Garde-fou (#880)** : `seed.ts` et `sync-licensees-from-compete.ts` vident la
+> base. Ils refusent de démarrer si `NODE_ENV=production` ou si l'hôte de
+> `DATABASE_URL` n'est pas local (`localhost`, `127.0.0.1`, `::1`, socket Unix,
+> services docker-compose `db` / `postgres`, `host.docker.internal`). Pour forcer
+> volontairement : ajouter `--allow-non-local-db`
+> (`pnpm exec tsx scripts/seed.ts --allow-non-local-db`).
+
 ### `seed.ts`
 
 **Bootstrap de la base (sans les résultats compete)**
