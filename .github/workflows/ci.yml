@@ -75,6 +75,8 @@ jobs:
               - '.github/workflows/ci.yml'
             client:
               - 'apps/client/**'
+              # The client's API types are generated from it (postinstall).
+              - 'apps/backend/swagger.json'
               - 'packages/shared/**'
               - 'packages/jest-config/**'
               - 'packages/eslint-config/**'
