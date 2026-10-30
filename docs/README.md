@@ -10,7 +10,7 @@ voir le [README racine](../README.md).
 - [Modules backend](architecture/modules/) — un document par domaine (auth, clubs, compétitions, licences, tracks, paiement…)
 - [Règles transverses client](architecture/modules/cross-cutting-rules.md) — navigation, rôles, erreurs
 - [Soft deletes](architecture/soft-deletes.md) — ⚠️ proposition, non implémentée
-- [Décisions d'architecture (ADR)](adr/) — 18 ADR, index dans [adr/README.md](adr/README.md)
+- [Décisions d'architecture (ADR)](adr/) — index et statut de chaque décision dans [adr/README.md](adr/README.md)
 
 ## 🕺 Règles métier FFD
 
