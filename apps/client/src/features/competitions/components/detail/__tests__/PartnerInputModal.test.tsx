@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react-native";
+import { fireEvent, render, within } from "@testing-library/react-native";
 import React from "react";
 import { StyleSheet, useWindowDimensions } from "react-native";
 import { expectSiblingBackdrop } from "../../../../../__tests__/mocks/modalA11y";
@@ -140,6 +140,61 @@ describe("PartnerInputModal", () => {
       );
     });
 
+    it("replaces a stale pre-filled partner with the fresh one", async () => {
+      // A cached partner (e.g. from another account) is shown first, then
+      // the refetch brings the real one: the untouched field must follow.
+      const props = {
+        visible: true,
+        eventLabel: "Adultes C Latines",
+        onConfirm,
+        onClose,
+        theme,
+      };
+      const { getByLabelText, rerender } = await render(
+        <PartnerInputModal
+          {...props}
+          partner={{ status: "registered", name: "Paul Ancien" }}
+        />,
+      );
+      expect(getByLabelText("Nom du partenaire").props.value).toBe(
+        "Paul Ancien",
+      );
+
+      await rerender(
+        <PartnerInputModal
+          {...props}
+          partner={{ status: "registered", name: "Jeanne Martin" }}
+        />,
+      );
+      expect(getByLabelText("Nom du partenaire").props.value).toBe(
+        "Jeanne Martin",
+      );
+    });
+
+    it("stops following the partner once the dancer edited the name", async () => {
+      const props = {
+        visible: true,
+        eventLabel: "Adultes C Latines",
+        onConfirm,
+        onClose,
+        theme,
+      };
+      const { getByLabelText, rerender } = await render(
+        <PartnerInputModal
+          {...props}
+          partner={{ status: "registered", name: "Paul Ancien" }}
+        />,
+      );
+      await fireEvent.changeText(getByLabelText("Nom du partenaire"), "Lucie");
+      await rerender(
+        <PartnerInputModal
+          {...props}
+          partner={{ status: "registered", name: "Jeanne Martin" }}
+        />,
+      );
+      expect(getByLabelText("Nom du partenaire").props.value).toBe("Lucie");
+    });
+
     it("keeps a typed name when the partner arrives later", async () => {
       const props = {
         visible: true,
@@ -193,7 +248,7 @@ describe("PartnerInputModal", () => {
 
     it.each([
       [1, "row"],
-      [2, "column-reverse"],
+      [2, "column"],
     ])(
       "at font scale %d the buttons are laid out in a %s",
       async (fontScale, direction) => {
@@ -217,6 +272,30 @@ describe("PartnerInputModal", () => {
         expect(
           getByText(NO_PARTNER_COPY.MESSAGE).props.numberOfLines,
         ).toBeUndefined();
+      },
+    );
+
+    it.each([
+      [1, ["Annuler", "Valider"]],
+      [2, ["Valider", "Annuler"]],
+    ])(
+      "at font scale %d screen readers meet the buttons in visual order %j",
+      async (fontScale, order) => {
+        mockDimensions(fontScale);
+        const { getByTestId } = await render(
+          <PartnerInputModal
+            visible
+            eventLabel="Adultes C Latines"
+            onConfirm={onConfirm}
+            onClose={onClose}
+            theme={theme}
+          />,
+        );
+        // Tree order = reading order; no reversed layout to undo it.
+        const labels = within(getByTestId("partner-input-buttons"))
+          .getAllByRole("button")
+          .map((b) => within(b).getByText(/Annuler|Valider/).props.children);
+        expect(labels).toEqual(order);
       },
     );
   });

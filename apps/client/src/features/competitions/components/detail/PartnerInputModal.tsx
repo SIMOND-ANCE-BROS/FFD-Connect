@@ -16,11 +16,16 @@ import type { CurrentPartner } from "../../../career/hooks/useCurrentPartner";
 /** From this text size on, the buttons stack instead of sharing a row. */
 const STACKED_BUTTONS_FONT_SCALE = 1.3;
 
+/**
+ * A licensee cannot declare a partnership: their club does (a self-service
+ * request is #875). The action therefore only shows the partnerships.
+ * ` `: no-break space before « ; », never alone at a line start.
+ */
 export const NO_PARTNER_COPY = {
   TITLE: "Aucun partenaire enregistré",
   MESSAGE:
-    "Une épreuve en couple se danse à deux : il vous faut un partenaire. Ajoutez-le (votre club déclare votre couple), ou saisissez son nom ci-dessous.",
-  ACTION: "Ajouter un partenaire",
+    "Une épreuve en couple se danse à deux. C'est votre club qui déclare votre couple ; en attendant, vous pouvez saisir le nom de votre partenaire ci-dessous.",
+  ACTION: "Voir mes partenariats",
   ACTION_HINT: "Ouvre vos partenariats dans l'onglet Carrière",
 } as const;
 
@@ -58,14 +63,18 @@ export function PartnerInputModal({
 }: PartnerInputModalProps) {
   const registeredName = partner?.status === "registered" ? partner.name : "";
   const [partnerName, setPartnerName] = React.useState(registeredName);
-  // The career may load after the modal opened: pre-fill once, never over
-  // what the dancer already typed.
-  const prefilled = React.useRef(registeredName !== "");
+  // The career may load (or be refreshed, replacing a stale cached partner)
+  // after the modal opened. The field follows the registered partner as
+  // long as it still shows the last pre-filled value (or is empty); once the
+  // dancer typed something else, it is theirs and is never overwritten.
+  const lastPrefill = React.useRef(registeredName);
   React.useEffect(() => {
-    if (registeredName && !prefilled.current) {
-      prefilled.current = true;
-      setPartnerName((current) => current || registeredName);
-    }
+    if (!registeredName || registeredName === lastPrefill.current) return;
+    const previous = lastPrefill.current;
+    lastPrefill.current = registeredName;
+    setPartnerName((current) =>
+      current === "" || current === previous ? registeredName : current,
+    );
   }, [registeredName]);
   const { fontScale } = useWindowDimensions();
   const stackButtons = fontScale >= STACKED_BUTTONS_FONT_SCALE;
@@ -82,6 +91,23 @@ export function PartnerInputModal({
     setPartnerName("");
     onClose();
   };
+  const buttonStyle = stackButtons ? undefined : partnerModalStyles.btn;
+  const cancelButton = (
+    <AppButton
+      title="Annuler"
+      variant="outline"
+      onPress={handleClose}
+      style={buttonStyle}
+    />
+  );
+  const confirmButton = (
+    <AppButton
+      title="Valider"
+      variant="primary"
+      onPress={handleSubmit}
+      style={buttonStyle}
+    />
+  );
   return (
     <Modal
       visible={visible}
@@ -176,18 +202,19 @@ export function PartnerInputModal({
                 stackButtons && partnerModalStyles.buttonsStacked,
               ]}
             >
-              <AppButton
-                title="Annuler"
-                variant="outline"
-                onPress={handleClose}
-                style={stackButtons ? undefined : partnerModalStyles.btn}
-              />
-              <AppButton
-                title="Valider"
-                variant="primary"
-                onPress={handleSubmit}
-                style={stackButtons ? undefined : partnerModalStyles.btn}
-              />
+              {/* Stacked, the main action comes first, in reading order:
+                  screen readers follow the tree, not a reversed layout. */}
+              {stackButtons ? (
+                <>
+                  {confirmButton}
+                  {cancelButton}
+                </>
+              ) : (
+                <>
+                  {cancelButton}
+                  {confirmButton}
+                </>
+              )}
             </View>
           </ScrollView>
         </View>
@@ -232,6 +259,6 @@ const partnerModalStyles = StyleSheet.create({
     marginBottom: 16,
   },
   buttons: { flexDirection: "row", gap: 12, justifyContent: "flex-end" },
-  buttonsStacked: { flexDirection: "column-reverse" },
+  buttonsStacked: { flexDirection: "column" },
   btn: { flex: 1 },
 });

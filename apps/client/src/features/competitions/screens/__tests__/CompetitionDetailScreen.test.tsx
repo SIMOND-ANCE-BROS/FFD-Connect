@@ -14,6 +14,7 @@ import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useCompetitionDetailLogic } from "../../hooks/useCompetitionDetailLogic";
 import { CompetitionDetailScreen } from "../CompetitionDetailScreen";
 import { useCurrentPartner } from "../../../career/hooks/useCurrentPartner";
+import type { UserRole } from "../../../auth/context/AuthContext";
 import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 // Mock dependencies
@@ -650,10 +651,14 @@ describe("CompetitionDetailScreen", () => {
     const mockUseCurrentPartner = useCurrentPartner as jest.MockedFunction<
       typeof useCurrentPartner
     >;
-    const renderPartnerModal = async () => {
+    const renderPartnerModal = async (userRole: UserRole = "LICENSEE") => {
       const props = createTestProps();
       mockUseLogic.mockReturnValue({
-        state: { ...baseState, partnerInputEvent: mockCompetition.events[0] },
+        state: {
+          ...baseState,
+          userRole,
+          partnerInputEvent: mockCompetition.events[0],
+        },
         actions: baseActions,
       } as never);
       const utils = await render(<CompetitionDetailScreen {...props} />);
@@ -668,6 +673,16 @@ describe("CompetitionDetailScreen", () => {
       await renderPartnerModal();
       expect(mockUseCurrentPartner).toHaveBeenCalledWith(true);
     });
+
+    it.each<UserRole>(["GUEST", "CLUB", "STAFF", "ADMIN"])(
+      "never reads the career of a %s (query disabled)",
+      async (role) => {
+        mockUseCurrentPartner.mockClear();
+        await renderPartnerModal(role);
+        expect(mockUseCurrentPartner).toHaveBeenCalled();
+        expect(mockUseCurrentPartner).not.toHaveBeenCalledWith(true);
+      },
+    );
 
     it("names the cause and opens the partner screen (Career tab)", async () => {
       mockUseCurrentPartner.mockReturnValue({ status: "none" });
