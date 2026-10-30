@@ -14,6 +14,7 @@ import {
 import {
   QUEUE_MESSAGES,
   RegistrationDeadlinePassedError,
+  activeRegistrationEventIds,
   applyPendingRegistrations,
   assertReplayable,
   classifyRegistrationReplayError,
@@ -256,6 +257,18 @@ describe("helpers", () => {
     expect(
       applyPendingRegistrations(["a", "b"], { b: "unregister", c: "register" }),
     ).toEqual(["a", "c"]);
+  });
+
+  it("ignores cancelled registrations (unregistered, #549)", () => {
+    expect(
+      activeRegistrationEventIds([
+        { eventId: "a", status: "CONFIRMED" },
+        { eventId: "b", status: "CANCELLED" },
+        { eventId: "c", status: "PENDING" },
+        { eventId: "d" },
+      ]),
+    ).toEqual(["a", "c", "d"]);
+    expect(activeRegistrationEventIds(undefined)).toEqual([]);
   });
 
   it("assertReplayable blocks a register whose deadline passed while offline", () => {

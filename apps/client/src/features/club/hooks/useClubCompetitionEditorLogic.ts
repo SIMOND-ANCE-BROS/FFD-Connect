@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert } from "react-native";
+import { queryClient } from "../../../services/queryClient";
 import { createLogger } from "../../../utils/logger";
 import {
   CheckinService,
@@ -33,6 +34,7 @@ import {
   type EditorTab,
   type MajorSubType,
 } from "./useClubCompetitionEditorLogic.types";
+import { CLUB_COMPETITIONS_QUERY_ROOT } from "./useClubCompetitions";
 import { useEventEditor } from "./useEventEditor";
 import { useLayoutEditor } from "./useLayoutEditor";
 import { useTimingEditor } from "./useTimingEditor";
@@ -241,6 +243,12 @@ export const useClubCompetitionEditorLogic = ({
       Alert.alert("Erreur", "Impossible de sauvegarder la compétition");
       return;
     }
+    // The club list (#441) must show the saved competition whichever way the
+    // editor is left (alert dismissed, back gesture): drop its cache now
+    // rather than relying on the list's focus refetch alone.
+    queryClient
+      .invalidateQueries({ queryKey: CLUB_COMPETITIONS_QUERY_ROOT })
+      .catch(() => {});
 
     // The programme of a competition (not of a non-competitive event), only
     // once it is known: a programme that failed to load is left untouched.
