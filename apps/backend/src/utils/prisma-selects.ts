@@ -1327,6 +1327,36 @@ export const accountStatusSelect = {
   club: { select: { disabledAt: true } },
 } as const;
 
+/**
+ * Refresh-token rotation (#884): the token's own state and, for the response
+ * and the status check, its user. The status is read again under the user
+ * row lock before rotating (accountStatusSelect).
+ */
+export const refreshTokenRotationSelect = {
+  id: true,
+  userId: true,
+  familyId: true,
+  revoked: true,
+  revokedAt: true,
+  expiresAt: true,
+  user: {
+    select: {
+      ...accountStatusSelect,
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      clubId: true,
+      clubName: true,
+      category: true,
+      ageGroup: true,
+      passportLevelLatin: true,
+      passportLevelStandard: true,
+      license: { select: licenseNumberSelect },
+    },
+  },
+} as const;
+
 /** Back-office deletion: what the confirmation and the audit row need. */
 export const adminUserDeletionTargetSelect = {
   id: true,
