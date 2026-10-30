@@ -625,6 +625,10 @@ export const AuthService = {
     // The offline license snapshot belongs to the admin's session: it must
     // neither be shown in the target's session nor survive the switch.
     await clearLicenseSnapshot();
+    // Identity change (#879): the admin's server cache (memory + persisted
+    // copy) and per-account state go, like at a logout. After the token
+    // switch, so a refetch can only bring the target's data back.
+    await runSessionEndCleanups();
     logger.info(`Impersonation started → ${targetName}`);
   },
 
@@ -659,6 +663,11 @@ export const AuthService = {
     } else {
       await clearTokens();
     }
+    // Identity change (#879): the target's server cache (memory + persisted
+    // copy) and per-account state go now that its token is gone, whatever
+    // follows (a failed preferences write below ends the session too).
+    // Never throws.
+    await runSessionEndCleanups();
     const next: AuthConfig =
       prefs && restored
         ? prefs

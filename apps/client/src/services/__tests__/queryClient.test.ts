@@ -50,6 +50,24 @@ describe("queryClient — persistance et déconnexion", () => {
     expect(AsyncStorage.removeItem).toHaveBeenCalledWith(QUERY_CACHE_KEY);
   });
 
+  it("cancels in-flight queries before clearing (#879)", async () => {
+    const order: string[] = [];
+    const cancel = jest
+      .spyOn(queryClient, "cancelQueries")
+      .mockImplementation(async () => {
+        order.push("cancel");
+      });
+    const clear = jest.spyOn(queryClient, "clear").mockImplementation(() => {
+      order.push("clear");
+    });
+
+    await clearQueryCache();
+
+    expect(order).toEqual(["cancel", "clear"]);
+    cancel.mockRestore();
+    clear.mockRestore();
+  });
+
   it("est branché sur la fin de session (déconnexion)", async () => {
     await seed(["track-corrections", "mine"]);
     (AsyncStorage.removeItem as jest.Mock).mockClear();

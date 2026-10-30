@@ -1,4 +1,5 @@
 import { NotificationApi } from "../../services/api/notification-api";
+import { runSessionEndCleanups } from "../../services/sessionCleanup";
 import { useNotificationPreferencesStore } from "../notificationPreferences.store";
 
 jest.mock("../../services/api/notification-api", () => ({
@@ -129,5 +130,57 @@ describe("notificationPreferences.store", () => {
     expect(prefs.find((p) => p.type === "results_published")?.enabled).toBe(
       true,
     );
+  });
+
+  it("is emptied at the end of a session (logout, support access, #879)", async () => {
+    api.getPreferences.mockResolvedValue(catalogue);
+    await useNotificationPreferencesStore.getState().load();
+
+    await runSessionEndCleanups();
+
+    expect(useNotificationPreferencesStore.getState().preferences).toEqual([]);
+  });
+
+  it("drops an answer requested for the previous account (#879)", async () => {
+    let answer: (value: typeof catalogue) => void = () => undefined;
+    api.getPreferences.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const loading = useNotificationPreferencesStore.getState().load();
+
+    useNotificationPreferencesStore.getState().reset();
+    answer(catalogue);
+    await loading;
+
+    expect(useNotificationPreferencesStore.getState()).toMatchObject({
+      preferences: [],
+      loading: false,
+    });
+  });
+
+  it("a toggle failing after a reset leaves the next account's state alone (#879)", async () => {
+    api.getPreferences.mockResolvedValue(catalogue);
+    await useNotificationPreferencesStore.getState().load();
+    let fail: (error: Error) => void = () => undefined;
+    api.updatePreference.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        fail = reject;
+      }),
+    );
+    const toggling = useNotificationPreferencesStore
+      .getState()
+      .setPreference("registration_validated", false);
+
+    useNotificationPreferencesStore.getState().reset();
+    fail(new Error("500"));
+    await toggling;
+
+    expect(useNotificationPreferencesStore.getState()).toMatchObject({
+      preferences: [],
+      pending: [],
+      error: null,
+    });
   });
 });
