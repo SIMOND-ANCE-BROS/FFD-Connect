@@ -309,6 +309,114 @@ describe("AuthController (integration with real DB)", () => {
         .send({ refresh_token: next })
         .expect(201);
     });
+
+    // #687: refresh-token families and reuse detection.
+    describe("token families (#687)", () => {
+      const login = async (email: string, password: string) => {
+        const res = await request(
+          app.getHttpServer() as Parameters<typeof request>[0],
+        )
+          .post("/api/v1/auth/login")
+          .send({ username: email, password })
+          .expect(201);
+        return (res.body as { refresh_token: string }).refresh_token;
+      };
+      const refresh = (refresh_token: string) =>
+        request(app.getHttpServer() as Parameters<typeof request>[0])
+          .post("/api/v1/auth/refresh")
+          .send({ refresh_token });
+      const liveTokens = (userId: string) =>
+        prisma.refreshToken.findMany({
+          where: { userId, revoked: false },
+          select: { id: true, familyId: true },
+          take: 10,
+        });
+      /** Pretend the rotation happened long ago, past the grace window. */
+      const ageRevocations = (userId: string) =>
+        prisma.refreshToken.updateMany({
+          where: { userId, revoked: true },
+          data: { revokedAt: new Date(Date.now() - 60 * 60 * 1000) },
+        });
+
+      it("keeps every rotation of a login in the same family", async () => {
+        const { user, email, password } = await makeUser();
+        const first = await login(email, password);
+        const second = (await refresh(first).expect(201)).body as {
+          refresh_token: string;
+        };
+        await refresh(second.refresh_token).expect(201);
+
+        const all = await prisma.refreshToken.findMany({
+          where: { userId: user.id },
+          select: { familyId: true },
+          take: 10,
+        });
+        expect(all).toHaveLength(3);
+        expect(new Set(all.map((t) => t.familyId)).size).toBe(1);
+        expect(all[0].familyId).not.toBeNull();
+      });
+
+      it("reusing a rotated token after the grace window revokes its family, not the other devices", async () => {
+        const { user, email, password } = await makeUser();
+        const phone = await login(email, password);
+        const tablet = await login(email, password);
+
+        const rotated = (await refresh(phone).expect(201)).body as {
+          refresh_token: string;
+        };
+        await ageRevocations(user.id);
+
+        // The stale phone token comes back (stolen copy): refused…
+        await refresh(phone).expect(401);
+        // …and the phone family's live token is gone with it.
+        await refresh(rotated.refresh_token).expect(401);
+        // The tablet's family is untouched.
+        await refresh(tablet).expect(201);
+
+        const live = await liveTokens(user.id);
+        expect(live).toHaveLength(1);
+      });
+
+      it("a late racer inside the grace window is refused without revoking the family", async () => {
+        const { email, password } = await makeUser();
+        const token = await login(email, password);
+
+        const winner = (await refresh(token).expect(201)).body as {
+          refresh_token: string;
+        };
+        // Same token again right away: a second tab/app instance.
+        await refresh(token).expect(401);
+
+        await refresh(winner.refresh_token).expect(201);
+      });
+
+      it("a pre-#687 token without family still refreshes, and its chain is protected", async () => {
+        const { user, email, password } = await makeUser();
+        const legacy = await login(email, password);
+        // Simulate a token issued by the previous image.
+        await prisma.refreshToken.updateMany({
+          where: { userId: user.id },
+          data: { familyId: null },
+        });
+        const legacyRow = await prisma.refreshToken.findFirstOrThrow({
+          where: { userId: user.id },
+          select: { id: true },
+        });
+
+        const next = (await refresh(legacy).expect(201)).body as {
+          refresh_token: string;
+        };
+        const live = await liveTokens(user.id);
+        expect(live).toEqual([
+          expect.objectContaining({ familyId: legacyRow.id }),
+        ]);
+
+        await ageRevocations(user.id);
+        await refresh(legacy).expect(401);
+        await refresh(next.refresh_token).expect(401);
+        expect(await liveTokens(user.id)).toHaveLength(0);
+      });
+    });
   });
 
   // ---------------------------------------------------------------------------
