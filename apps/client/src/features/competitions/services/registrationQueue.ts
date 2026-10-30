@@ -75,6 +75,12 @@ export const QUEUE_MESSAGES = {
   REPLAYED_TITLE: "Connexion rétablie",
   REPLAYED_REGISTER: "Votre inscription en attente a bien été envoyée.",
   REPLAYED_UNREGISTER: "Votre désinscription en attente a bien été envoyée.",
+  EXHAUSTED_TITLE: "Action en attente abandonnée",
+  EXHAUSTED_UNNAMED_EVENT: "Épreuve",
+  EXHAUSTED_RETRY_REGISTER:
+    "Rien n'a été enregistré : recommencez l'inscription depuis la fiche de la compétition.",
+  EXHAUSTED_RETRY_UNREGISTER:
+    "Rien n'a été enregistré : recommencez la désinscription depuis la fiche de la compétition.",
   RECAP_TITLE: "Connexion rétablie",
   RECAP_UNNAMED_EVENT: "Épreuve",
 } as const;
@@ -86,6 +92,13 @@ export const REFUSAL_REASONS = {
   ALREADY_REGISTERED: "vous étiez déjà inscrit(e)",
   ALREADY_UNREGISTERED: "aucune inscription active n'a été trouvée",
   EVENT_NOT_FOUND: "l'épreuve n'existe plus",
+} as const;
+
+/** Why a replay was given up after MAX_REPLAY_ATTEMPTS failures (#874). */
+export const EXHAUSTED_REASONS = {
+  UNREACHABLE: "le serveur est resté injoignable",
+  SERVER_ERROR: "le serveur a répondu par une erreur",
+  OVERLOADED: "le serveur était surchargé",
 } as const;
 
 /** Thrown before replay when the deadline passed while the phone was offline. */
@@ -399,10 +412,11 @@ export function classifyRegistrationReplayError(
 /** What one replayed registration action ended with (#859). */
 export interface RegistrationReplayOutcome {
   action: RegistrationAction;
-  result: "sent" | "refused";
+  /** "abandoned": given up after MAX_REPLAY_ATTEMPTS transient failures (#874). */
+  result: "sent" | "refused" | "abandoned";
   competitionTitle?: string;
   eventLabel?: string;
-  /** Refusal reason, short form (recap only). */
+  /** Refusal or abandon reason, short form (recap only). */
   reason?: string;
   /** The alert shown when this outcome is the only one of its run. */
   alert: { title: string; message: string };
@@ -435,15 +449,31 @@ function recapLine(o: RegistrationReplayOutcome): string {
     QUEUE_MESSAGES.RECAP_UNNAMED_EVENT;
   const what = o.action === "register" ? "inscription" : "désinscription";
   if (o.result === "sent") return `• ${name} : ${what} envoyée`;
+  if (o.result === "abandoned") {
+    return `• ${name} : ${what} abandonnée. Motif : ${o.reason ?? ""}`;
+  }
   return o.reason
     ? `• ${name} : ${what} refusée. Motif : ${o.reason}`
     : `• ${name} : ${what} refusée`;
 }
 
+/** The retry hints for the abandoned actions of a recap, once per action. */
+function retryHints(outcomes: readonly RegistrationReplayOutcome[]): string[] {
+  const abandoned = outcomes.filter((o) => o.result === "abandoned");
+  const hints: string[] = [];
+  if (abandoned.some((o) => o.action === "register")) {
+    hints.push(QUEUE_MESSAGES.EXHAUSTED_RETRY_REGISTER);
+  }
+  if (abandoned.some((o) => o.action === "unregister")) {
+    hints.push(QUEUE_MESSAGES.EXHAUSTED_RETRY_UNREGISTER);
+  }
+  return hints;
+}
+
 /**
  * The alert for a whole replay run (#859). A single outcome keeps its own
- * alert, exactly as before; several are listed in one recap, refusals with
- * their reason.
+ * alert, exactly as before; several are listed in one recap, refusals and
+ * abandons (#874) with their reason, then the retry hint of the abandons.
  */
 export function buildReplayRecap(
   outcomes: readonly RegistrationReplayOutcome[],
@@ -451,17 +481,21 @@ export function buildReplayRecap(
   if (outcomes.length === 0) return null;
   if (outcomes.length === 1) return outcomes[0].alert;
   const sent = outcomes.filter((o) => o.result === "sent").length;
-  const refused = outcomes.length - sent;
+  const refused = outcomes.filter((o) => o.result === "refused").length;
+  const abandoned = outcomes.length - sent - refused;
   const counts = [
     sent > 0 ? plural(sent, "envoyée", "envoyées") : null,
     refused > 0 ? plural(refused, "refusée", "refusées") : null,
+    abandoned > 0 ? plural(abandoned, "abandonnée", "abandonnées") : null,
   ]
     .filter(Boolean)
     .join(", ");
   const header = `${outcomes.length} actions en attente ont été traitées (${counts}) :`;
   return {
     title: QUEUE_MESSAGES.RECAP_TITLE,
-    message: [header, ...outcomes.map(recapLine)].join("\n"),
+    message: [header, ...outcomes.map(recapLine), ...retryHints(outcomes)].join(
+      "\n",
+    ),
   };
 }
 
@@ -510,6 +544,73 @@ export function handleRegistrationReplayError(
     );
   }
   return decision;
+}
+
+function exhaustedReasonOf(err: unknown): string {
+  const status = statusOf(err);
+  if (status === 429) return EXHAUSTED_REASONS.OVERLOADED;
+  if (status !== undefined && status >= 500) {
+    return EXHAUSTED_REASONS.SERVER_ERROR;
+  }
+  // No HTTP answer, or a 408: the request never got through.
+  return EXHAUSTED_REASONS.UNREACHABLE;
+}
+
+/** « le serveur est resté injoignable malgré plusieurs tentatives ». */
+function exhaustedReasonText(err: unknown): string {
+  // No count here: MAX_REPLAY_ATTEMPTS lives in the engine, and importing a
+  // value from it would close a require cycle through queryClient.tsx.
+  return `${exhaustedReasonOf(err)} malgré plusieurs tentatives`;
+}
+
+/**
+ * The alert for a registration action the engine gave up on (#874). Names
+ * come from the entry's metadata (competition title and event label, stored
+ * at enqueue time since #859); without them the wording stays generic.
+ */
+export function buildExhaustedAlert(
+  m: PendingMutation,
+  err: unknown,
+): { title: string; message: string } {
+  const action = actionOf(m);
+  const what = action === "register" ? "inscription" : "désinscription";
+  const name =
+    [m.meta?.competitionTitle, m.meta?.eventLabel]
+      .filter(Boolean)
+      .join(" — ") || QUEUE_MESSAGES.EXHAUSTED_UNNAMED_EVENT;
+  const reason = exhaustedReasonText(err);
+  return {
+    title: QUEUE_MESSAGES.EXHAUSTED_TITLE,
+    message: [
+      `Votre ${what} en attente n'a pas pu être envoyée :`,
+      `• ${name} : ${what} abandonnée. Motif : ${reason}`,
+      action === "register"
+        ? QUEUE_MESSAGES.EXHAUSTED_RETRY_REGISTER
+        : QUEUE_MESSAGES.EXHAUSTED_RETRY_UNREGISTER,
+    ].join("\n"),
+  };
+}
+
+/**
+ * `onReplayExhausted` for the engine (#874): the entry has been dropped after
+ * MAX_REPLAY_ATTEMPTS transient failures. Without this the registration
+ * vanished silently and the dancer believed they were registered. Inside a
+ * replay run it joins the run's single recap; outside one it is shown alone.
+ */
+export function handleRegistrationReplayExhausted(
+  m: PendingMutation,
+  err: unknown,
+): void {
+  if (!isRegistrationMutation(m)) return;
+  log.warn(`Registration ${actionOf(m)} abandoned after replays`);
+  report(
+    outcomeOf(
+      m,
+      "abandoned",
+      buildExhaustedAlert(m, err),
+      exhaustedReasonText(err),
+    ),
+  );
 }
 
 /** `onReplaySuccess` for the engine: mirrors the online success side effects. */

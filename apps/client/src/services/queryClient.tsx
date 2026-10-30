@@ -14,6 +14,7 @@ import { Alert, AppState, type AppStateStatus } from "react-native";
 import {
   assertReplayable,
   handleRegistrationReplayError,
+  handleRegistrationReplayExhausted,
   handleRegistrationReplaySuccess,
   beginRegistrationReplayBatch,
   endRegistrationReplayBatch,
@@ -166,6 +167,9 @@ const OfflineQueueRunner = () => {
         "Données mises à jour",
         "Tes modifications ont été ignorées car les données ont été mises à jour depuis une autre session.",
       ),
+    // Dropped after MAX_REPLAY_ATTEMPTS: tell the user instead of letting the
+    // registration vanish silently (#874).
+    onReplayExhausted: handleRegistrationReplayExhausted,
   });
   return null;
 };

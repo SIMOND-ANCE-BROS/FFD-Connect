@@ -12,6 +12,7 @@ import {
   clearDeadlineMarker,
 } from "../../../../utils/scheduleDeadlineNotification";
 import {
+  EXHAUSTED_REASONS,
   QUEUE_MESSAGES,
   REFUSAL_REASONS,
   RegistrationDeadlinePassedError,
@@ -22,10 +23,12 @@ import {
   activeRegistrationEventIds,
   applyPendingRegistrations,
   assertReplayable,
+  buildExhaustedAlert,
   classifyRegistrationReplayError,
   enqueueRegistrationAction,
   getPendingRegistrationActions,
   handleRegistrationReplayError,
+  handleRegistrationReplayExhausted,
   handleRegistrationReplaySuccess,
   isDeadlinePassed,
   isDeviceOffline,
@@ -446,6 +449,171 @@ describe("engine handlers", () => {
       QUEUE_MESSAGES.REPLAYED_TITLE,
       QUEUE_MESSAGES.REPLAYED_UNREGISTER,
     );
+  });
+});
+
+describe("replay exhausted (#874)", () => {
+  const named = {
+    competitionTitle: "Open de Lyon",
+    eventLabel: "Latines Adultes C",
+  };
+
+  it("names the competition and event, gives the reason and invites a retry", () => {
+    expect(
+      buildExhaustedAlert(mutation("register", named), httpError(503)),
+    ).toEqual({
+      title: QUEUE_MESSAGES.EXHAUSTED_TITLE,
+      message: [
+        "Votre inscription en attente n'a pas pu être envoyée :",
+        `• Open de Lyon — Latines Adultes C : inscription abandonnée. Motif : ${EXHAUSTED_REASONS.SERVER_ERROR} malgré plusieurs tentatives`,
+        QUEUE_MESSAGES.EXHAUSTED_RETRY_REGISTER,
+      ].join("\n"),
+    });
+  });
+
+  it("words an abandoned unregister as such", () => {
+    const { message } = buildExhaustedAlert(
+      mutation("unregister", named),
+      networkError(),
+    );
+    expect(message).toContain(
+      "Votre désinscription en attente n'a pas pu être envoyée",
+    );
+    expect(message).toContain("désinscription abandonnée");
+    expect(message).toContain(EXHAUSTED_REASONS.UNREACHABLE);
+    expect(message).toContain(QUEUE_MESSAGES.EXHAUSTED_RETRY_UNREGISTER);
+  });
+
+  it("falls back to a generic name when the entry carries none", () => {
+    const { message } = buildExhaustedAlert(
+      mutation("register"),
+      httpError(408),
+    );
+    expect(message).toContain(
+      `• ${QUEUE_MESSAGES.EXHAUSTED_UNNAMED_EVENT} : inscription abandonnée`,
+    );
+    expect(message).toContain(EXHAUSTED_REASONS.UNREACHABLE);
+  });
+
+  it("keeps the event label alone when the title is missing", () => {
+    const { message } = buildExhaustedAlert(
+      mutation("register", { eventLabel: "Standard Juniors B" }),
+      httpError(429),
+    );
+    expect(message).toContain("• Standard Juniors B : inscription abandonnée");
+    expect(message).toContain(EXHAUSTED_REASONS.OVERLOADED);
+  });
+
+  it("alerts the user for a registration entry", () => {
+    handleRegistrationReplayExhausted(
+      mutation("register", named),
+      httpError(500),
+    );
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(
+      QUEUE_MESSAGES.EXHAUSTED_TITLE,
+      expect.stringContaining("Open de Lyon — Latines Adultes C"),
+    );
+  });
+
+  it("ignores non-registration entries", () => {
+    handleRegistrationReplayExhausted(
+      { ...mutation("register"), kind: undefined },
+      httpError(500),
+    );
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it("shows the standalone alert when given up outside a replay run", () => {
+    handleRegistrationReplayExhausted(
+      mutation("register", named),
+      httpError(503),
+    );
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(
+      QUEUE_MESSAGES.EXHAUSTED_TITLE,
+      buildExhaustedAlert(mutation("register", named), httpError(503)).message,
+    );
+  });
+
+  describe("inside a replay run", () => {
+    afterEach(() => {
+      // Never leak an open batch into the next test.
+      endRegistrationReplayBatch();
+    });
+
+    it("joins the single recap of the run, with its reason and retry hint", () => {
+      beginRegistrationReplayBatch();
+      handleRegistrationReplaySuccess({
+        ...mutation("register", {
+          competitionTitle: "Coupe de Paris",
+          eventLabel: "Standard Juniors B",
+        }),
+        id: "m2",
+      });
+      handleRegistrationReplayExhausted(
+        mutation("register", named),
+        networkError(),
+      );
+      // Nothing is shown while the run is in progress.
+      expect(alertSpy).not.toHaveBeenCalled();
+
+      endRegistrationReplayBatch();
+
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      expect(alertSpy).toHaveBeenCalledWith(
+        QUEUE_MESSAGES.RECAP_TITLE,
+        [
+          "2 actions en attente ont été traitées (1 envoyée, 1 abandonnée) :",
+          "• Coupe de Paris — Standard Juniors B : inscription envoyée",
+          `• Open de Lyon — Latines Adultes C : inscription abandonnée. Motif : ${EXHAUSTED_REASONS.UNREACHABLE} malgré plusieurs tentatives`,
+          QUEUE_MESSAGES.EXHAUSTED_RETRY_REGISTER,
+        ].join("\n"),
+      );
+    });
+
+    it("gives each retry hint once, for register and unregister", () => {
+      beginRegistrationReplayBatch();
+      handleRegistrationReplayExhausted(
+        mutation("register", named),
+        httpError(500),
+      );
+      handleRegistrationReplayExhausted(
+        { ...mutation("register"), id: "m2" },
+        httpError(429),
+      );
+      handleRegistrationReplayExhausted(
+        { ...mutation("unregister", named), id: "m3" },
+        httpError(502),
+      );
+      endRegistrationReplayBatch();
+
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      const message = alertSpy.mock.calls[0][1] as string;
+      expect(message).toContain("(3 abandonnées) :");
+      expect(message).toContain(
+        `• ${QUEUE_MESSAGES.RECAP_UNNAMED_EVENT} : inscription abandonnée. Motif : ${EXHAUSTED_REASONS.OVERLOADED}`,
+      );
+      expect(
+        message.split(QUEUE_MESSAGES.EXHAUSTED_RETRY_REGISTER),
+      ).toHaveLength(2);
+      expect(message).toContain(QUEUE_MESSAGES.EXHAUSTED_RETRY_UNREGISTER);
+    });
+
+    it("keeps the standalone alert when it is the only outcome of the run", () => {
+      beginRegistrationReplayBatch();
+      handleRegistrationReplayExhausted(
+        mutation("unregister", named),
+        httpError(500),
+      );
+      endRegistrationReplayBatch();
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      expect(alertSpy).toHaveBeenCalledWith(
+        QUEUE_MESSAGES.EXHAUSTED_TITLE,
+        buildExhaustedAlert(mutation("unregister", named), httpError(500))
+          .message,
+      );
+    });
   });
 });
 
