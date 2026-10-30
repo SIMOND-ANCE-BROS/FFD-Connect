@@ -202,7 +202,10 @@ export const AppNavigator = () => {
           }
         }}
       >
+        {/* Re-mounted at either end of a support access (#879): no screen of
+            the previous account stays open, still showing its data. */}
         <Stack.Navigator
+          key={impersonating ? "session-impersonation" : "session-own"}
           screenOptions={{
             headerShown: false,
             contentStyle: { backgroundColor: currentTheme.background },

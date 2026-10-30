@@ -3,6 +3,7 @@ import {
   NotificationApi,
   type NotificationPreference,
 } from "../services/api/notification-api";
+import { onSessionEnd } from "../services/sessionCleanup";
 import { createLogger } from "../utils/logger";
 
 const logger = createLogger("notificationPreferences.store");
@@ -35,16 +36,26 @@ const initial = {
   error: null as string | null,
 };
 
+/**
+ * Bumped by every reset: an answer requested for a previous account (before
+ * a logout or a support-access switch, #879) is dropped instead of landing in
+ * the next account's state.
+ */
+let generation = 0;
+
 export const useNotificationPreferencesStore =
   create<NotificationPreferencesState>((set, get) => ({
     ...initial,
 
     load: async () => {
+      const startedIn = generation;
       set({ loading: true, error: null });
       try {
         const preferences = await NotificationApi.getPreferences();
+        if (startedIn !== generation) return;
         set({ preferences, loading: false });
       } catch (error) {
+        if (startedIn !== generation) return;
         logger.error("Load failed", error);
         set({
           loading: false,
@@ -54,6 +65,7 @@ export const useNotificationPreferencesStore =
     },
 
     setPreference: async (type, enabled) => {
+      const startedIn = generation;
       const previous = get().preferences;
       // Bascule optimiste : un interrupteur qui attend l'aller-retour réseau
       // paraît cassé, surtout sur un backend qui peut être en démarrage à froid.
@@ -68,6 +80,7 @@ export const useNotificationPreferencesStore =
       try {
         await NotificationApi.updatePreference(type, enabled);
       } catch (error) {
+        if (startedIn !== generation) return;
         logger.error("Update failed", error);
         // Rollback : on restaure l'état d'avant plutôt que d'inverser, pour ne
         // pas écraser une autre bascule qui aurait abouti entre-temps.
@@ -81,9 +94,18 @@ export const useNotificationPreferencesStore =
           error: "La préférence n'a pas pu être enregistrée.",
         }));
       } finally {
-        set((s) => ({ pending: s.pending.filter((t) => t !== type) }));
+        if (startedIn === generation) {
+          set((s) => ({ pending: s.pending.filter((t) => t !== type) }));
+        }
       }
     },
 
-    reset: () => set({ ...initial }),
+    reset: () => {
+      generation += 1;
+      set({ ...initial });
+    },
   }));
+
+// Per-account data, never shown to the next account: logout, expired session
+// and either end of a support access (#879).
+onSessionEnd(() => useNotificationPreferencesStore.getState().reset());
