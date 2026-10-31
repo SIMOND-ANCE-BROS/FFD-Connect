@@ -1,4 +1,5 @@
 import { AppState } from "react-native";
+import { getSessionGeneration } from "../api/tokenStore";
 import {
   HEALTH_URL,
   STATIC_BASE_URL,
@@ -198,6 +199,13 @@ export function rawFetch(): typeof fetch {
   return realFetch ?? fetch;
 }
 
+/** An abort, like a caller's: never woken for nor retried. */
+function identityChangedAbort(): Error {
+  const error = new Error("Identity changed since the request was sent");
+  error.name = "AbortError";
+  return error;
+}
+
 /**
  * Installe (une seule fois) un wrapper global de `fetch` qui, sur échec d'une
  * requête vers le backend (erreur réseau ou 502/503/504), réveille le
@@ -227,11 +235,22 @@ export function installBackendWake(): void {
       return original(input, init);
     }
 
+    // The replay below re-sends the request as built, with the token of the
+    // identity it was started for: after a login, logout, expired session or
+    // either end of a support access during the wake, it is dropped (#893).
+    const startedIn = getSessionGeneration();
+    const replay = (): Promise<Response> => {
+      if (startedIn !== getSessionGeneration()) {
+        throw identityChangedAbort();
+      }
+      return original(input, init);
+    };
+
     try {
       const res = await original(input, init);
       if (isBackendDownStatus(res.status)) {
         const ready = await ensureBackendAwake();
-        if (ready) return original(input, init);
+        if (ready) return await replay();
       }
       return res;
     } catch (err) {
@@ -242,7 +261,7 @@ export function installBackendWake(): void {
       if (err instanceof Error && err.name === "AbortError") throw err;
       // Erreur réseau pure (app endormie → connexion refusée / timeout).
       const ready = await ensureBackendAwake();
-      if (ready) return original(input, init);
+      if (ready) return replay();
       throw err;
     }
   };

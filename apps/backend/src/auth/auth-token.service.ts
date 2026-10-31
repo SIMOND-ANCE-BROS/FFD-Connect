@@ -4,7 +4,11 @@ import { Prisma } from "@prisma/client";
 import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { hashToken } from "../utils/token-hash.util";
-import { accountStatusSelect, idOnlySelect } from "../utils/prisma-selects";
+import {
+  accountStatusSelect,
+  idOnlySelect,
+  refreshTokenRotationSelect,
+} from "../utils/prisma-selects";
 import { ACCOUNT_DISABLED_MESSAGE, accountBlockReason } from "./account-status";
 import { rolesOf } from "./roles";
 import { LoginResponse } from "./auth.service";
@@ -74,29 +78,7 @@ export class AuthTokenService {
     const tokenHash = hashToken(refreshToken);
     const tokenRecord = await this.prisma.refreshToken.findUnique({
       where: { token: tokenHash },
-      include: {
-        user: {
-          select: {
-            ...accountStatusSelect,
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            role: true,
-            clubId: true,
-            clubName: true,
-            category: true,
-            ageGroup: true,
-            passportLevelLatin: true,
-            passportLevelStandard: true,
-            license: {
-              select: {
-                number: true,
-              },
-            },
-          },
-        },
-      },
+      select: refreshTokenRotationSelect,
     });
 
     if (!tokenRecord) {
@@ -115,7 +97,8 @@ export class AuthTokenService {
 
     const user = tokenRecord.user;
 
-    // A disabled account's session is over, whatever the token says.
+    // A disabled account's session is over, whatever the token says. Fast
+    // path only: the decisive check runs again under the user row lock.
     if (accountBlockReason(user)) {
       throw new UnauthorizedException(ACCOUNT_DISABLED_MESSAGE);
     }
@@ -138,12 +121,23 @@ export class AuthTokenService {
       // User row first, then token rows: the same lock order as every
       // revocation, so a concurrent "revoke all" cannot miss the new token.
       await lockUserSessions(tx, user.id);
+      // Status read again under the lock (#884): a disable (account or club)
+      // that committed while this refresh waited is seen here, so no token
+      // is issued after it. A disable that commits later revokes the token
+      // inserted here — it takes the same user row lock first.
+      const status = await tx.user.findUnique({
+        where: { id: user.id },
+        select: accountStatusSelect,
+      });
+      if (!status || accountBlockReason(status)) {
+        return "blocked";
+      }
       const consumed = await tx.refreshToken.updateMany({
         where: { id: tokenRecord.id, revoked: false, expiresAt: { gt: now } },
         data: { revoked: true, revokedAt: now },
       });
       if (consumed.count !== 1) {
-        return false;
+        return "lost";
       }
       // The new token stays in its parent's family (a pre-#687 parent's id
       // becomes the family id, joining the chain to its root).
@@ -158,10 +152,13 @@ export class AuthTokenService {
         data: { lastLoginAt: now },
         select: idOnlySelect,
       });
-      return true;
+      return "rotated";
     });
 
-    if (!rotated) {
+    if (rotated === "blocked") {
+      throw new UnauthorizedException(ACCOUNT_DISABLED_MESSAGE);
+    }
+    if (rotated !== "rotated") {
       throw new UnauthorizedException(INVALID_REFRESH_TOKEN);
     }
 

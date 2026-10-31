@@ -262,6 +262,15 @@ export class AdminClubsService {
       if (!active) assertClubNotStoreReview(current, "disable");
       if ((current.disabledAt === null) === active) return;
 
+      if (!active) {
+        // The club's CLUB accounts, locked like every change to a user's
+        // sessions (#884): a refresh in flight has either committed (its new
+        // token is revoked below) or waits, then reads the club disabled and
+        // issues nothing. Id order keeps concurrent lockers deadlock-free.
+        await tx.$queryRaw(
+          Prisma.sql`SELECT id FROM "User" WHERE "clubId" = ${clubId} AND role = 'CLUB' ORDER BY id FOR UPDATE`,
+        );
+      }
       await tx.club.update({
         where: { id: clubId },
         data: { disabledAt: active ? null : new Date() },

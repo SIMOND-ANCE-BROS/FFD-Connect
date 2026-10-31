@@ -7,8 +7,11 @@
 import { BACKEND_URL } from "../config";
 import { client } from "./generated/client.gen";
 import { refreshSession } from "./sessionRefresh";
-import { getAccessToken } from "./tokenStore";
+import { getAccessToken, getSessionGeneration } from "./tokenStore";
 import { usage } from "../services/analytics/usage";
+
+/** Identity generation each request was sent under (see services/api.ts). */
+const sentUnder = new WeakMap<Request, number>();
 
 // BACKEND_URL already includes the /api/v1 prefix (both dev and prod), so the
 // generated client uses it as-is. Appending /api/v1 again would double it.
@@ -22,10 +25,14 @@ client.setConfig({
 // TokenStoreUnavailableError: the request is aborted (returned as `error`)
 // rather than sent anonymously — never treated as "logged out".
 client.interceptors.request.use(async (request) => {
+  const startedIn = getSessionGeneration();
   const token = await getAccessToken();
   if (token) {
     request.headers.set("Authorization", `Bearer ${token}`);
   }
+  // Only a request whose token read did not straddle an identity change
+  // may be replayed below (#893).
+  if (startedIn === getSessionGeneration()) sentUnder.set(request, startedIn);
   return request;
 });
 
@@ -46,6 +53,10 @@ client.interceptors.response.use(async (response, request) => {
   if (method !== "GET" && method !== "HEAD") {
     return response;
   }
+  // Identity changed since the request was sent (login, logout, support
+  // access, #893): its replay would read the next account's data for a
+  // screen of the previous one. The 401 is returned as is.
+  if (sentUnder.get(request) !== getSessionGeneration()) return response;
 
   const retried = new Request(request, {});
   retried.headers.set("Authorization", `Bearer ${newToken}`);

@@ -397,6 +397,12 @@ export const AuthService = {
       const currentConfig = await AuthService.getAuthConfig();
       const roles = rolesFrom(user);
 
+      // Defence in depth (#892): the new account starts from an empty server
+      // cache (memory + persisted copy) and per-account state, whatever a
+      // previous session left behind. Only once the credentials are accepted
+      // — a failed attempt changes nothing — and before the new tokens, so
+      // nothing refetched in between can be this account's. Never throws.
+      await runSessionEndCleanups();
       // Tokens first, explicitly (saveAuthConfig writes preferences only):
       // isLoggedIn must never be persisted without the session behind it.
       await setTokens({ authToken: access_token, refreshToken: refresh_token });
@@ -485,6 +491,8 @@ export const AuthService = {
       const currentConfig = await AuthService.getAuthConfig();
       const roles = rolesFrom(user);
 
+      // Same as login (#892): a new account starts from an empty cache.
+      await runSessionEndCleanups();
       await setTokens({ authToken: access_token, refreshToken: refresh_token });
       // A fresh session is never an impersonation (#598 review).
       await dropImpersonationBackup();
