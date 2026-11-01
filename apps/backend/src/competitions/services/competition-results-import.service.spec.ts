@@ -557,8 +557,9 @@ describe("CompetitionResultsImportService (#652)", () => {
 
     it("never re-attaches a ranking older than the erasure to the new holder of the number", async () => {
       erasedNumber();
-      // Registered after the erasure, on a competition held before it.
-      heldSince(new Date("2026-07-01T00:00:00Z"));
+      // An account older than everything, on a competition held before the
+      // erasure: the erasure date alone keeps it anonymised.
+      heldSince(new Date("2025-01-01T00:00:00Z"));
       prisma.competition.findUnique.mockResolvedValue({
         date: new Date("2026-02-01T00:00:00Z"),
         endDate: null,
@@ -625,7 +626,7 @@ describe("CompetitionResultsImportService (#652)", () => {
       });
     });
 
-    it("keeps the erasure for a competition held the day of the erasure", async () => {
+    it("keeps the erasure for a competition starting at the very instant of the erasure", async () => {
       erasedNumber();
       heldSince(new Date("2025-01-01T00:00:00Z"));
       prisma.competition.findUnique.mockResolvedValue({

@@ -231,7 +231,14 @@ function preserveScrubbedIdentity(
   return kept;
 }
 
-/** Living account holding a licence number, and since when it exists. */
+/**
+ * Living account holding a licence number, and since when it exists.
+ * The account's creation stands for the date it took the number: a free
+ * licence is only ever claimed by a new account at registration
+ * (`linkUnclaimedLicence`, #890); renewal and admin edits cannot take an
+ * existing number. A path attaching a free licence to an OLDER account must
+ * record a claim date instead (#899).
+ */
 interface LicenceHolder {
   userId: string;
   since: Date;
@@ -320,6 +327,7 @@ export class CompetitionResultsImportService {
     }
     const competition = await this.prisma.competition.findUnique({
       where: { id: competitionId },
+      // Its start date bounds the erasure lift (#899): the cautious bound.
       select: competitionDaysSelect,
     });
     if (!competition) {
