@@ -391,9 +391,14 @@ export const licenseNumberSelect = {
   number: true,
 } as const;
 
-/** Empreinte seule d'une licence de compte supprimé (#652). */
+/**
+ * Empreinte d'une licence de compte supprimé (#652) et date du dernier
+ * effacement : seul un classement postérieur peut rattacher le numéro à un
+ * nouveau titulaire (#899).
+ */
 export const erasedResultIdentitySelect = {
   fingerprint: true,
+  createdAt: true,
 } as const;
 
 /**
@@ -405,10 +410,14 @@ export const licenseNumbersOfUserSelect = {
   number: true,
 } as const;
 
-/** Import de résultats (#652) : licence → compte, pour rattacher un couple. */
+/**
+ * Import de résultats (#652) : licence → compte, pour rattacher un couple,
+ * avec la date de création du compte (levée d'un effacement, #899).
+ */
 export const licenseNumberUserSelect = {
   number: true,
   userId: true,
+  user: { select: { createdAt: true } },
 } as const;
 
 /** Import de résultats (#652) : inscription retrouvée par épreuve + dossard. */

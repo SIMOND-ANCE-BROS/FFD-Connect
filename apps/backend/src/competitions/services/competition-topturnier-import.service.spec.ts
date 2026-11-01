@@ -63,7 +63,10 @@ describe("CompetitionTopTurnierImportService (#786)", () => {
 
   beforeEach(async () => {
     prisma = mockDeep<PrismaClient>();
-    prisma.competition.findUnique.mockResolvedValue({ id: "comp-1" } as never);
+    prisma.competition.findUnique.mockResolvedValue({
+      date: new Date("2026-06-13T00:00:00Z"),
+      endDate: null,
+    } as never);
     prisma.event.findMany.mockImplementation(((args: {
       where: { id?: unknown };
     }) =>
