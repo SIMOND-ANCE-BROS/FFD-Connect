@@ -69,7 +69,9 @@ overrides:
   qs: '^6.16.0'
   esbuild: '>=0.28.1'
   '@tootallnate/once': '>=2.0.1'
-  joi: '^18.2.5'
+  # joi : plancher remonte a ^18.3.1 le 2026-11-01 (GHSA-4528-x5fx-h6hg, high,
+  # vulnerable < 18.3.1 dans la ligne 18).
+  joi: '^18.3.1'
   smol-toml: '^1.7.1'
   yaml: '>=2.8.3'
   # websocket-driver GHSA-xv26-6w52-cph6 (CRITICAL, 2026) — transitive via
@@ -247,9 +249,8 @@ overrides:
   #
   # Volontairement absents le 2026-10-07 (aucun correctif reel) :
   #  - http-cache-semantics : la 4.3.0 (2026-10-04) sort de la plage de l'avis
-  #    (<=4.2.0) mais ne corrige PAS max-stale (seul le Vary `*` est corrige ;
-  #    le correctif max-stale est la PR amont #62, encore ouverte). La poser
-  #    fermerait l'alerte sans corriger la faille. Reste dans audit-exceptions.json.
+  #    (<=4.2.0) mais ne corrige PAS max-stale. L'avis GHSA-ch52-4w7c-c8xp a
+  #    ete retire par GitHub le 2026-10-28 : exception supprimee le 2026-11-01.
   #  - sprintf-js (GHSA-hp3w-g68c-fv3c, medium, <=1.1.3 = derniere version) :
   #    tire par argparse@1 <- js-yaml@3 <- @istanbuljs/load-nyc-config
   #    (couverture Jest). js-yaml@3 n'utilise argparse que dans son CLI ; les
@@ -272,7 +273,9 @@ overrides:
   'launch-editor@<2.14.2': '^2.14.2'
   # follow-redirects (GHSA-8r9p-f939-6h3c, GHSA-q3jh-wrc6-jgq8) : corrige en
   # 1.16.1, meme ligne. Transitif via axios (backend + client).
-  'follow-redirects@<1.16.1': '^1.16.1'
+  # 2026-11-01 : GHSA-mrwp-f3q8-3g9p (high, >=1.16.0 <=1.16.1) -> plancher
+  # remonte a 1.16.2, meme ligne 1.x.
+  'follow-redirects@<1.16.2': '^1.16.2'
   # ajv v6 (GHSA-2g4f-4pwh-qvx6, medium) : l'exclusion de juillet disait « pas
   # de 6.14.0 » ; elle est publiee depuis. Forme bornee a la ligne 6 : les
   # consommateurs de la v8 ne bougent pas.

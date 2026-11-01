@@ -49,7 +49,7 @@ overrides:
   qs: ^6.16.0
   esbuild: '>=0.28.1'
   '@tootallnate/once': '>=2.0.1'
-  joi: ^18.2.5
+  joi: ^18.3.1
   smol-toml: ^1.7.1
   yaml: '>=2.8.3'
   websocket-driver: '>=0.7.5'
@@ -79,7 +79,7 @@ overrides:
   postcss-selector-parser@<7.1.6: ^7.1.6
   vite@>=8.0.0 <8.3.5: ^8.3.5
   launch-editor@<2.14.2: ^2.14.2
-  follow-redirects@<1.16.1: ^1.16.1
+  follow-redirects@<1.16.2: ^1.16.2
   ajv@>=6.0.0 <6.14.0: ^6.14.0
   undici@>=8.0.0 <8.12.2: ^8.12.2
   node-forge@<1.4.2: ^1.4.2
@@ -7986,8 +7986,8 @@ packages:
     engines: {node: '>=18'}
     deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
-  follow-redirects@1.16.1:
-    resolution: {integrity: sha512-FNvFGzoMLWmE6Yj9spb/zjd7yiNCHiAW9/Tg9CXrQ8wuu32HtlJOwWO11OJafl5FfY3DxTdQ0vj42zU1kvv5jg==}
+  follow-redirects@1.16.2:
+    resolution: {integrity: sha512-/kVP2U8z596Ia0gwFrwyIeo74ta5aVmSeU1FfAUMAmcEP5EP7zydmag3SLiN64NaRKef3lxsq7i/g7ltJQDGow==}
     engines: {node: '>=4.0'}
     peerDependencies:
       debug: '*'
@@ -9012,8 +9012,8 @@ packages:
     resolution: {integrity: sha512-ekilCSN1jwRvIbgeg/57YFh8qQDNbwDb9xT/qu2DAHbFFZUicIl4ygVaAvzveMhMVr3LnpSKTNnwt8PoOfmKhQ==}
     hasBin: true
 
-  joi@18.2.9:
-    resolution: {integrity: sha512-2mD929bUVKUhOLQQEVhlf6EZ0Mlo0DeRb5MO7cViR9AXLtBauuccEtB1py9Ocxpo/P7ucnh442iY/iOwrh3IQw==}
+  joi@18.3.1:
+    resolution: {integrity: sha512-mV9M4Llh4va3NT90p7KBtQhoZqjs8xLX7EWYE4y/GG3yLF6REbIBEHSUb0UX1JXRht2w5tiLSsvmpYc5akiqIw==}
     engines: {node: '>= 20'}
 
   jose@6.2.3:
@@ -17133,7 +17133,7 @@ snapshots:
       cosmiconfig: 9.0.1(typescript@5.9.3)
       deepmerge: 4.3.1
       fast-glob: 3.3.3
-      joi: 18.2.9
+      joi: 18.3.1
       picocolors: 1.1.1
     transitivePeerDependencies:
       - typescript
@@ -17244,7 +17244,7 @@ snapshots:
 
   '@react-native-community/cli-types@20.1.3':
     dependencies:
-      joi: 18.2.9
+      joi: 18.3.1
 
   '@react-native-community/cli@20.1.3(typescript@5.9.3)':
     dependencies:
@@ -19320,7 +19320,7 @@ snapshots:
 
   axios@1.20.0:
     dependencies:
-      follow-redirects: 1.16.1
+      follow-redirects: 1.16.2
       form-data: 4.0.6
       https-proxy-agent: 5.0.1
       proxy-from-env: 2.1.0
@@ -21606,7 +21606,7 @@ snapshots:
       async: 0.2.10
       which: 1.3.1
 
-  follow-redirects@1.16.1: {}
+  follow-redirects@1.16.2: {}
 
   fontace@0.4.1:
     dependencies:
@@ -23141,7 +23141,7 @@ snapshots:
 
   jiti@2.6.1: {}
 
-  joi@18.2.9:
+  joi@18.3.1:
     dependencies:
       '@hapi/address': 5.1.1
       '@hapi/formula': 3.0.2
@@ -24550,7 +24550,7 @@ snapshots:
   passkit-generator@3.7.0:
     dependencies:
       do-not-zip: 1.0.0
-      joi: 18.2.9
+      joi: 18.3.1
       node-forge: 1.4.2
       tslib: 2.8.1
 
@@ -27072,7 +27072,7 @@ snapshots:
   wait-on@9.5.1:
     dependencies:
       axios: 1.20.0
-      joi: 18.2.9
+      joi: 18.3.1
       lodash: 4.18.1
       rxjs: 7.8.2
     transitivePeerDependencies:
