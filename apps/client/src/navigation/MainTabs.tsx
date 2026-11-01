@@ -192,6 +192,9 @@ export const MainTabs = ({ route }: MainTabsProps) => {
       <Tab.Navigator
         key={`tabs-${role}${isGuest ? "-guest" : ""}`}
         tabBar={renderTabBar}
+        // Staff land on the competitions (their working tab), not on their
+        // account card now that the License tab comes first for them.
+        initialRouteName={role === "STAFF" ? "Competitions" : undefined}
         screenOptions={{
           headerShown: false,
         }}

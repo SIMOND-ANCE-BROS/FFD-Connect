@@ -395,7 +395,17 @@ jest.mock("@react-navigation/bottom-tabs", () => {
   const { View } = require("react-native");
   return {
     createBottomTabNavigator: () => ({
-      Navigator: ({ children }: { children: React.ReactNode }) => children,
+      Navigator: ({
+        children,
+        initialRouteName,
+      }: {
+        children: React.ReactNode;
+        initialRouteName?: string;
+      }) => (
+        <View testID={`tabs-initial-${initialRouteName ?? "first"}`}>
+          {children}
+        </View>
+      ),
       Screen: ({
         component: Component,
         children,
@@ -488,6 +498,8 @@ describe("AppNavigator", () => {
 
     // Licence : carte du compte club (#234), + licence si multi-profil (#248)
     expect(getByTestId("tab-screen-License")).toBeTruthy();
+    // Club keeps landing on its dashboard (first tab).
+    expect(getByTestId("tabs-initial-first")).toBeTruthy();
 
     // Carrière = danseur, Bibliothèque = danseur/admin → pas pour le club
     expect(queryByTestId("tab-screen-Career")).toBeNull();
@@ -508,6 +520,8 @@ describe("AppNavigator", () => {
     expect(getByTestId("tab-screen-Settings")).toBeTruthy();
     // Licence : carte du compte staff (#234), + licence si multi-profil (#248)
     expect(getByTestId("tab-screen-License")).toBeTruthy();
+    // Staff land on the competitions, not on their account card.
+    expect(getByTestId("tabs-initial-Competitions")).toBeTruthy();
     // Staff : ni Carrière, ni Bibliothèque
     expect(queryByTestId("tab-screen-Career")).toBeNull();
     expect(queryByTestId("tab-screen-Library")).toBeNull();

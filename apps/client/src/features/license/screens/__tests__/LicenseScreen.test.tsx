@@ -357,7 +357,10 @@ describe("LicenseScreen Integration", () => {
 
   it("triggers PDF share on header button press", async () => {
     (useLicenseLogic as jest.Mock).mockReturnValue({
-      state: { ...mockState },
+      state: {
+        ...mockState,
+        listItems: [{ type: "FFD", data: { licenseNumber: "123" } }],
+      },
       actions: mockActions,
     });
 
@@ -498,6 +501,68 @@ describe("LicenseScreen Integration", () => {
     );
     // No pull-to-add WDSF card in the Staff space.
     expect(queryByTestId("license-screen-add-wdsf-card")).toBeNull();
+  });
+
+  describe("STAFF/CLUB account without a licence (#234)", () => {
+    const accountCard = {
+      type: "STAFF",
+      data: {
+        firstName: "Paul",
+        lastName: "Staff",
+        licenseNumber: "",
+        type: "STAFF / ORGANISATEUR",
+      },
+    };
+
+    it.each(["STAFF", "CLUB"])(
+      "offers no licence PDF, QR nor Wallet pass in the %s space",
+      async (role) => {
+        (useLicenseLogic as jest.Mock).mockReturnValue({
+          state: { ...mockState, role, listItems: [accountCard] },
+          actions: mockActions,
+        });
+
+        const { getByTestId, queryByTestId } = await render(<LicenseScreen />);
+        expect(getByTestId("license-screen-staff-card")).toBeTruthy();
+        expect(queryByTestId("license-screen-share-button")).toBeNull();
+        expect(queryByTestId("license-card-0-show-qr")).toBeNull();
+        expect(queryByTestId("apple-wallet-slot")).toBeNull();
+      },
+    );
+
+    it("offline, says the card (not a licence) was saved", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          role: "STAFF",
+          offlineSince: "2026-10-01T10:00:00.000Z",
+          listItems: [accountCard],
+        },
+        actions: mockActions,
+      });
+
+      const { getByText, queryByText } = await render(<LicenseScreen />);
+      expect(getByText(/Hors ligne — carte enregistrée le/)).toBeTruthy();
+      expect(queryByText(/licence enregistrée/)).toBeNull();
+    });
+
+    it("names the account card behind the licence for screen readers", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          role: "STAFF",
+          activeCardIndex: 1,
+          listItems: [
+            accountCard,
+            { type: "FFD", data: { licenseNumber: "FFD-42" } },
+          ],
+        },
+        actions: mockActions,
+      });
+
+      const { getByLabelText } = await render(<LicenseScreen />);
+      expect(getByLabelText("Carte du compte")).toBeTruthy();
+    });
   });
 
   it("brings the Staff card forward, without a number row nor a QR (#234)", async () => {
@@ -675,7 +740,10 @@ describe("LicenseScreen Integration", () => {
 
     it("puts the export button before the notification bell", async () => {
       (useLicenseLogic as jest.Mock).mockReturnValue({
-        state: { ...mockState },
+        state: {
+          ...mockState,
+          listItems: [{ type: "FFD", data: { licenseNumber: "123" } }],
+        },
         actions: mockActions,
       });
 
@@ -899,6 +967,29 @@ describe("LicenseScreen Integration", () => {
         expect(getByTestId("license-card-FFD")).toBeTruthy();
         expect(queryByTestId("license-card-FFD-show-qr")).toBeNull();
         expect(queryByTestId("apple-wallet-slot")).toBeNull();
+      });
+
+      it("shows no QR on the WDSF card either", async () => {
+        useAuthStore.setState({ impersonating: true });
+        (useLicenseLogic as jest.Mock).mockReturnValue({
+          state: {
+            ...mockState,
+            showWdsf: true,
+            activeCardIndex: 1,
+            listItems: [ffd, wdsf],
+          },
+          actions: mockActions,
+        });
+
+        const { queryByTestId } = await render(<LicenseScreen />);
+        expect(
+          queryByTestId("license-card-WDSF", { includeHiddenElements: true }),
+        ).toBeTruthy();
+        expect(
+          queryByTestId("license-card-WDSF-show-qr", {
+            includeHiddenElements: true,
+          }),
+        ).toBeNull();
       });
 
       it("keeps both for the licensee themself", async () => {
