@@ -378,7 +378,7 @@ jobs:
           || github.event.workflow_run.head_branch == 'master')
           && steps.check.outputs.client_changed == 'true'
         continue-on-error: true # see above
-        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
+        uses: expo/expo-github-action@9da89d3617bb88139671bad31b09c65714c2ee06 # v9
         with:
           eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
@@ -584,7 +584,7 @@ jobs:
         uses: ./.github/actions/setup-pnpm
 
       - name: Setup EAS CLI
-        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
+        uses: expo/expo-github-action@9da89d3617bb88139671bad31b09c65714c2ee06 # v9
         with:
           eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
@@ -641,7 +641,7 @@ jobs:
       # what runs after it. Never blocking: an agent failure must not cost a
       # native build. Insights are public on app.stepsecurity.io (public repo).
       - name: Harden runner (egress audit)
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         continue-on-error: true
         with:
           egress-policy: audit
@@ -672,7 +672,7 @@ jobs:
         uses: ./.github/actions/setup-pnpm
 
       - name: Setup EAS CLI
-        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
+        uses: expo/expo-github-action@9da89d3617bb88139671bad31b09c65714c2ee06 # v9
         with:
           eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
@@ -827,7 +827,7 @@ jobs:
         uses: ./.github/actions/setup-pnpm
 
       - name: Setup EAS CLI
-        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
+        uses: expo/expo-github-action@9da89d3617bb88139671bad31b09c65714c2ee06 # v9
         with:
           eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
@@ -989,7 +989,7 @@ jobs:
       # what runs after it. Never blocking: an agent failure must not cost a
       # native build. Insights are public on app.stepsecurity.io (public repo).
       - name: Harden runner (egress audit)
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         continue-on-error: true
         with:
           egress-policy: audit
@@ -1149,7 +1149,7 @@ jobs:
 
       - name: Setup EAS CLI
         if: inputs.action != 'distribute'
-        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
+        uses: expo/expo-github-action@9da89d3617bb88139671bad31b09c65714c2ee06 # v9
         with:
           eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
@@ -2831,7 +2831,7 @@ jobs:
       # what runs after it. Never blocking: an agent failure must not cost a
       # native build. Insights are public on app.stepsecurity.io (public repo).
       - name: Harden runner (egress audit)
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         continue-on-error: true
         with:
           egress-policy: audit
@@ -2862,7 +2862,7 @@ jobs:
         uses: ./.github/actions/setup-pnpm
 
       - name: Setup EAS CLI
-        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
+        uses: expo/expo-github-action@9da89d3617bb88139671bad31b09c65714c2ee06 # v9
         with:
           eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
@@ -3011,7 +3011,7 @@ jobs:
         uses: ./.github/actions/setup-pnpm
 
       - name: Setup EAS CLI
-        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
+        uses: expo/expo-github-action@9da89d3617bb88139671bad31b09c65714c2ee06 # v9
         with:
           eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
