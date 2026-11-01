@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { create } from "zustand";
 import { AuthService } from "../features/auth/services/AuthService";
 import { ClubService } from "../features/club/services/ClubService";
+import { onSessionEnd } from "../services/sessionCleanup";
 
 export type { ClubMember } from "../features/club/services/ClubService";
 
@@ -37,6 +38,11 @@ export const useClubStore = create<ClubStoreState>((set) => ({
   clubLogoUri: null,
   setClubLogoUri: (uri) => set({ clubLogoUri: uri }),
 }));
+
+// Identity change (#879): the previous account's club logo leaves the tab
+// bar with the rest of its session, at a logout and at both ends of a support
+// access.
+onSessionEnd(() => useClubStore.getState().setClubLogoUri(null));
 
 /** Hook replacement for useClubRepository() */
 export const useClubRepository = () => useClubStore((s) => s.repository);

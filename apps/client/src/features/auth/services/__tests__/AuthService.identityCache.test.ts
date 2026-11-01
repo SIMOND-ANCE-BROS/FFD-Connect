@@ -20,6 +20,7 @@ import {
   queryClient,
   shouldPersistQuery,
 } from "../../../../services/queryClient";
+import { useClubStore } from "../../../../stores/club.store";
 import { useNotificationPreferencesStore } from "../../../../stores/notificationPreferences.store";
 import { AuthService } from "../AuthService";
 
@@ -117,6 +118,13 @@ async function stopSupportAccess(): Promise<void> {
   await AuthService.stopImpersonation();
 }
 
+/** Observers of the shared query client, dropped even when a test fails. */
+const subscriptions: (() => void)[] = [];
+
+afterEach(() => {
+  subscriptions.splice(0).forEach((unsubscribe) => unsubscribe());
+});
+
 beforeEach(async () => {
   jest.clearAllMocks();
   queryClient.clear();
@@ -161,7 +169,7 @@ describe("identity change clears the previous account's data (#879)", () => {
           answer = resolve;
         }),
     });
-    const unsubscribe = observer.subscribe(() => undefined);
+    subscriptions.push(observer.subscribe(() => undefined));
     let late: (value: unknown) => void = () => undefined;
     getPreferences.mockReturnValueOnce(
       new Promise((resolve) => {
@@ -169,6 +177,7 @@ describe("identity change clears the previous account's data (#879)", () => {
       }),
     );
     const loading = useNotificationPreferencesStore.getState().load();
+    expect(observer.getCurrentResult().fetchStatus).toBe("fetching");
 
     await startSupportAccess();
     answer("admin-registration");
@@ -179,9 +188,11 @@ describe("identity change clears the previous account's data (#879)", () => {
     expect(observer.getCurrentResult().data).toBeUndefined();
     expectNothingOf("admin", queryClient);
     expect(useNotificationPreferencesStore.getState().preferences).toEqual([]);
-    unsubscribe();
   });
 
+  // The keychain switches are mocked here, so the HTTP-level identity guard
+  // (#901, covered in api.sessionGeneration.test.ts) does not move: these
+  // prove the cache cancel/clear and the stores' own session counters.
   it("an answer still in flight for the licensee never lands once the access ends", async () => {
     await startSupportAccess();
     let answer: (data: string) => void = () => undefined;
@@ -192,7 +203,7 @@ describe("identity change clears the previous account's data (#879)", () => {
           answer = resolve;
         }),
     });
-    const unsubscribe = observer.subscribe(() => undefined);
+    subscriptions.push(observer.subscribe(() => undefined));
     let late: (value: unknown) => void = () => undefined;
     getPreferences.mockReturnValueOnce(
       new Promise((resolve) => {
@@ -200,6 +211,7 @@ describe("identity change clears the previous account's data (#879)", () => {
       }),
     );
     const loading = useNotificationPreferencesStore.getState().load();
+    expect(observer.getCurrentResult().fetchStatus).toBe("fetching");
 
     await stopSupportAccess();
     answer("target-registration");
@@ -210,10 +222,9 @@ describe("identity change clears the previous account's data (#879)", () => {
     expect(observer.getCurrentResult().data).toBeUndefined();
     expectNothingOf("target", queryClient);
     expect(useNotificationPreferencesStore.getState().preferences).toEqual([]);
-    unsubscribe();
   });
 
-  it("a full round trip admin → licensee → admin leaves nothing of either side behind", async () => {
+  it("a full round trip admin → licensee → admin leaves nothing of the licensee behind", async () => {
     await useAppAs("admin");
     await startSupportAccess();
     expectNothingOf("admin", await restartedCache());
@@ -221,14 +232,108 @@ describe("identity change clears the previous account's data (#879)", () => {
     await useAppAs("target");
     await stopSupportAccess();
 
-    // Back on the admin account: none of the licensee's data, and none of
-    // the admin's pre-access data resurrected from a stale persisted copy.
+    // Back on the admin account: none of the licensee's data, in memory or
+    // after a restart.
     for (const client of [queryClient, await restartedCache()]) {
       expectNothingOf("target", client);
-      expectNothingOf("admin", client);
     }
     expect(await persistedCopy()).toBeNull();
     expect(useNotificationPreferencesStore.getState().preferences).toEqual([]);
+  });
+});
+
+describe("the target's session holds none of the admin's own profile (#879)", () => {
+  const ADMIN_CONFIG = {
+    isLoggedIn: true,
+    role: "ADMIN",
+    username: "admin@x.fr",
+    userId: "admin-id",
+    licensePhotoUri: "file:///admin-photo.jpg",
+    hasWdsfLicense: true,
+    ageGroup: "ADMIN-AGE",
+    category: "ADMIN-CAT",
+    level: "ADMIN-LEVEL",
+    passportLevelLatin: "ADMIN-LATIN",
+    passportLevelStandard: "ADMIN-STD",
+    registrationPolicy: "ADMIN-POLICY",
+    clubName: "Admin club",
+    clubLogoUri: "file:///admin-club.png",
+    clubDashboardConfig: '{"admin":true}',
+    lastUser: "admin@x.fr",
+    lastSpace: "ADMIN",
+    isStoreReview: true,
+    appTheme: "dark",
+  };
+
+  async function impersonateFrom(config: object): Promise<void> {
+    await AsyncStorage.setItem("auth_config", JSON.stringify(config));
+    post.mockResolvedValueOnce({
+      data: {
+        access_token: "target-token",
+        user: { role: "LICENSEE", email: "target@x.fr" },
+      },
+    });
+    await AuthService.impersonate("target-1", "Target");
+  }
+
+  it("start: no admin profile field in the target's config, preferences kept", async () => {
+    await impersonateFrom(ADMIN_CONFIG);
+
+    const config = await AuthService.getAuthConfig();
+    expect(config).toMatchObject({
+      impersonating: true,
+      username: "target@x.fr",
+      role: "LICENSEE",
+      appTheme: "dark",
+    });
+    // Back to the default, not the admin's WDSF licence.
+    expect(config.hasWdsfLicense).not.toBe(true);
+    expect(JSON.stringify(config)).not.toMatch(/admin/i);
+  });
+
+  it("end: the admin's own profile comes back from the backup", async () => {
+    await impersonateFrom(ADMIN_CONFIG);
+    post.mockResolvedValueOnce({ data: {} });
+
+    await AuthService.stopImpersonation();
+
+    const config = await AuthService.getAuthConfig();
+    expect(config).toMatchObject({
+      username: "admin@x.fr",
+      userId: "admin-id",
+      licensePhotoUri: "file:///admin-photo.jpg",
+      clubLogoUri: "file:///admin-club.png",
+      hasWdsfLicense: true,
+    });
+    expect(config.impersonating).toBeUndefined();
+  });
+
+  it("end without a readable backup: none of the target's data stays", async () => {
+    await impersonateFrom(ADMIN_CONFIG);
+    await AuthService.saveAuthConfig({
+      ...(await AuthService.getAuthConfig()),
+      userId: "target-id",
+      licensePhotoUri: "file:///target-photo.jpg",
+      category: "TARGET-CAT",
+      clubLogoUri: "file:///target-club.png",
+    });
+    await AsyncStorage.removeItem("impersonation_backup");
+    post.mockResolvedValueOnce({ data: {} });
+
+    await AuthService.stopImpersonation();
+
+    const config = await AuthService.getAuthConfig();
+    expect(config.isLoggedIn).toBe(false);
+    expect(config.impersonating).toBeUndefined();
+    expect(JSON.stringify(config)).not.toMatch(/target/i);
+  });
+
+  it("the club logo shown in the tab bar leaves with the previous account", async () => {
+    useClubStore.getState().setClubLogoUri("file:///admin-club.png");
+
+    await impersonateFrom(ADMIN_CONFIG);
+
+    expect(useClubStore.getState().clubLogoUri).toBeNull();
   });
 });
 
