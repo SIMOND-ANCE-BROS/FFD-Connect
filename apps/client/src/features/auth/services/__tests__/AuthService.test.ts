@@ -134,6 +134,37 @@ describe("AuthService", () => {
     expect(mockLogger.info).toHaveBeenCalled();
   });
 
+  it("empties the previous session's cache before writing the new tokens (#892)", async () => {
+    const order: string[] = [];
+    mockRunSessionEndCleanups.mockImplementationOnce(async () => {
+      order.push("cleanups");
+    });
+    (setTokens as jest.Mock).mockImplementationOnce(async () => {
+      order.push("setTokens");
+    });
+    (api.post as jest.Mock).mockResolvedValue({
+      data: {
+        access_token: "token",
+        user: { role: "LICENSEE", email: "u@test.com" },
+      },
+    });
+
+    await AuthService.login("u@test.com", "secret");
+
+    expect(order).toEqual(["cleanups", "setTokens"]);
+  });
+
+  it("keeps the cache when the credentials are refused (#892)", async () => {
+    (api.post as jest.Mock).mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 401 },
+    });
+
+    await expect(AuthService.login("u@test.com", "bad")).rejects.toThrow();
+
+    expect(mockRunSessionEndCleanups).not.toHaveBeenCalled();
+  });
+
   it("throws friendly error on 401", async () => {
     (api.post as jest.Mock).mockRejectedValue({
       isAxiosError: true,

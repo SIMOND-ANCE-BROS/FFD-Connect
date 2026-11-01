@@ -413,6 +413,28 @@ describe("AdminClubsService", () => {
       });
     });
 
+    it("locks the club's CLUB accounts before disabling the club (#884)", async () => {
+      prisma.club.findUnique.mockResolvedValue({
+        id: "c1",
+        disabledAt: null,
+      } as never);
+
+      await service.setStatus("admin-1", "c1", false);
+
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+      const [sql] = prisma.$queryRaw.mock.calls[0] as unknown as [Prisma.Sql];
+      expect(sql.sql).toBe(
+        `SELECT id FROM "User" WHERE "clubId" = ? AND role = 'CLUB' ORDER BY id FOR UPDATE`,
+      );
+      expect(sql.values).toEqual(["c1"]);
+      expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.club.update.mock.invocationCallOrder[0],
+      );
+      expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.refreshToken.updateMany.mock.invocationCallOrder[0],
+      );
+    });
+
     it("reactivates without touching sessions", async () => {
       prisma.club.findUnique.mockResolvedValue({
         id: "c1",
@@ -424,6 +446,7 @@ describe("AdminClubsService", () => {
       });
       expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
       expect(prisma.deviceToken.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
       expect(audit.record).toHaveBeenCalledWith(
         prisma,
         expect.objectContaining({ action: "CLUB_ENABLE" }),

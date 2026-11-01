@@ -25,6 +25,7 @@ describe("AuthTokenService", () => {
     },
     user: {
       update: jest.fn(),
+      findUnique: jest.fn(),
     },
     $queryRaw: jest.fn(),
     $transaction: jest.fn(),
@@ -57,6 +58,14 @@ describe("AuthTokenService", () => {
         cb(mockPrismaService),
     );
     mockPrismaService.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+    // Status re-read under the user lock (#884): active by default.
+    mockPrismaService.user.findUnique.mockResolvedValue({
+      role: UserRole.LICENSEE,
+      extraRoles: [],
+      disabledAt: null,
+      isStoreReview: false,
+      club: null,
+    });
   });
 
   afterEach(async () => {
@@ -709,15 +718,98 @@ describe("AuthTokenService", () => {
       await expect(service.refreshAccessToken("x")).rejects.toThrow();
       expect(mockPrismaService.refreshToken.findUnique).toHaveBeenCalledWith(
         expect.objectContaining({
-          include: {
+          select: expect.objectContaining({
             user: {
               select: expect.objectContaining({
                 disabledAt: true,
                 club: { select: { disabledAt: true } },
               }) as unknown,
             },
-          },
+          }) as unknown,
         }),
+      );
+    });
+
+    describe("status re-read under the user lock (#884)", () => {
+      const activeToken = (role: UserRole = UserRole.LICENSEE) => ({
+        id: "rt-1",
+        userId: "u1",
+        familyId: "rt-1",
+        revoked: false,
+        revokedAt: null,
+        expiresAt: new Date(Date.now() + 86_400_000),
+        user: {
+          id: "u1",
+          email: "a@b.c",
+          role,
+          extraRoles: [],
+          disabledAt: null,
+          club: role === UserRole.CLUB ? { disabledAt: null } : null,
+          license: null,
+        },
+      });
+
+      it("reads the status after taking the lock, before consuming the token", async () => {
+        mockPrismaService.refreshToken.findUnique.mockResolvedValue(
+          activeToken(),
+        );
+        mockJwtService.sign.mockReturnValue("jwt");
+
+        await service.refreshAccessToken("plain");
+
+        const lockOrder =
+          mockPrismaService.$queryRaw.mock.invocationCallOrder[0];
+        const statusOrder =
+          mockPrismaService.user.findUnique.mock.invocationCallOrder[0];
+        const consumeOrder =
+          mockPrismaService.refreshToken.updateMany.mock.invocationCallOrder[0];
+        expect(lockOrder).toBeLessThan(statusOrder);
+        expect(statusOrder).toBeLessThan(consumeOrder);
+        expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
+          where: { id: "u1" },
+          select: expect.objectContaining({
+            disabledAt: true,
+            club: { select: { disabledAt: true } },
+          }) as unknown,
+        });
+      });
+
+      it.each([
+        [
+          "the account was disabled",
+          UserRole.LICENSEE,
+          { role: UserRole.LICENSEE, disabledAt: new Date(), club: null },
+        ],
+        [
+          "the CLUB account's club was disabled",
+          UserRole.CLUB,
+          {
+            role: UserRole.CLUB,
+            disabledAt: null,
+            club: { disabledAt: new Date() },
+          },
+        ],
+        ["the account was deleted", UserRole.LICENSEE, null],
+      ])(
+        "issues nothing when %s while the refresh waited",
+        async (_label, role, status) => {
+          mockPrismaService.refreshToken.findUnique.mockResolvedValue(
+            activeToken(role),
+          );
+          mockPrismaService.user.findUnique.mockResolvedValue(status);
+
+          await expect(service.refreshAccessToken("plain")).rejects.toThrow(
+            new UnauthorizedException(
+              "Compte désactivé. Contactez la fédération.",
+            ),
+          );
+          expect(
+            mockPrismaService.refreshToken.updateMany,
+          ).not.toHaveBeenCalled();
+          expect(mockPrismaService.refreshToken.create).not.toHaveBeenCalled();
+          expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+          expect(mockJwtService.sign).not.toHaveBeenCalled();
+        },
       );
     });
   });

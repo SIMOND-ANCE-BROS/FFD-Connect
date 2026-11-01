@@ -11,6 +11,10 @@ import { RootStackParamList } from "../../../navigation/types";
 import { analytics } from "../../../services/analytics";
 import { createLogger } from "../../../utils/logger";
 import {
+  currentSessionGeneration,
+  isSameSession,
+} from "../../../utils/sessionGeneration";
+import {
   cancelDeadlineNotificationForCompetition,
   clearDeadlineMarker,
 } from "../../../utils/scheduleDeadlineNotification";
@@ -293,18 +297,26 @@ export const useCompetitionDetailLogic = (
         useOfflineQueueStore.getState().items,
       ),
     onMutate: async ({ eventId }) => {
+      // Identity the cache writes below belong to (#892).
+      const sessionGeneration = currentSessionGeneration();
       await queryClient.cancelQueries({ queryKey: ["myRegistrations"] });
       const previousRegistrations =
         queryClient.getQueryData<CompetitionRegistration[]>([
           "myRegistrations",
         ]) ?? [];
-      queryClient.setQueryData<CompetitionRegistration[]>(
-        ["myRegistrations"],
-        [...previousRegistrations, { eventId } as CompetitionRegistration],
-      );
-      return { previousRegistrations };
+      if (isSameSession(sessionGeneration)) {
+        queryClient.setQueryData<CompetitionRegistration[]>(
+          ["myRegistrations"],
+          [...previousRegistrations, { eventId } as CompetitionRegistration],
+        );
+      }
+      return { previousRegistrations, sessionGeneration };
     },
     onError: (err, _variables, context) => {
+      // Session over since (#892): the rollback would put the previous
+      // account's registrations back into the emptied cache. Nothing to say
+      // either — the screen that asked is gone.
+      if (!isSameSession(context?.sessionGeneration)) return;
       queryClient.setQueryData(
         ["myRegistrations"],
         context?.previousRegistrations,
@@ -318,12 +330,14 @@ export const useCompetitionDetailLogic = (
       }
       Alert.alert("Erreur", ERROR_MESSAGES.REGISTRATION_FAILED);
     },
-    onSettled: () => {
+    onSettled: (_data, _error, _variables, context) => {
+      if (!isSameSession(context?.sessionGeneration)) return;
       queryClient
         .invalidateQueries({ queryKey: ["myRegistrations"] })
         .catch(() => {});
     },
     onSuccess: (outcome, _variables, context) => {
+      if (!isSameSession(context.sessionGeneration)) return;
       if (outcome.status !== "sent") {
         onQueuedOutcome("register", outcome, context.previousRegistrations);
         return;
@@ -353,30 +367,38 @@ export const useCompetitionDetailLogic = (
         useOfflineQueueStore.getState().items,
       ),
     onMutate: async (eventId) => {
+      // Identity the cache writes below belong to (#892).
+      const sessionGeneration = currentSessionGeneration();
       await queryClient.cancelQueries({ queryKey: ["myRegistrations"] });
       const previousRegistrations =
         queryClient.getQueryData<CompetitionRegistration[]>([
           "myRegistrations",
         ]) ?? [];
-      queryClient.setQueryData<CompetitionRegistration[]>(
-        ["myRegistrations"],
-        previousRegistrations.filter((r) => r.eventId !== eventId),
-      );
-      return { previousRegistrations };
+      if (isSameSession(sessionGeneration)) {
+        queryClient.setQueryData<CompetitionRegistration[]>(
+          ["myRegistrations"],
+          previousRegistrations.filter((r) => r.eventId !== eventId),
+        );
+      }
+      return { previousRegistrations, sessionGeneration };
     },
     onError: (_err, _eventId, context) => {
+      // Session over since (#892): see registerMutation.
+      if (!isSameSession(context?.sessionGeneration)) return;
       queryClient.setQueryData(
         ["myRegistrations"],
         context?.previousRegistrations,
       );
       Alert.alert("Erreur", ERROR_MESSAGES.UNREGISTRATION_FAILED);
     },
-    onSettled: () => {
+    onSettled: (_data, _error, _eventId, context) => {
+      if (!isSameSession(context?.sessionGeneration)) return;
       queryClient
         .invalidateQueries({ queryKey: ["myRegistrations"] })
         .catch(() => {});
     },
     onSuccess: (outcome, _eventId, context) => {
+      if (!isSameSession(context.sessionGeneration)) return;
       if (outcome.status !== "sent") {
         onQueuedOutcome("unregister", outcome, context.previousRegistrations);
         return;

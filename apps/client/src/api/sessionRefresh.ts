@@ -136,8 +136,11 @@ async function performRefresh(): Promise<string | null> {
       }
       logger.warn("Refresh token invalide/expiré — déconnexion");
       // Session over: the offline license snapshot (PII + signed QR) goes with
-      // it, like on an explicit logout. Not via runSessionEndCleanups — that
-      // registry also runs on the biometric lock, which keeps the snapshot.
+      // it, like on an explicit logout. Cleared explicitly here, then the
+      // session-end registry runs (endSessionState, #879). The snapshot is
+      // not in that registry: logout() also runs it when it only locks the
+      // app for a biometric unlock, which keeps the snapshot for the same
+      // user.
       await clearLicenseSnapshot();
       await endSessionState();
       // Notifie le store pour que l'UI reflète la déconnexion (au lieu de rester

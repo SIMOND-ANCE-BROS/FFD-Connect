@@ -58,6 +58,8 @@ const mockGetAccessToken = jest.fn();
 jest.mock("../../api/tokenStore", () => ({
   getAccessToken: (): Promise<string | undefined> =>
     mockGetAccessToken() as Promise<string | undefined>,
+  // Same identity throughout (see api.sessionGeneration.test.ts, #893).
+  getSessionGeneration: (): number => 0,
 }));
 
 describe("api", () => {

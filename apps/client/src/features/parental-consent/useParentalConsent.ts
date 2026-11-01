@@ -6,6 +6,10 @@ import {
   type ParentalConsentStateDto,
 } from "../../services/api/parental-consent-api";
 import { useAuthStore } from "../../stores/auth.store";
+import {
+  currentSessionGeneration,
+  isSameSession,
+} from "../../utils/sessionGeneration";
 
 /**
  * Parental consent state of the account the session acts as (#61). Scoped
@@ -73,9 +77,13 @@ export function useParentalConsent() {
   );
 
   const request = useMutation({
+    // Identity the answer belongs to (#892).
+    onMutate: () => ({ sessionGeneration: currentSessionGeneration() }),
     mutationFn: (parentEmail: string) =>
       ParentalConsentApi.request(parentEmail),
-    onSuccess: (data) => {
+    onSuccess: (data, _parentEmail, context) => {
+      // Never into the next account's cache after a session change.
+      if (!isSameSession(context.sessionGeneration)) return;
       queryClient.setQueryData(queryKey, data);
     },
   });

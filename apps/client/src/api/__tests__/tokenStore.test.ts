@@ -6,6 +6,7 @@ import {
   clearImpersonationBackupTokens,
   clearTokens,
   getAccessToken,
+  getSessionGeneration,
   getTokens,
   restoreFromImpersonation,
   setImpersonationBackupTokens,
@@ -731,5 +732,63 @@ describe("setTokensIfRefreshIs (#598 review)", () => {
       "r2",
       OPTS,
     );
+  });
+});
+
+describe("identity generation (#892, #893)", () => {
+  const SESSION = { "ffd.session.access": "a", "ffd.session.refresh": "r" };
+
+  /** Whether the generation moved across `change`. */
+  async function moves(change: () => Promise<unknown>): Promise<boolean> {
+    const before = getSessionGeneration();
+    await change();
+    return getSessionGeneration() !== before;
+  }
+
+  it("moves on a login (setTokens)", async () => {
+    keychain({});
+    expect(
+      await moves(() => setTokens({ authToken: "a", refreshToken: "r" })),
+    ).toBe(true);
+  });
+
+  it("moves on a logout (clearTokens)", async () => {
+    keychain(SESSION);
+    expect(await moves(() => clearTokens())).toBe(true);
+  });
+
+  it("moves at both ends of a support access", async () => {
+    keychain(SESSION);
+    expect(await moves(() => switchToImpersonation("target"))).toBe(true);
+    expect(await moves(() => restoreFromImpersonation())).toBe(true);
+  });
+
+  it("moves when a rejected refresh ends the session, not otherwise", async () => {
+    keychain(SESSION);
+    expect(await moves(() => clearTokensIfRefreshIs("other"))).toBe(false);
+    expect(await moves(() => clearTokensIfRefreshIs("r"))).toBe(true);
+  });
+
+  it("does NOT move on a silent refresh: same identity, its replay must go", async () => {
+    keychain(SESSION);
+    expect(
+      await moves(() =>
+        setTokensIfRefreshIs("r", { authToken: "a2", refreshToken: "r2" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("has already moved while the switch is under way, and moves again after", async () => {
+    keychain(SESSION);
+    const before = getSessionGeneration();
+    let during = before;
+    setItemAsync.mockImplementation(() => {
+      during = getSessionGeneration();
+      return Promise.resolve();
+    });
+    await setTokens({ authToken: "b", refreshToken: "rb" });
+    // A request stamped mid-switch is told apart from both sides of it.
+    expect(during).not.toBe(before);
+    expect(getSessionGeneration()).not.toBe(during);
   });
 });

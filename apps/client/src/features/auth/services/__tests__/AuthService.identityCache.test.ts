@@ -182,3 +182,51 @@ describe("identity change clears the previous account's data (#879)", () => {
     unsubscribe();
   });
 });
+
+describe("login starts from an empty cache (#892)", () => {
+  const acceptLoginOf = (email: string) =>
+    post.mockResolvedValueOnce({
+      data: {
+        access_token: `${email}-access`,
+        refresh_token: `${email}-refresh`,
+        user: { id: email, role: "LICENSEE", email },
+      },
+    });
+
+  it("nothing a previous account left behind, in memory or after a restart", async () => {
+    // Data of a previous account still there (a write that slipped past a
+    // session end, an older build…).
+    await useAppAs("previous");
+    expect(await persistedCopy()).toContain("previous-registration");
+    acceptLoginOf("b@x.fr");
+
+    await AuthService.login("b@x.fr", "pw");
+
+    expectNothingOf("previous", queryClient);
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+    expect(await persistedCopy()).toBeNull();
+    expectNothingOf("previous", await restartedCache());
+    expect(useNotificationPreferencesStore.getState().preferences).toEqual([]);
+  });
+
+  it("a rejected login leaves the current cache alone", async () => {
+    await useAppAs("current");
+    post.mockRejectedValueOnce(new Error("401"));
+
+    await expect(AuthService.login("b@x.fr", "bad")).rejects.toThrow();
+
+    expect(JSON.stringify(queryClient.getQueryData(REGISTRATIONS))).toContain(
+      "current-registration",
+    );
+  });
+
+  it("register starts from an empty cache too", async () => {
+    await useAppAs("previous");
+    acceptLoginOf("new@x.fr");
+
+    await AuthService.register("new@x.fr", "pw", "123", "Doe", "Jane");
+
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+    expect(await persistedCopy()).toBeNull();
+  });
+});

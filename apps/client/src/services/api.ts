@@ -1,4 +1,9 @@
-import axios, { AxiosError, AxiosInstance, AxiosRequestConfig } from "axios";
+import axios, {
+  AxiosError,
+  AxiosInstance,
+  AxiosRequestConfig,
+  CanceledError,
+} from "axios";
 import {
   API_RETRY_INITIAL_DELAY_MS,
   API_RETRY_MAX_RETRIES,
@@ -14,7 +19,7 @@ import {
 import { wakeBackend } from "../utils/backendWake";
 import { usage } from "./analytics/usage";
 import { refreshSession } from "../api/sessionRefresh";
-import { getAccessToken } from "../api/tokenStore";
+import { getAccessToken, getSessionGeneration } from "../api/tokenStore";
 import { isTokenStoreUnavailable } from "../api/tokenStoreErrors";
 
 const logger = createLogger("api");
@@ -23,6 +28,30 @@ const api: AxiosInstance = axios.create({
   baseURL: API_URL,
   timeout: API_TIMEOUT_MS,
 });
+
+/**
+ * Identity generation (tokenStore) the request was first sent under (#893).
+ * Kept on the config, so every retry/replay below — which re-sends that same
+ * config — carries it.
+ */
+interface SessionStamp {
+  _sessionGeneration?: number;
+}
+
+/**
+ * Cancels a request that would go out under another identity than the one it
+ * was started for (#893): a wake replay, 401 replay, 429 retry or network/5xx
+ * retry landing after a login, a logout, an expired session or either end of
+ * a support access. Without it the replay would re-read the token and send
+ * account A's write (registration, partner name…) as account B. A cancel
+ * (ERR_CANCELED) is never retried, woken for, nor queued offline
+ * (registrationQueue `isNetworkError`).
+ */
+function assertSameSession(config: SessionStamp): void {
+  if (config._sessionGeneration !== getSessionGeneration()) {
+    throw new CanceledError("Identity changed since the request was sent");
+  }
+}
 
 // Request Interceptor — never log auth_config, authToken, or Authorization header values.
 api.interceptors.request.use(
@@ -38,6 +67,12 @@ api.interceptors.request.use(
       }
     }
 
+    // First dispatch: stamp it with the current identity generation. A retry
+    // or replay keeps its stamp and is cancelled once the identity moved on.
+    const stamped = config as typeof config & SessionStamp;
+    stamped._sessionGeneration ??= getSessionGeneration();
+    assertSameSession(stamped);
+
     // Inject Auth Token (from SecureStore via tokenStore)
     try {
       const token = await getAccessToken();
@@ -51,6 +86,9 @@ api.interceptors.request.use(
       if (isTokenStoreUnavailable(error)) throw error;
       logger.error("Error retrieving auth token", error);
     }
+    // The token read is async: an identity change landing meanwhile may have
+    // handed over the next account's token (or none). Never send it as such.
+    assertSameSession(stamped);
 
     return config;
   },
@@ -86,6 +124,9 @@ api.interceptors.response.use(
     // Aborted by the request interceptor (#582): nothing was sent — no wake,
     // no refresh, no retry, no log.
     if (isTokenStoreUnavailable(error)) return Promise.reject(error);
+    // Cancelled — by the caller, or by the request interceptor after an
+    // identity change (#893): nothing to wake, refresh, retry or log.
+    if (axios.isCancel(error)) return Promise.reject(error);
     const status = error.response ? error.response.status : "Network Error";
     const url = error.config ? error.config.url : "Unknown URL";
     const config = error.config as AxiosRequestConfig & {

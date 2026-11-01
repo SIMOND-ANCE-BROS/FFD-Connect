@@ -283,8 +283,8 @@ export const LibraryProvider = ({
     setHasLoadedOnce(false);
   }, []);
   useEffect(() => onSessionEnd(resetLibrary), [resetLibrary]);
-  // The expired-refresh-token path doesn't run the session-end cleanups (they
-  // also run on the biometric lock): catch it through the auth store.
+  // Belt and braces: any switch to logged out also empties the library, even
+  // a session end that would not go through the cleanup registry.
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn);
   useEffect(() => {
     if (isLoggedIn === false) resetLibrary();

@@ -110,7 +110,10 @@ describe("AuthService.register", () => {
               passportLevelStandard: null,
             }),
           },
-          license: { update: jest.fn().mockResolvedValue({}) },
+          license: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          retiredLicenseNumber: {
+            updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+          },
         };
         return fn(tx);
       },
@@ -152,7 +155,10 @@ describe("AuthService.register", () => {
               role: "LICENSEE",
             }),
           },
-          license: { update: jest.fn().mockResolvedValue({}) },
+          license: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          retiredLicenseNumber: {
+            updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+          },
         }),
     );
     const logSpy = jest
@@ -219,7 +225,8 @@ describe("AuthService.register", () => {
       (fn: (tx: unknown) => Promise<unknown>) =>
         fn({
           user: { create: jest.fn().mockRejectedValue(err) },
-          license: { update: jest.fn(), create: jest.fn() },
+          license: { updateMany: jest.fn(), create: jest.fn() },
+          retiredLicenseNumber: { updateMany: jest.fn() },
         }),
     );
 
@@ -362,7 +369,10 @@ describe("AuthService.register", () => {
                 role: "LICENSEE",
               }),
             },
-            license: { update: jest.fn().mockResolvedValue({}) },
+            license: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+            retiredLicenseNumber: {
+              updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+            },
           }),
       );
     });
@@ -421,7 +431,10 @@ describe("AuthService.register", () => {
         });
         const tx = {
           user: { create: createMock },
-          license: { update: jest.fn().mockResolvedValue({}) },
+          license: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          retiredLicenseNumber: {
+            updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+          },
         };
         const result = await fn(tx);
         // Verify the email was normalized
@@ -473,7 +486,10 @@ describe("AuthService.register", () => {
         async (fn: (tx: unknown) => Promise<unknown>) =>
           fn({
             user: { create: createMock },
-            license: { update: jest.fn().mockResolvedValue({}) },
+            license: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+            retiredLicenseNumber: {
+              updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+            },
           }),
       );
 
@@ -528,7 +544,10 @@ describe("AuthService.register", () => {
         async (fn: (tx: unknown) => Promise<unknown>) =>
           fn({
             user: { create: createMock },
-            license: { update: jest.fn().mockResolvedValue({}) },
+            license: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+            retiredLicenseNumber: {
+              updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+            },
           }),
       );
 
@@ -570,7 +589,10 @@ describe("AuthService.register", () => {
         async (fn: (tx: unknown) => Promise<unknown>) =>
           fn({
             user: { create: createMock },
-            license: { update: jest.fn().mockResolvedValue({}) },
+            license: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+            retiredLicenseNumber: {
+              updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+            },
           }),
       );
 
@@ -633,7 +655,10 @@ describe("AuthService.register", () => {
         user: { create: jest.fn().mockResolvedValue(createdUser) },
         license: {
           create: licenseCreate,
-          update: jest.fn().mockResolvedValue({}),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+        retiredLicenseNumber: {
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
       };
       prisma.$transaction.mockImplementation(
@@ -695,7 +720,7 @@ describe("AuthService.register", () => {
           }),
         }),
       );
-      expect(tx.license.update).not.toHaveBeenCalled();
+      expect(tx.license.updateMany).not.toHaveBeenCalled();
       expect(tx.license.create).toHaveBeenCalledTimes(1);
       const createArgs = tx.license.create.mock.calls[0][0] as {
         data: {
@@ -811,9 +836,9 @@ describe("AuthService.register", () => {
       );
 
       expect(tx.license.create).not.toHaveBeenCalled();
-      expect(tx.license.update).toHaveBeenCalledWith({
-        where: { id: "lic-1" },
-        data: { userId: "user-beta" },
+      expect(tx.license.updateMany).toHaveBeenCalledWith({
+        where: { id: "lic-1", userId: null },
+        data: { id: expect.any(String), userId: "user-beta" },
       });
     });
 
@@ -857,6 +882,85 @@ describe("AuthService.register", () => {
           "Dupont",
         ),
       ).rejects.toBe(boom);
+    });
+  });
+
+  describe("re-linking an existing licence (#881)", () => {
+    const newUser = {
+      id: "user-new",
+      email: "new@example.com",
+      firstName: "",
+      lastName: "Dupont",
+      role: "LICENSEE",
+      clubId: null,
+      clubName: "Club Paris Danse",
+      category: "Latin",
+      ageGroup: null,
+      passportLevelLatin: null,
+      passportLevelStandard: null,
+    };
+
+    const mockLinkTransaction = (licenseUpdate: jest.Mock) => {
+      const tx = {
+        user: { create: jest.fn().mockResolvedValue(newUser) },
+        license: { updateMany: licenseUpdate },
+        retiredLicenseNumber: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+      };
+      prisma.$transaction.mockImplementation(
+        async (fn: (t: unknown) => Promise<unknown>) => fn(tx),
+      );
+      return tx;
+    };
+
+    const register = () =>
+      authService.register(
+        "new@example.com",
+        "MonPass1!abc",
+        "FFD-2025-001",
+        "Dupont",
+      );
+
+    it("gives the licence a new id, so QR codes of a previous holder never designate the new account", async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.license.findUnique.mockResolvedValue(validLicense);
+      const tx = mockLinkTransaction(jest.fn().mockResolvedValue({ count: 1 }));
+
+      await register();
+
+      const call = tx.license.updateMany.mock.calls[0][0];
+      expect(call.where).toEqual({ id: "lic-1", userId: null });
+      expect(call.data.userId).toBe("user-new");
+      expect(call.data.id).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+      expect(call.data.id).not.toBe("lic-1");
+      // The numbers the licence carried before follow it.
+      expect(tx.retiredLicenseNumber.updateMany).toHaveBeenCalledWith({
+        where: { licenseId: "lic-1" },
+        data: { licenseId: call.data.id },
+      });
+    });
+
+    it("answers 409 when a concurrent registration linked the licence first", async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.license.findUnique.mockResolvedValue(validLicense);
+      // The conditional link matched no row: the licence is no longer free.
+      const tx = mockLinkTransaction(jest.fn().mockResolvedValue({ count: 0 }));
+
+      await expect(register()).rejects.toThrow(ConflictException);
+      expect(tx.retiredLicenseNumber.updateMany).not.toHaveBeenCalled();
+      expect(authTokenService.createRefreshToken).not.toHaveBeenCalled();
+    });
+
+    it("propagates any other error of the link", async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.license.findUnique.mockResolvedValue(validLicense);
+      const boom = new Error("db down");
+      mockLinkTransaction(jest.fn().mockRejectedValue(boom));
+
+      await expect(register()).rejects.toBe(boom);
     });
   });
 });

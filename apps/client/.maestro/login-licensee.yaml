@@ -27,6 +27,7 @@ appId: fr.ffdanse.connect
 - tapOn: { id: "login-submit-button", optional: true }
 # Dismiss the iOS "Enregistrer le mot de passe ?" system dialog that follows a login.
 - tapOn: { text: "Plus tard", optional: true }
+# tab-career is unique to LICENSEE (STAFF and CLUB also have tab-license).
 - extendedWaitUntil:
-    visible: { id: "tab-license" }
+    visible: { id: "tab-career" }
     timeout: 30000
