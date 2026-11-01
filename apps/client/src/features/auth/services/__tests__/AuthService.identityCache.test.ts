@@ -108,6 +108,15 @@ async function startSupportAccess(): Promise<void> {
   await AuthService.impersonate("target-1", "Target");
 }
 
+async function stopSupportAccess(): Promise<void> {
+  await AsyncStorage.setItem(
+    "impersonation_backup",
+    JSON.stringify({ isLoggedIn: true, role: "ADMIN", username: "admin@x.fr" }),
+  );
+  post.mockResolvedValueOnce({ data: {} });
+  await AuthService.stopImpersonation();
+}
+
 beforeEach(async () => {
   jest.clearAllMocks();
   queryClient.clear();
@@ -133,17 +142,8 @@ describe("identity change clears the previous account's data (#879)", () => {
     await startSupportAccess();
     await useAppAs("target");
     expect(await persistedCopy()).toContain("target-registration");
-    await AsyncStorage.setItem(
-      "impersonation_backup",
-      JSON.stringify({
-        isLoggedIn: true,
-        role: "ADMIN",
-        username: "admin@x.fr",
-      }),
-    );
-    post.mockResolvedValueOnce({ data: {} });
 
-    await AuthService.stopImpersonation();
+    await stopSupportAccess();
 
     expectNothingOf("target", queryClient);
     expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
@@ -180,6 +180,55 @@ describe("identity change clears the previous account's data (#879)", () => {
     expectNothingOf("admin", queryClient);
     expect(useNotificationPreferencesStore.getState().preferences).toEqual([]);
     unsubscribe();
+  });
+
+  it("an answer still in flight for the licensee never lands once the access ends", async () => {
+    await startSupportAccess();
+    let answer: (data: string) => void = () => undefined;
+    const observer = new QueryObserver<string>(queryClient, {
+      queryKey: REGISTRATIONS,
+      queryFn: () =>
+        new Promise<string>((resolve) => {
+          answer = resolve;
+        }),
+    });
+    const unsubscribe = observer.subscribe(() => undefined);
+    let late: (value: unknown) => void = () => undefined;
+    getPreferences.mockReturnValueOnce(
+      new Promise((resolve) => {
+        late = resolve;
+      }),
+    );
+    const loading = useNotificationPreferencesStore.getState().load();
+
+    await stopSupportAccess();
+    answer("target-registration");
+    late([{ type: "t", label: "target", description: "", enabled: true }]);
+    await loading;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(observer.getCurrentResult().data).toBeUndefined();
+    expectNothingOf("target", queryClient);
+    expect(useNotificationPreferencesStore.getState().preferences).toEqual([]);
+    unsubscribe();
+  });
+
+  it("a full round trip admin → licensee → admin leaves nothing of either side behind", async () => {
+    await useAppAs("admin");
+    await startSupportAccess();
+    expectNothingOf("admin", await restartedCache());
+
+    await useAppAs("target");
+    await stopSupportAccess();
+
+    // Back on the admin account: none of the licensee's data, and none of
+    // the admin's pre-access data resurrected from a stale persisted copy.
+    for (const client of [queryClient, await restartedCache()]) {
+      expectNothingOf("target", client);
+      expectNothingOf("admin", client);
+    }
+    expect(await persistedCopy()).toBeNull();
+    expect(useNotificationPreferencesStore.getState().preferences).toEqual([]);
   });
 });
 
