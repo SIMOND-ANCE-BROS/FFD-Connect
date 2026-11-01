@@ -459,6 +459,47 @@ describe("LicenseScreen Integration", () => {
     expect(getByTestId("license-screen-staff-card")).toBeTruthy();
   });
 
+  it("shows the account card and the FFD licence with its Wallet pass in the Staff space (#248)", async () => {
+    (useLicenseLogic as jest.Mock).mockReturnValue({
+      state: {
+        ...mockState,
+        role: "STAFF",
+        listItems: [
+          {
+            type: "STAFF",
+            data: {
+              firstName: "Marie",
+              lastName: "Curie",
+              licenseNumber: "",
+              type: "STAFF / ORGANISATEUR",
+            },
+          },
+          {
+            type: "FFD",
+            data: {
+              firstName: "Marie",
+              lastName: "Curie",
+              licenseNumber: "FFD-42",
+              qrCode: "signed-qr",
+              appleWalletAvailable: true,
+            },
+          },
+        ],
+      },
+      actions: mockActions,
+    });
+
+    const { getByTestId, queryByTestId } = await render(<LicenseScreen />);
+
+    expect(getByTestId("license-screen-staff-card")).toBeTruthy();
+    expect(getByTestId("license-screen-card-FFD")).toBeTruthy();
+    expect(getByTestId("apple-wallet-slot").props.children).toBe(
+      "FFD-42:false",
+    );
+    // No pull-to-add WDSF card in the Staff space.
+    expect(queryByTestId("license-screen-add-wdsf-card")).toBeNull();
+  });
+
   it("brings the Staff card forward, without a number row nor a QR (#234)", async () => {
     const staffItems = [
       {

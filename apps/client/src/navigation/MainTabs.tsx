@@ -225,7 +225,11 @@ export const MainTabs = ({ route }: MainTabsProps) => {
           />
         )}
 
-        {role === "LICENSEE" && (
+        {/* Licence wallet: the licensee's FFD/WDSF licences, and for STAFF and
+            CLUB their account card (#234) plus the licence of a multi-profile
+            account that also holds one (#248). Not for ADMIN (moderation
+            space) nor guests. */}
+        {(role === "LICENSEE" || role === "STAFF" || role === "CLUB") && (
           <Tab.Screen
             name="License"
             component={LicenseScreenWithTransition}

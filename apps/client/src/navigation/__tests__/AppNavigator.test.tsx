@@ -486,9 +486,11 @@ describe("AppNavigator", () => {
     expect(getByTestId("tab-screen-Competitions")).toBeTruthy();
     expect(getByTestId("tab-screen-Settings")).toBeTruthy();
 
+    // Licence : carte du compte club (#234), + licence si multi-profil (#248)
+    expect(getByTestId("tab-screen-License")).toBeTruthy();
+
     // Carrière = danseur, Bibliothèque = danseur/admin → pas pour le club
     expect(queryByTestId("tab-screen-Career")).toBeNull();
-    expect(queryByTestId("tab-screen-License")).toBeNull();
     expect(queryByTestId("tab-screen-Library")).toBeNull();
   });
 
@@ -503,9 +505,11 @@ describe("AppNavigator", () => {
     expect(getByTestId("tab-screen-ScannerTab")).toBeTruthy();
     expect(getByTestId("tab-screen-Competitions")).toBeTruthy();
     expect(queryByTestId("tab-screen-ClubDashboard")).toBeNull();
-    // Staff : ni Carrière, ni Licence, ni Bibliothèque
+    expect(getByTestId("tab-screen-Settings")).toBeTruthy();
+    // Licence : carte du compte staff (#234), + licence si multi-profil (#248)
+    expect(getByTestId("tab-screen-License")).toBeTruthy();
+    // Staff : ni Carrière, ni Bibliothèque
     expect(queryByTestId("tab-screen-Career")).toBeNull();
-    expect(queryByTestId("tab-screen-License")).toBeNull();
     expect(queryByTestId("tab-screen-Library")).toBeNull();
   });
 
