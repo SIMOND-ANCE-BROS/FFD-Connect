@@ -1,9 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import { AxiosError, type AxiosResponse } from "axios";
-import { Alert } from "react-native";
+import { Alert, type AlertButton } from "react-native";
 import {
   loadQueue,
+  registerReplayTrigger,
   type PendingMutation,
 } from "../../../../services/offlineQueueStorage";
 import { useOfflineQueueStore } from "../../../../stores/offlineQueue.store";
@@ -33,8 +34,16 @@ import {
   isDeadlinePassed,
   isDeviceOffline,
   isNetworkError,
+  retryAbandonedRegistrations,
   submitRegistrationAction,
 } from "../registrationQueue";
+
+let mockSessionGeneration = 1;
+jest.mock("../../../../utils/sessionGeneration", () => ({
+  currentSessionGeneration: () => mockSessionGeneration,
+  isSameSession: (startedIn: number | undefined) =>
+    startedIn === mockSessionGeneration,
+}));
 
 jest.mock("../../../../utils/scheduleDeadlineNotification", () => ({
   cancelDeadlineNotificationForCompetition: jest
@@ -457,6 +466,10 @@ describe("replay exhausted (#874)", () => {
     competitionTitle: "Open de Lyon",
     eventLabel: "Latines Adultes C",
   };
+  const retryButtons = [
+    { text: QUEUE_MESSAGES.DISMISS_BUTTON, style: "cancel" },
+    { text: QUEUE_MESSAGES.RETRY_BUTTON, onPress: expect.any(Function) },
+  ];
 
   it("names the competition and event, gives the reason and invites a retry", () => {
     expect(
@@ -513,6 +526,7 @@ describe("replay exhausted (#874)", () => {
     expect(alertSpy).toHaveBeenCalledWith(
       QUEUE_MESSAGES.EXHAUSTED_TITLE,
       expect.stringContaining("Open de Lyon — Latines Adultes C"),
+      retryButtons,
     );
   });
 
@@ -532,7 +546,8 @@ describe("replay exhausted (#874)", () => {
     expect(alertSpy).toHaveBeenCalledTimes(1);
     expect(alertSpy).toHaveBeenCalledWith(
       QUEUE_MESSAGES.EXHAUSTED_TITLE,
-      buildExhaustedAlert(mutation("register", named), httpError(503)).message,
+      `${buildExhaustedAlert(mutation("register", named), httpError(503)).message}\n${QUEUE_MESSAGES.EXHAUSTED_RETRY_NOW_REGISTER}`,
+      retryButtons,
     );
   });
 
@@ -568,7 +583,9 @@ describe("replay exhausted (#874)", () => {
           "• Coupe de Paris — Standard Juniors B : inscription envoyée",
           `• Open de Lyon — Latines Adultes C : inscription abandonnée. Motif : ${EXHAUSTED_REASONS.UNREACHABLE} malgré plusieurs tentatives`,
           QUEUE_MESSAGES.EXHAUSTED_RETRY_REGISTER,
+          QUEUE_MESSAGES.EXHAUSTED_RETRY_NOW_REGISTER,
         ].join("\n"),
+        retryButtons,
       );
     });
 
@@ -598,6 +615,9 @@ describe("replay exhausted (#874)", () => {
         message.split(QUEUE_MESSAGES.EXHAUSTED_RETRY_REGISTER),
       ).toHaveLength(2);
       expect(message).toContain(QUEUE_MESSAGES.EXHAUSTED_RETRY_UNREGISTER);
+      expect(message.endsWith(QUEUE_MESSAGES.EXHAUSTED_RETRY_NOW_MANY)).toBe(
+        true,
+      );
     });
 
     it("keeps the standalone alert when it is the only outcome of the run", () => {
@@ -610,10 +630,193 @@ describe("replay exhausted (#874)", () => {
       expect(alertSpy).toHaveBeenCalledTimes(1);
       expect(alertSpy).toHaveBeenCalledWith(
         QUEUE_MESSAGES.EXHAUSTED_TITLE,
-        buildExhaustedAlert(mutation("unregister", named), httpError(500))
-          .message,
+        `${
+          buildExhaustedAlert(mutation("unregister", named), httpError(500))
+            .message
+        }\n${QUEUE_MESSAGES.EXHAUSTED_RETRY_NOW_UNREGISTER}`,
+        retryButtons,
       );
     });
+  });
+});
+
+describe("retry an abandoned registration (#874)", () => {
+  const named = {
+    competitionTitle: "Open de Lyon",
+    eventLabel: "Latines Adultes C",
+  };
+  let unregisterTrigger: () => void = () => {};
+  const trigger = jest.fn();
+
+  beforeEach(() => {
+    mockSessionGeneration = 1;
+    unregisterTrigger = registerReplayTrigger(trigger);
+  });
+
+  afterEach(() => {
+    unregisterTrigger();
+    endRegistrationReplayBatch();
+  });
+
+  /** Presses « Réessayer » on the last alert and waits for the re-queue. */
+  const pressRetry = async () => {
+    const buttons = alertSpy.mock.calls.at(-1)?.[2] as AlertButton[];
+    const retry = buttons.find((b) => b.text === QUEUE_MESSAGES.RETRY_BUTTON);
+    retry?.onPress?.();
+    await new Promise((r) => setTimeout(r, 0));
+  };
+
+  it("queues the abandoned action again with a fresh count and replays it", async () => {
+    const dropped = { ...mutation("register", named), attempts: 5 };
+    handleRegistrationReplayExhausted(dropped, httpError(503));
+
+    await pressRetry();
+
+    const queue = await loadQueue();
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({
+      endpoint: dropped.endpoint,
+      payload: dropped.payload,
+      kind: "registration",
+      collapseKey: dropped.collapseKey,
+      meta: dropped.meta,
+    });
+    expect(queue[0].attempts).toBeUndefined();
+    expect(queue[0].id).not.toBe(dropped.id);
+    // The competition screen shows it as pending again.
+    expect(useOfflineQueueStore.getState().items).toHaveLength(1);
+    expect(trigger).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries every abandoned action of a recap with one button", async () => {
+    beginRegistrationReplayBatch();
+    handleRegistrationReplaySuccess({ ...mutation("register"), id: "m0" });
+    handleRegistrationReplayExhausted(
+      mutation("register", named),
+      httpError(500),
+    );
+    handleRegistrationReplayExhausted(
+      {
+        ...mutation("unregister"),
+        id: "m2",
+        endpoint: "POST /competitions/c2/unregister",
+        collapseKey: "registration:c2:e9",
+        meta: { action: "unregister", competitionId: "c2", eventId: "e9" },
+      },
+      networkError(),
+    );
+    endRegistrationReplayBatch();
+
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy.mock.calls[0][0]).toBe(QUEUE_MESSAGES.RECAP_TITLE);
+    await pressRetry();
+
+    expect((await loadQueue()).map((m) => m.endpoint)).toEqual([
+      "POST /competitions/c1/register",
+      "POST /competitions/c2/unregister",
+    ]);
+    expect(trigger).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers no retry when nothing was abandoned", () => {
+    beginRegistrationReplayBatch();
+    handleRegistrationReplaySuccess(mutation("register"));
+    handleRegistrationReplayError(
+      { ...mutation("register"), id: "m2" },
+      httpError(409),
+    );
+    endRegistrationReplayBatch();
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy.mock.calls[0]).toHaveLength(2);
+  });
+
+  it("never queues an action under another identity", async () => {
+    handleRegistrationReplayExhausted(
+      mutation("register", named),
+      httpError(503),
+    );
+    // Logout then login as someone else while the alert was open.
+    mockSessionGeneration = 2;
+
+    await pressRetry();
+
+    expect(await loadQueue()).toEqual([]);
+    expect(trigger).not.toHaveBeenCalled();
+  });
+
+  it("keeps a newer pending action for the same event untouched", async () => {
+    handleRegistrationReplayExhausted(
+      mutation("register", named),
+      httpError(503),
+    );
+    // Meanwhile the user acted again on that event (offline unregister).
+    await enqueueRegistrationAction("unregister", target);
+
+    await pressRetry();
+
+    const queue = await loadQueue();
+    expect(queue).toHaveLength(1);
+    expect(queue[0].endpoint).toBe("POST /competitions/c1/unregister");
+    expect(trigger).not.toHaveBeenCalled();
+  });
+
+  it("offers no retry for a register whose deadline has passed", async () => {
+    handleRegistrationReplayExhausted(
+      mutation("register", { ...named, registrationDeadline: PAST }),
+      httpError(503),
+    );
+    expect(alertSpy).toHaveBeenCalledWith(
+      QUEUE_MESSAGES.EXHAUSTED_TITLE,
+      expect.not.stringContaining("Réessayer"),
+    );
+    expect(alertSpy.mock.calls[0]).toHaveLength(2);
+    await expect(
+      retryAbandonedRegistrations([
+        {
+          mutation: mutation("register", { registrationDeadline: PAST }),
+          sessionGeneration: 1,
+        },
+      ]),
+    ).resolves.toBe(0);
+    expect(await loadQueue()).toEqual([]);
+  });
+
+  it("offers no retry once the identity changed before the recap", () => {
+    beginRegistrationReplayBatch();
+    handleRegistrationReplaySuccess({ ...mutation("register"), id: "m0" });
+    handleRegistrationReplayExhausted(
+      mutation("register", named),
+      httpError(503),
+    );
+    mockSessionGeneration = 2;
+    endRegistrationReplayBatch();
+    expect(alertSpy.mock.calls[0]).toHaveLength(2);
+    expect(alertSpy.mock.calls[0][1]).not.toContain("Réessayer");
+  });
+
+  it("queues only the first of two abandoned actions on the same event", async () => {
+    await expect(
+      retryAbandonedRegistrations([
+        { mutation: mutation("register"), sessionGeneration: 1 },
+        {
+          mutation: { ...mutation("unregister"), id: "m2" },
+          sessionGeneration: 1,
+        },
+      ]),
+    ).resolves.toBe(1);
+    expect((await loadQueue()).map((m) => m.endpoint)).toEqual([
+      "POST /competitions/c1/register",
+    ]);
+  });
+
+  it("reports how many actions were queued again", async () => {
+    const retry = {
+      mutation: mutation("register", named),
+      sessionGeneration: 1,
+    };
+    await expect(retryAbandonedRegistrations([retry])).resolves.toBe(1);
+    // Already pending now: a second press adds nothing.
+    await expect(retryAbandonedRegistrations([retry])).resolves.toBe(0);
   });
 });
 

@@ -3,13 +3,19 @@ import axios from "axios";
 import { Alert } from "react-native";
 import type { ReplayDecision } from "../../../hooks/useOfflineQueue";
 import {
+  enqueueIfAbsent,
   enqueueMutation,
+  requestReplay,
   type EnqueueResult,
   type PendingMutation,
 } from "../../../services/offlineQueueStorage";
 import { queryKeys } from "../../../services/queryKeys";
 import { formatDiscipline } from "../../../utils/discipline";
 import { createLogger } from "../../../utils/logger";
+import {
+  currentSessionGeneration,
+  isSameSession,
+} from "../../../utils/sessionGeneration";
 import {
   cancelDeadlineNotificationForCompetition,
   clearDeadlineMarker,
@@ -81,6 +87,15 @@ export const QUEUE_MESSAGES = {
     "Rien n'a été enregistré : recommencez l'inscription depuis la fiche de la compétition.",
   EXHAUSTED_RETRY_UNREGISTER:
     "Rien n'a été enregistré : recommencez la désinscription depuis la fiche de la compétition.",
+  EXHAUSTED_RETRY_NOW_REGISTER:
+    "Vous pouvez aussi toucher « Réessayer » pour renvoyer votre inscription maintenant.",
+  EXHAUSTED_RETRY_NOW_UNREGISTER:
+    "Vous pouvez aussi toucher « Réessayer » pour renvoyer votre désinscription maintenant.",
+  EXHAUSTED_RETRY_NOW_MANY:
+    "Vous pouvez aussi toucher « Réessayer » pour renvoyer les actions abandonnées maintenant.",
+  RETRY_BUTTON: "Réessayer",
+  // Not « Plus tard »: the entry is already gone, nothing will retry by itself.
+  DISMISS_BUTTON: "Ignorer",
   RECAP_TITLE: "Connexion rétablie",
   RECAP_UNNAMED_EVENT: "Épreuve",
 } as const;
@@ -420,6 +435,11 @@ export interface RegistrationReplayOutcome {
   reason?: string;
   /** The alert shown when this outcome is the only one of its run. */
   alert: { title: string; message: string };
+  /**
+   * The dropped entry, kept so « Réessayer » can queue it again (#874), with
+   * the identity it was dropped under: a retry never crosses a session change.
+   */
+  retry?: { mutation: PendingMutation; sessionGeneration: number };
 }
 
 function outcomeOf(
@@ -505,12 +525,97 @@ export function buildReplayRecap(
  */
 let replayBatch: RegistrationReplayOutcome[] | null = null;
 
+/**
+ * Queues abandoned registration actions again, with a fresh attempt count
+ * (#874), and kicks a replay when the network is there. Skipped:
+ * - everything, once the identity has changed since the drop (the queue was
+ *   purged at logout; the new account must not inherit the old one's action);
+ * - an entry whose event already has a newer pending action: the user acted
+ *   again since, and queuing the older intent would collapse the newer one.
+ * Returns how many actions were queued again.
+ */
+type AbandonedRetry = NonNullable<RegistrationReplayOutcome["retry"]>;
+
+/**
+ * Whether « Réessayer » can still queue this action: same identity, and for a
+ * register, a deadline not passed meanwhile (the normal path refuses to queue
+ * those too, see `submitRegistrationAction`).
+ */
+function isRetryable({ mutation, sessionGeneration }: AbandonedRetry): boolean {
+  if (!isSameSession(sessionGeneration)) return false;
+  return !(
+    actionOf(mutation) === "register" &&
+    isDeadlinePassed(mutation.meta?.registrationDeadline)
+  );
+}
+
+export async function retryAbandonedRegistrations(
+  retries: readonly AbandonedRetry[],
+): Promise<number> {
+  let queued = 0;
+  for (const retry of retries) {
+    if (!isRetryable(retry)) continue;
+    const { mutation } = retry;
+    const added = await enqueueIfAbsent({
+      endpoint: mutation.endpoint,
+      payload: mutation.payload,
+      queryKeysToInvalidate: mutation.queryKeysToInvalidate,
+      kind: mutation.kind,
+      collapseKey: mutation.collapseKey,
+      meta: mutation.meta,
+    });
+    if (added) queued += 1;
+  }
+  if (queued > 0) {
+    log.info(`Re-queued ${queued} abandoned registration action(s)`);
+    requestReplay();
+  }
+  return queued;
+}
+
+/** The « Réessayer » hint, naming what the button sends again. */
+function retryNowHint(retries: readonly AbandonedRetry[]): string {
+  if (retries.length > 1) return QUEUE_MESSAGES.EXHAUSTED_RETRY_NOW_MANY;
+  return actionOf(retries[0].mutation) === "register"
+    ? QUEUE_MESSAGES.EXHAUSTED_RETRY_NOW_REGISTER
+    : QUEUE_MESSAGES.EXHAUSTED_RETRY_NOW_UNREGISTER;
+}
+
+/**
+ * Shows an alert, with « Réessayer » (and its hint) when it reports abandoned
+ * actions that can still be queued again.
+ */
+function showAlert(
+  alert: { title: string; message: string },
+  outcomes: readonly RegistrationReplayOutcome[],
+): void {
+  const retries = outcomes.flatMap((o) =>
+    o.retry && isRetryable(o.retry) ? [o.retry] : [],
+  );
+  if (retries.length === 0) {
+    Alert.alert(alert.title, alert.message);
+    return;
+  }
+  const message = `${alert.message}\n${retryNowHint(retries)}`;
+  Alert.alert(alert.title, message, [
+    { text: QUEUE_MESSAGES.DISMISS_BUTTON, style: "cancel" },
+    {
+      text: QUEUE_MESSAGES.RETRY_BUTTON,
+      onPress: () => {
+        retryAbandonedRegistrations(retries).catch((err: unknown) => {
+          log.error("retryAbandonedRegistrations failed", err);
+        });
+      },
+    },
+  ]);
+}
+
 function report(outcome: RegistrationReplayOutcome): void {
   if (replayBatch) {
     replayBatch.push(outcome);
     return;
   }
-  Alert.alert(outcome.alert.title, outcome.alert.message);
+  showAlert(outcome.alert, [outcome]);
 }
 
 /** `onReplayBatchStart` for the engine. */
@@ -523,7 +628,7 @@ export function endRegistrationReplayBatch(): void {
   const outcomes = replayBatch ?? [];
   replayBatch = null;
   const recap = buildReplayRecap(outcomes);
-  if (recap) Alert.alert(recap.title, recap.message);
+  if (recap) showAlert(recap, outcomes);
 }
 
 /** `onReplayError` for the engine; `undefined` for non-registration items. */
@@ -603,14 +708,15 @@ export function handleRegistrationReplayExhausted(
 ): void {
   if (!isRegistrationMutation(m)) return;
   log.warn(`Registration ${actionOf(m)} abandoned after replays`);
-  report(
-    outcomeOf(
+  report({
+    ...outcomeOf(
       m,
       "abandoned",
       buildExhaustedAlert(m, err),
       exhaustedReasonText(err),
     ),
-  );
+    retry: { mutation: m, sessionGeneration: currentSessionGeneration() },
+  });
 }
 
 /** `onReplaySuccess` for the engine: mirrors the online success side effects. */

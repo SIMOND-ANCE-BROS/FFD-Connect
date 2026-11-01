@@ -11,6 +11,7 @@ import {
   loadQueue,
   markInFlight,
   removeMutations,
+  registerReplayTrigger,
   type EnqueueInput,
   type EnqueueResult,
   type PendingMutation,
@@ -223,11 +224,17 @@ export function useOfflineQueue(options: UseOfflineQueueOptions = {}) {
 
     processQueueRef.current = processQueue;
     connectedRef.current = () => connected;
+    // « Réessayer » on an abandoned registration (#874) replays right away
+    // when the network is there, like `enqueue` below.
+    const unregisterTrigger = registerReplayTrigger(() => {
+      if (connected) processQueue();
+    });
 
     return () => {
       unsubscribe();
       appStateSub.remove();
       processQueueRef.current = null;
+      unregisterTrigger();
     };
   }, []);
 

@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { renderHook, act } from "@testing-library/react-native";
-import { Alert, AppState } from "react-native";
+import { Alert, AppState, type AlertButton } from "react-native";
 import {
   handleRegistrationReplayError,
   handleRegistrationReplayExhausted,
@@ -732,6 +732,26 @@ describe("useOfflineQueue — replay policy", () => {
     );
     expect(message).toContain("Motif : le serveur a répondu par une erreur");
     expect(message).toContain("recommencez l'inscription");
+
+    // « Réessayer » queues it again and replays it at once: the network is
+    // there (the last reconnect said so), no new NetInfo event is needed.
+    const buttons = alertSpy.mock.calls[0][2] as AlertButton[];
+    expect(buttons.map((b) => b.text)).toEqual(["Ignorer", "Réessayer"]);
+    mutationFn.mockResolvedValue(undefined);
+    await act(async () => {
+      buttons[1].onPress?.();
+      await new Promise((r) => setTimeout(r, 40));
+    });
+
+    expect(mutationFn).toHaveBeenCalledTimes(MAX_REPLAY_ATTEMPTS + 1);
+    expect(mutationFn).toHaveBeenLastCalledWith(
+      {
+        endpoint: "POST /competitions/c1/register",
+        payload: { eventId: "e1" },
+      },
+      expect.objectContaining({ kind: "registration" }),
+    );
+    expect(await stored()).toEqual([]);
   });
 
   it("replays straight away when enqueuing while still connected (#416)", async () => {
