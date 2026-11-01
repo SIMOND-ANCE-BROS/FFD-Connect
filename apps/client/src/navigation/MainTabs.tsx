@@ -192,6 +192,9 @@ export const MainTabs = ({ route }: MainTabsProps) => {
       <Tab.Navigator
         key={`tabs-${role}${isGuest ? "-guest" : ""}`}
         tabBar={renderTabBar}
+        // Staff land on the competitions (their working tab), not on their
+        // account card now that the License tab comes first for them.
+        initialRouteName={role === "STAFF" ? "Competitions" : undefined}
         screenOptions={{
           headerShown: false,
         }}
@@ -225,7 +228,11 @@ export const MainTabs = ({ route }: MainTabsProps) => {
           />
         )}
 
-        {role === "LICENSEE" && (
+        {/* Licence wallet: the licensee's FFD/WDSF licences, and for STAFF and
+            CLUB their account card (#234) plus the licence of a multi-profile
+            account that also holds one (#248). Not for ADMIN (moderation
+            space) nor guests. */}
+        {(role === "LICENSEE" || role === "STAFF" || role === "CLUB") && (
           <Tab.Screen
             name="License"
             component={LicenseScreenWithTransition}

@@ -77,6 +77,8 @@ const stackedCardLabel = (type: string): string => {
       return "Licence WDSF";
     case "ADD_WDSF":
       return "Ajouter la licence WDSF";
+    case "STAFF":
+      return "Carte du compte";
     default:
       return "Licence";
   }
@@ -163,14 +165,18 @@ export const LicenseScreen: React.FC = () => {
             type="WDSF"
             user={user}
             photoUri={state.photoUri}
-            onShowQr={() =>
-              actions.handleShowQr(
-                JSON.stringify({
-                  id: item.data?.licenseNumber,
-                  valid: true,
-                  type: item.type,
-                }),
-              )
+            onShowQr={
+              // Same rule as the FFD card: no QR during a support access.
+              impersonating
+                ? undefined
+                : () =>
+                    actions.handleShowQr(
+                      JSON.stringify({
+                        id: item.data?.licenseNumber,
+                        valid: true,
+                        type: item.type,
+                      }),
+                    )
             }
             themeOverride={isDark ? "dark" : "light"}
             onOptions={actions.handleRemoveWdsfWithConfirm}
@@ -222,27 +228,31 @@ export const LicenseScreen: React.FC = () => {
             {/* Le renouvellement se fait via la bannière d'expiration (cliquable)
                 affichée quand la licence approche/à échéance. Plus de bouton
                 dédié dans l'en-tête (redondant). */}
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel="Partager la licence en PDF"
-              accessibilityHint="Génère un PDF de votre licence à partager"
-              accessibilityState={{
-                disabled: state.loadingPdf,
-                busy: state.loadingPdf,
-              }}
-              testID="license-screen-share-button"
-              onPress={() => {
-                actions.generateAndSharePdf().catch(() => {});
-              }}
-              disabled={state.loadingPdf}
-              style={[
-                styles.shareIcon,
-                isDark ? styles.iconBoxDark : styles.iconBoxLight,
-                { borderColor: currentTheme.border },
-              ]}
-            >
-              <Share size={22} color={currentTheme.text} />
-            </TouchableOpacity>
+            {/* Only a real FFD licence can be shared: never for a STAFF/CLUB
+                account card without one. */}
+            {ffdUser ? (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Partager la licence en PDF"
+                accessibilityHint="Génère un PDF de votre licence à partager"
+                accessibilityState={{
+                  disabled: state.loadingPdf,
+                  busy: state.loadingPdf,
+                }}
+                testID="license-screen-share-button"
+                onPress={() => {
+                  actions.generateAndSharePdf().catch(() => {});
+                }}
+                disabled={state.loadingPdf}
+                style={[
+                  styles.shareIcon,
+                  isDark ? styles.iconBoxDark : styles.iconBoxLight,
+                  { borderColor: currentTheme.border },
+                ]}
+              >
+                <Share size={22} color={currentTheme.text} />
+              </TouchableOpacity>
+            ) : null}
             <NotificationBell
               theme={currentTheme}
               isDark={isDark}
@@ -291,7 +301,9 @@ export const LicenseScreen: React.FC = () => {
               style={[offlineStyles.dot, { backgroundColor: offlineDotColor }]}
             />
             <AppText variant="caption" color={currentTheme.textSecondary}>
-              Hors ligne — licence enregistrée le{" "}
+              {ffdUser
+                ? "Hors ligne — licence enregistrée le "
+                : "Hors ligne — carte enregistrée le "}
               {new Date(state.offlineSince).toLocaleDateString("fr-FR")}
             </AppText>
           </View>
