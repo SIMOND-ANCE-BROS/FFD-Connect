@@ -20,7 +20,8 @@ import {
   queryClient,
   shouldPersistQuery,
 } from "../../../../services/queryClient";
-import { useClubStore } from "../../../../stores/club.store";
+import { useAuthStore } from "../../../../stores/auth.store";
+import { useClubStore, watchClubLogo } from "../../../../stores/club.store";
 import { useNotificationPreferencesStore } from "../../../../stores/notificationPreferences.store";
 import { AuthService } from "../AuthService";
 
@@ -334,6 +335,21 @@ describe("the target's session holds none of the admin's own profile (#879)", ()
     await impersonateFrom(ADMIN_CONFIG);
 
     expect(useClubStore.getState().clubLogoUri).toBeNull();
+  });
+
+  it("the club logo of the session now in place comes back once the UI follows the switch", async () => {
+    subscriptions.push(watchClubLogo());
+    await impersonateFrom(ADMIN_CONFIG);
+    await useAuthStore.getState().refreshAuth();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(useClubStore.getState().clubLogoUri).toBeNull();
+    post.mockResolvedValueOnce({ data: {} });
+
+    await AuthService.stopImpersonation();
+    await useAuthStore.getState().refreshAuth();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(useClubStore.getState().clubLogoUri).toBe("file:///admin-club.png");
   });
 });
 

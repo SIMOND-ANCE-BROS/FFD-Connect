@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { AuthService } from "../features/auth/services/AuthService";
 import { ClubService } from "../features/club/services/ClubService";
 import { onSessionEnd } from "../services/sessionCleanup";
+import { useAuthStore } from "./auth.store";
 
 export type { ClubMember } from "../features/club/services/ClubService";
 
@@ -51,12 +52,29 @@ export const useClubRepository = () => useClubStore((s) => s.repository);
 export async function initClubLogo(): Promise<void> {
   try {
     const config = await AuthService.getAuthConfig();
-    if (config.clubLogoUri) {
-      useClubStore.getState().setClubLogoUri(config.clubLogoUri);
-    }
+    // The current session's logo, or none: never the previous account's.
+    useClubStore.getState().setClubLogoUri(config.clubLogoUri ?? null);
   } catch {
     // Ignore — logo is non-critical
   }
+}
+
+/**
+ * Every switch (login, biometric unlock, both ends of a support access,
+ * logout) ends with refreshAuth(): reload the logo of the session now in
+ * place, the session-end reset above having cleared the previous one.
+ * Started once by the app root; returns the unsubscribe.
+ */
+export function watchClubLogo(): () => void {
+  return useAuthStore.subscribe((state, previous) => {
+    if (
+      state.isLoggedIn !== previous.isLoggedIn ||
+      state.impersonating !== previous.impersonating ||
+      state.impersonatedName !== previous.impersonatedName
+    ) {
+      void initClubLogo();
+    }
+  });
 }
 
 /** Hook replacement for useClubLogo() from ClubLogoContext */

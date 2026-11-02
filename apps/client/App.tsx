@@ -30,6 +30,7 @@ import {
   useClubStore,
   defaultClubRepository,
   initClubLogo,
+  watchClubLogo,
 } from "./src/stores/club.store";
 import { LibraryProvider } from "./src/features/player/context/LibraryContext";
 import { TrackProvider } from "./src/features/player/context/TrackContext";
@@ -82,9 +83,12 @@ function App(): React.JSX.Element {
   useEffect(() => {
     useClubStore.getState().setRepository(defaultClubRepository);
     void initClubLogo();
+    // Reloads it at every identity switch (#879).
+    const stopWatchingClubLogo = watchClubLogo();
     // Moves a plaintext impersonation backup left by an older version into
     // SecureStore (#591). Never throws.
     void AuthService.migrateImpersonationBackup();
+    return stopWatchingClubLogo;
   }, []);
 
   // Lot 5: on background, close the screen view and send usage if the
