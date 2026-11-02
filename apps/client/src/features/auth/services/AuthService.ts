@@ -312,6 +312,25 @@ function withoutAccountData(config: AuthConfig): AuthConfig {
     hasWdsfLicense: undefined,
     licensePhotoUri: undefined,
     registrationPolicy: undefined,
+    clubLogoUri: undefined,
+    clubDashboardConfig: undefined,
+  };
+}
+
+/**
+ * The device-level preferences that carry into a support access (#879): an
+ * allowlist, so a profile field added to AuthConfig later never crosses an
+ * identity change by default. Everything else (identity, licence photo,
+ * dancer profile, club settings, space memory…) belongs to the admin.
+ */
+function devicePreferencesOf(config: AuthConfig): Partial<AuthConfig> {
+  return {
+    animationsEnabled: config.animationsEnabled,
+    appTheme: config.appTheme,
+    biometricsEnabled: config.biometricsEnabled,
+    defaultLibraryFilter: config.defaultLibraryFilter,
+    defaultCompetitionScope: config.defaultCompetitionScope,
+    defaultCompetitionStatus: config.defaultCompetitionStatus,
   };
 }
 
@@ -598,7 +617,11 @@ export const AuthService = {
     // backup: let it settle so the backup holds the current one.
     await waitForPendingRefresh();
     const impConfig: AuthConfig = {
-      ...currentConfig,
+      // Identity change (#879): none of the admin's own profile (licence
+      // photo, WDSF flag, age group, Sentry id, club logo…) may show up in
+      // the target's session; only device preferences (theme…) carry. The
+      // admin's full config comes back from the backup at the stop.
+      ...devicePreferencesOf(currentConfig),
       isLoggedIn: true,
       // An impersonation always opens on the target's main role.
       role: user.role,
@@ -680,7 +703,9 @@ export const AuthService = {
       prefs && restored
         ? prefs
         : {
-            ...(prefs ?? (await AuthService.getAuthConfig())),
+            // Without the admin's preferences, the session ends on the
+            // target's config: none of its own data stays (#599, #879).
+            ...(prefs ?? withoutAccountData(await AuthService.getAuthConfig())),
             isLoggedIn: false,
             impersonating: undefined,
             impersonatedName: undefined,
