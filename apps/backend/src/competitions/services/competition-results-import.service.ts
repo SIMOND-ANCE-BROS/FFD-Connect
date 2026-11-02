@@ -16,6 +16,7 @@ import {
 } from "../../users/account-deletion.core";
 import { DELETED_PARTNER_LABEL } from "../../users/partner-name-scrub.utils";
 import {
+  competitionDaysSelect,
   erasedResultIdentitySelect,
   eventResultImportLabelSelect,
   idOnlySelect,
@@ -230,6 +231,19 @@ function preserveScrubbedIdentity(
   return kept;
 }
 
+/**
+ * Living account holding a licence number, and since when it exists.
+ * The account's creation stands for the date it took the number: a free
+ * licence is only ever claimed by a new account at registration
+ * (`linkUnclaimedLicence`, #890); renewal and admin edits cannot take an
+ * existing number. A path attaching a free licence to an OLDER account must
+ * record a claim date instead (#899).
+ */
+interface LicenceHolder {
+  userId: string;
+  since: Date;
+}
+
 /** What the database tells about the couples of the file. */
 interface ImportContext {
   /** Accounts recognised for each line (first = holder, second = partner). */
@@ -313,7 +327,8 @@ export class CompetitionResultsImportService {
     }
     const competition = await this.prisma.competition.findUnique({
       where: { id: competitionId },
-      select: idOnlySelect,
+      // Its start date bounds the erasure lift (#899): the cautious bound.
+      select: competitionDaysSelect,
     });
     if (!competition) {
       throw new NotFoundException("Compétition non trouvée");
@@ -360,6 +375,7 @@ export class CompetitionResultsImportService {
       rows,
       keyed.map((k) => k.importKey),
       linkableUsers,
+      competition.date,
     );
 
     const creates: Prisma.ResultCreateManyInput[] = [];
@@ -692,6 +708,7 @@ export class CompetitionResultsImportService {
     rows: ParsedResultRow[],
     importKeys: string[],
     linkableUsers: Set<string> | null,
+    competitionDate: Date,
   ): Promise<ImportContext> {
     const eventIds = [...new Set(rows.map((r) => r.eventId))];
     const numbers = [...new Set(rows.flatMap((r) => r.licenceNumbers))];
@@ -699,45 +716,58 @@ export class CompetitionResultsImportService {
       numbers.map((n) => [n, erasedLicenceFingerprint(key, n)]),
     );
 
-    const [existing, tombstones, erased, { members, liveNumbers }] =
-      await Promise.all([
-        this.prisma.result.findMany({
-          where: { eventId: { in: eventIds }, importKey: { in: importKeys } },
-          select: resultImportExistingSelect,
-          take: MAX_RESULT_IMPORT_ROWS,
-        }),
-        this.prisma.result.findMany({
-          where: { eventId: { in: eventIds }, userId: DELETED_USER_ID },
-          select: resultTombstoneSelect,
-          take: MAX_RESULT_IMPORT_ROWS,
-        }),
-        numbers.length === 0
-          ? Promise.resolve([])
-          : this.prisma.erasedResultIdentity.findMany({
-              where: { fingerprint: { in: [...fingerprintOf.values()] } },
-              select: erasedResultIdentitySelect,
-              take: numbers.length,
-            }),
-        this.resolveMembers(rows, numbers, linkableUsers),
-      ]);
+    const [existing, tombstones, erased, holders] = await Promise.all([
+      this.prisma.result.findMany({
+        where: { eventId: { in: eventIds }, importKey: { in: importKeys } },
+        select: resultImportExistingSelect,
+        take: MAX_RESULT_IMPORT_ROWS,
+      }),
+      this.prisma.result.findMany({
+        where: { eventId: { in: eventIds }, userId: DELETED_USER_ID },
+        select: resultTombstoneSelect,
+        take: MAX_RESULT_IMPORT_ROWS,
+      }),
+      numbers.length === 0
+        ? Promise.resolve([])
+        : this.prisma.erasedResultIdentity.findMany({
+            where: { fingerprint: { in: [...fingerprintOf.values()] } },
+            select: erasedResultIdentitySelect,
+            take: numbers.length,
+          }),
+      this.liveHolders(numbers),
+    ]);
 
-    const erasedFingerprints = new Set(erased.map((e) => e.fingerprint));
+    const erasedAt = new Map(erased.map((e) => [e.fingerprint, e.createdAt]));
+    const erasedNumbers = new Set(
+      numbers.filter((n) => {
+        const fingerprint = fingerprintOf.get(n);
+        const at =
+          fingerprint === undefined ? undefined : erasedAt.get(fingerprint);
+        if (at === undefined) return false;
+        // Right to erasure (#899): a licence held again by a living account
+        // lifts the erasure only for a competition that started after both
+        // the (latest) erasure and that account's creation. A free licence
+        // can be claimed by its number alone (#897): an older ranking is the
+        // deleted person's and never attaches to whoever holds the number now.
+        const holder = holders.get(n);
+        return !(
+          holder !== undefined &&
+          competitionDate > at &&
+          competitionDate > holder.since
+        );
+      }),
+    );
+
     return {
-      members,
+      members: await this.resolveMembers(
+        rows,
+        holders,
+        erasedNumbers,
+        linkableUsers,
+      ),
       erasedLines: new Set(
         rows
-          .filter((row) =>
-            row.licenceNumbers.some((n) => {
-              // A licence held again by a living account (the person came
-              // back): their new account decides, the erasure no longer
-              // applies to it.
-              if (liveNumbers.has(n)) return false;
-              const fingerprint = fingerprintOf.get(n);
-              return (
-                fingerprint !== undefined && erasedFingerprints.has(fingerprint)
-              );
-            }),
-          )
+          .filter((row) => row.licenceNumbers.some((n) => erasedNumbers.has(n)))
           .map((row) => row.line),
       ),
       tombstones: new Set(
@@ -750,43 +780,58 @@ export class CompetitionResultsImportService {
   }
 
   /**
-   * Accounts of each line. By licence number (the federal identifier),
-   * skipping any number retired by a number change: it may now designate
-   * someone else. A line WITH licence numbers never falls back to the bib;
-   * a line without any is linked to the in-app registration holding the
-   * same bib in the event, when it designates one couple only.
+   * Living holder of each licence number, skipping any number retired by a
+   * number change: it may now designate someone else.
+   */
+  private async liveHolders(
+    numbers: string[],
+  ): Promise<Map<string, LicenceHolder>> {
+    const holders = new Map<string, LicenceHolder>();
+    if (numbers.length === 0) return holders;
+    const [licences, retired] = await Promise.all([
+      this.prisma.license.findMany({
+        where: { number: { in: numbers }, userId: { not: null } },
+        select: licenseNumberUserSelect,
+        take: numbers.length,
+      }),
+      this.prisma.retiredLicenseNumber.findMany({
+        where: { number: { in: numbers } },
+        select: licenseNumberSelect,
+        take: numbers.length,
+      }),
+    ]);
+    const retiredNumbers = new Set(retired.map((r) => r.number));
+    for (const licence of licences) {
+      if (licence.userId && !retiredNumbers.has(licence.number)) {
+        holders.set(licence.number, {
+          userId: licence.userId,
+          since: licence.user?.createdAt ?? new Date(),
+        });
+      }
+    }
+    return holders;
+  }
+
+  /**
+   * Accounts of each line. By licence number (the federal identifier) of a
+   * living holder, never a number whose erasure still applies (its holder is
+   * not the person ranked). A line WITH licence numbers never falls back to
+   * the bib; a line without any is linked to the in-app registration holding
+   * the same bib in the event, when it designates one couple only.
    */
   private async resolveMembers(
     rows: ParsedResultRow[],
-    numbers: string[],
+    holders: Map<string, LicenceHolder>,
+    erasedNumbers: Set<string>,
     linkableUsers: Set<string> | null,
-  ): Promise<{ members: Map<number, string[]>; liveNumbers: Set<string> }> {
-    const [licences, retired] =
-      numbers.length === 0
-        ? [[], []]
-        : await Promise.all([
-            this.prisma.license.findMany({
-              where: { number: { in: numbers }, userId: { not: null } },
-              select: licenseNumberUserSelect,
-              take: numbers.length,
-            }),
-            this.prisma.retiredLicenseNumber.findMany({
-              where: { number: { in: numbers } },
-              select: licenseNumberSelect,
-              take: numbers.length,
-            }),
-          ]);
-    const retiredNumbers = new Set(retired.map((r) => r.number));
-    // Every living holder (the erasure rule needs it), and the ones this
-    // caller may link to (all, or the competition's members for a club).
-    const liveNumbers = new Set<string>();
+  ): Promise<Map<number, string[]>> {
+    // The holders this caller may link to (all, or the competition's members
+    // for a club).
     const userByLicence = new Map<string, string>();
-    for (const licence of licences) {
-      if (licence.userId && !retiredNumbers.has(licence.number)) {
-        liveNumbers.add(licence.number);
-        if (!linkableUsers || linkableUsers.has(licence.userId)) {
-          userByLicence.set(licence.number, licence.userId);
-        }
+    for (const [number, holder] of holders) {
+      if (erasedNumbers.has(number)) continue;
+      if (!linkableUsers || linkableUsers.has(holder.userId)) {
+        userByLicence.set(number, holder.userId);
       }
     }
 
@@ -840,6 +885,6 @@ export class CompetitionResultsImportService {
         members.set(row.line, accounts);
       }
     }
-    return { members, liveNumbers };
+    return members;
   }
 }

@@ -115,6 +115,11 @@ describe("account-deletion.core", () => {
         data: [{ fingerprint: "f1" }, { fingerprint: "f2" }],
         skipDuplicates: true,
       });
+      // A number erased again moves its erasure date forward (#899).
+      expect(prisma.erasedResultIdentity.updateMany).toHaveBeenCalledWith({
+        where: { fingerprint: { in: ["f1", "f2"] } },
+        data: { createdAt: expect.any(Date) },
+      });
       expect(ops.map((o) => o?.op).indexOf("erased")).toBeLessThan(
         ops.map((o) => o?.op).indexOf("user"),
       );
@@ -131,6 +136,7 @@ describe("account-deletion.core", () => {
         licenceFingerprints: [],
       });
       expect(prisma.erasedResultIdentity.createMany).not.toHaveBeenCalled();
+      expect(prisma.erasedResultIdentity.updateMany).not.toHaveBeenCalled();
     });
 
     it("fingerprints the current and the retired numbers of the user's licence, never in clear", async () => {

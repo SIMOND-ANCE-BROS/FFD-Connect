@@ -265,7 +265,9 @@ export function buildAccountDeletionOperations(
       data: { partnerUserId: null },
     }),
     // Their licence numbers, as keyed fingerprints only: a later results
-    // import writes their couple anonymised (#652).
+    // import writes their couple anonymised (#652). The date is the LATEST
+    // erasure: an account that re-claimed the number and is deleted in turn
+    // pushes it forward, so no ranking up to then re-attaches (#899).
     ...((plan.licenceFingerprints?.length ?? 0) > 0
       ? [
           prisma.erasedResultIdentity.createMany({
@@ -273,6 +275,12 @@ export function buildAccountDeletionOperations(
               fingerprint,
             })),
             skipDuplicates: true,
+          }),
+          prisma.erasedResultIdentity.updateMany({
+            where: {
+              fingerprint: { in: [...(plan.licenceFingerprints ?? [])] },
+            },
+            data: { createdAt: new Date() },
           }),
         ]
       : []),
