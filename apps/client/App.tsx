@@ -44,6 +44,7 @@ import {
   registerDeviceTokenForPush,
   setupPushListeners,
 } from "./src/features/settings/services/pushRegistration";
+import { deleteExportFile } from "./src/features/settings/services/PrivacyService";
 
 // Wrappe `fetch` au plus tôt : réveille le Container App si le backend est
 // down. Puis pré-réveil silencieux : le backend démarre pendant le
@@ -88,6 +89,8 @@ function App(): React.JSX.Element {
     // Moves a plaintext impersonation backup left by an older version into
     // SecureStore (#591). Never throws.
     void AuthService.migrateImpersonationBackup();
+    // A GDPR export left behind by a killed share sheet (#912). Never throws.
+    void deleteExportFile();
     return stopWatchingClubLogo;
   }, []);
 
