@@ -3,6 +3,7 @@ import { Modal, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppButton } from "../../components/AppButton";
 import { AppText } from "../../components/AppText";
+import { getSessionGeneration } from "../../api/tokenStore";
 import { useTheme } from "../../context/ThemeContext";
 import { acceptCgu, CguSubject, needsCguAcceptance } from "./cguConsent";
 import { currentCguSubject } from "./cguSubject";
@@ -44,8 +45,13 @@ export const CguAcceptanceModal = ({
     const run = { current: true };
     void (async () => {
       try {
+        // Before reading the identity: a switch landing during the check
+        // must not let a resend go out with the next account's token.
+        const generation = getSessionGeneration();
         const subject = await currentCguSubject();
-        if (!subject || !(await needsCguAcceptance(subject))) return;
+        if (!subject || !(await needsCguAcceptance(subject, generation))) {
+          return;
+        }
         if (run.current) setPending(subject);
       } catch {
         // Unreadable state: never block the app, asked again next launch.

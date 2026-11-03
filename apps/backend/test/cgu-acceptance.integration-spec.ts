@@ -77,6 +77,16 @@ describe("CGU acceptance per account (integration, real DB, #894)", () => {
       firstRow?.cguAcceptedAt,
     );
     expect((await get(token).expect(200)).body.accepted).toBe(true);
+
+    // Part of the GDPR export (policy §9).
+    const exported = await request(app.getHttpServer())
+      .get(`${API}/users/me/export`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(exported.body.data.cguAcceptedVersion).toBe(CGU_VERSION);
+    expect(exported.body.data.cguAcceptedAt).toBe(
+      firstRow?.cguAcceptedAt?.toISOString(),
+    );
   });
 
   it("is per account: another account on the same device is still asked", async () => {

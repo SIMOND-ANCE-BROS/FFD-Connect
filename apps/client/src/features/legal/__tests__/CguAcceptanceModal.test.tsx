@@ -33,7 +33,7 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   subject.mockResolvedValue({ kind: "guest" });
   hasAccepted.mockResolvedValue(null);
-  accept.mockResolvedValue(true);
+  accept.mockResolvedValue("saved");
 });
 
 const Gate = (props: { active?: boolean; isGuest?: boolean }) => (

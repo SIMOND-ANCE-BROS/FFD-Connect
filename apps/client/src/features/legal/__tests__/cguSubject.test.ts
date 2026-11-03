@@ -38,14 +38,12 @@ describe("currentCguSubject", () => {
     });
   });
 
-  it("falls back to the e-mail for a session opened without the id", async () => {
+  // The e-mail would linger on the device after the account is gone.
+  it("never keys an account by its e-mail", async () => {
     getAuthConfig.mockResolvedValue({
       isLoggedIn: true,
       username: "lea@example.fr",
     });
-    await expect(currentCguSubject()).resolves.toEqual({
-      kind: "account",
-      id: "lea@example.fr",
-    });
+    await expect(currentCguSubject()).resolves.toBeNull();
   });
 });

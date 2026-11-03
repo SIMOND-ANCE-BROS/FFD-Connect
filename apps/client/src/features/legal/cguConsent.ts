@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getSessionGeneration } from "../../api/tokenStore";
 import { CguApi } from "../../services/api/cgu-api";
 import { createLogger } from "../../utils/logger";
 
@@ -11,7 +12,8 @@ const logger = createLogger("cguConsent");
  */
 // v2 (#270) : vérification du certificat médical par une personne (CGU §5).
 // v3 (#61) : comptes de mineurs ouverts avec l'accord d'un représentant légal
-// (CGU §6). Doit rester égale à CGU_VERSION côté backend (src/cgu/cgu-version.ts).
+// (CGU §6). Doit rester égale à CGU_VERSION côté backend (src/cgu/cgu-version.ts),
+// incrémentée côté backend AVANT de livrer l'app avec le nouveau texte.
 export const CGU_VERSION = "3";
 
 /**
@@ -46,15 +48,45 @@ async function rememberLocally(subject: CguSubject): Promise<void> {
   }
 }
 
+async function forgetLocally(subject: CguSubject): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(storageKey(subject));
+  } catch {
+    // Best-effort.
+  }
+}
+
+/**
+ * Envoie au compte une acceptation donnée sur l'appareil. Si le serveur est
+ * sur une autre version des CGU que le texte montré (409), rien n'est
+ * enregistré : la copie locale est oubliée pour que la question revienne,
+ * plutôt que de croire le consentement acquis.
+ */
+async function sendToAccount(
+  subject: CguSubject,
+): Promise<"saved" | "stale" | "failed"> {
+  const result = await CguApi.accept(CGU_VERSION);
+  if (result === "stale") {
+    await forgetLocally(subject);
+    logger.warn("CGU version differs from the backend's; asked again");
+  } else if (result === "failed") {
+    logger.warn("CGU acceptance not saved on the account; resent later");
+  }
+  return result;
+}
+
 /**
  * Faut-il demander l'acceptation de la version courante des CGU ?
  *
  * Compte : le serveur fait foi. S'il ne répond pas, la copie locale de CE
  * compte décide. Si le serveur ignore une acceptation que ce compte a donnée
- * sur cet appareil (envoi échoué hors ligne), elle lui est renvoyée.
+ * sur cet appareil (envoi échoué hors ligne), elle lui est renvoyée — jamais
+ * si l'identité de la session a changé depuis `generation` (#893) : le jeton
+ * courant serait celui d'un autre compte.
  */
 export async function needsCguAcceptance(
   subject: CguSubject,
+  generation: number = getSessionGeneration(),
 ): Promise<boolean> {
   const local = await acceptedLocally(subject);
   if (subject.kind === "guest") {
@@ -68,22 +100,19 @@ export async function needsCguAcceptance(
   }
   if (server === false) {
     if (local !== true) return true;
-    if (!(await CguApi.accept(CGU_VERSION))) {
-      logger.warn("CGU acceptance resync failed; retried at next launch");
-    }
-    return false;
+    // Identity moved on: the next session runs its own check.
+    if (getSessionGeneration() !== generation) return false;
+    return (await sendToAccount(subject)) === "stale";
   }
   return local === false;
 }
 
 /**
  * Enregistre l'acceptation de la version courante des CGU : sur l'appareil
- * d'abord (repli hors ligne), puis sur le compte. Un envoi échoué est
- * renvoyé au prochain lancement (needsCguAcceptance). Ne rejette jamais.
+ * (repli hors ligne), puis — sans l'attendre — sur le compte. Un envoi échoué
+ * est renvoyé au prochain lancement (needsCguAcceptance). Ne rejette jamais.
  */
 export async function acceptCgu(subject: CguSubject): Promise<void> {
   await rememberLocally(subject);
-  if (subject.kind === "account" && !(await CguApi.accept(CGU_VERSION))) {
-    logger.warn("CGU acceptance not saved on the account; retried later");
-  }
+  if (subject.kind === "account") void sendToAccount(subject);
 }

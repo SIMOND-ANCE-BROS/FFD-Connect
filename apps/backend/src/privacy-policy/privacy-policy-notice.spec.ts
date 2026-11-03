@@ -22,9 +22,10 @@ describe("privacy policy notice (#734)", () => {
       expect(PRIVACY_POLICY_VERSION).toMatch(PRIVACY_POLICY_VERSION_PATTERN);
     });
 
-    // The #387 update must reach every existing account once.
-    it("announces the #387 update", () => {
-      expect(PRIVACY_POLICY_VERSION).toBe("2026-10-18");
+    // The #894 update (CGU acceptance in the export) must reach every
+    // existing account once.
+    it("announces the #894 update", () => {
+      expect(PRIVACY_POLICY_VERSION).toBe("2026-11-03");
     });
   });
 

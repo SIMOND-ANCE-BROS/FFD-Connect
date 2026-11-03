@@ -66,20 +66,25 @@ describe("CguApi (#894)", () => {
   });
 
   describe("accept", () => {
-    it("sends the version and resolves true", async () => {
+    it("sends the version and resolves saved", async () => {
       accept.mockResolvedValue(ok({ accepted: true }));
-      await expect(CguApi.accept("3")).resolves.toBe(true);
+      await expect(CguApi.accept("3")).resolves.toBe("saved");
       expect(accept).toHaveBeenCalledWith({ body: { version: "3" } });
     });
 
-    it("resolves false on an error answer", async () => {
+    it("resolves stale when the backend runs another version (409)", async () => {
       accept.mockResolvedValue(ko(409));
-      await expect(CguApi.accept("3")).resolves.toBe(false);
+      await expect(CguApi.accept("3")).resolves.toBe("stale");
     });
 
-    it("resolves false on a network failure", async () => {
+    it.each([404, 403, 503])("resolves failed on a %i", async (status) => {
+      accept.mockResolvedValue(ko(status));
+      await expect(CguApi.accept("3")).resolves.toBe("failed");
+    });
+
+    it("resolves failed on a network failure", async () => {
       accept.mockRejectedValue(new Error("Network Error"));
-      await expect(CguApi.accept("3")).resolves.toBe(false);
+      await expect(CguApi.accept("3")).resolves.toBe("failed");
     });
   });
 });
