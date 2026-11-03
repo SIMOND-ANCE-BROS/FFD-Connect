@@ -6,6 +6,7 @@ import { analytics } from "../../../services/analytics";
 import { useAuthStore } from "../../../stores/auth.store";
 import { createLogger } from "../../../utils/logger";
 import { acceptCgu } from "../../legal/cguConsent";
+import { currentCguSubject } from "../../legal/cguSubject";
 import {
   isMinorLicenseNumber,
   looksLikeEmail,
@@ -105,9 +106,10 @@ export const useRegisterLogic = ({ navigation }: UseRegisterLogicProps) => {
         isMinor ? parentEmail.trim() : undefined,
       );
       analytics.logEvent("register", {});
-      // La case CGU cochée vaut acceptation → la modale premier lancement
-      // ne réapparaîtra pas après l'inscription (#424).
-      await acceptCgu();
+      // La case CGU cochée vaut acceptation du NOUVEAU compte (#424, #894) :
+      // enregistrée sur ce compte, la modale ne réapparaît pas ensuite.
+      const subject = await currentCguSubject();
+      if (subject) await acceptCgu(subject);
       await refreshAuth();
     } catch (e) {
       const error = e as Error;

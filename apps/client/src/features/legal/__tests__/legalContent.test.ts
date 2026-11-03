@@ -36,7 +36,7 @@ describe("privacy policy in the app", () => {
       "accès officiel aux données de résultats de la FFD",
     );
     expect(section?.body).toContain("sinon par votre dossard");
-    expect(LEGAL_DOCUMENTS.privacy.updatedAt).toBe("18 octobre 2026");
+    expect(LEGAL_DOCUMENTS.privacy.updatedAt).toBe("3 novembre 2026");
   });
 
   it("explains how substantial changes are notified (#734)", () => {

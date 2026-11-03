@@ -18,13 +18,13 @@ collectées ou des sous-traitants doit être répercutée aux deux endroits.
 
 ## État
 
-|                                                        |                                                                                  |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| Identité de l'éditeur, contact, durées de conservation | ✅ renseignés (5 octobre 2026)                                                   |
-| Publication à des URL publiques                        | ✅ `deploy-landing.yml` — requis par Apple et Google                             |
-| Lien depuis l'application                              | ✅ Réglages + gate CGU à la première ouverture                                   |
-| **Relecture par un·e juriste**                         | ❌ **jamais faite**                                                              |
-| CGU en vigueur                                         | version 2 (11 octobre 2026) — re-acceptation demandée dans l'app (`CGU_VERSION`) |
+|                                                        |                                                                                                                         |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| Identité de l'éditeur, contact, durées de conservation | ✅ renseignés (5 octobre 2026)                                                                                          |
+| Publication à des URL publiques                        | ✅ `deploy-landing.yml` — requis par Apple et Google                                                                    |
+| Lien depuis l'application                              | ✅ Réglages + gate CGU à la première ouverture                                                                          |
+| **Relecture par un·e juriste**                         | ❌ **jamais faite**                                                                                                     |
+| CGU en vigueur                                         | version 3 (15 octobre 2026) — acceptation demandée une fois par compte, enregistrée sur le compte (`CGU_VERSION`, #894) |
 
 Les textes décrivent les traitements réellement implémentés, ce qui est le minimum
 exigible — pas une validation juridique. Deux points méritent un avis avant un

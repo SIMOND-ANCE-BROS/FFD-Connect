@@ -1,5 +1,6 @@
 import { act, renderHook } from "@testing-library/react-native";
 import { Alert } from "react-native";
+import { acceptCgu } from "../../../legal/cguConsent";
 import * as AuthContext from "../../context/AuthContext";
 import { useRegisterLogic } from "../useRegisterLogic";
 
@@ -17,6 +18,11 @@ jest.mock("../../../../stores/auth.store", () => ({
 }));
 jest.mock("../../../legal/cguConsent", () => ({
   acceptCgu: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock("../../../legal/cguSubject", () => ({
+  currentCguSubject: jest
+    .fn()
+    .mockResolvedValue({ kind: "account", id: "new-user" }),
 }));
 jest.mock("../../../../services/analytics", () => ({
   analytics: { logEvent: jest.fn() },
@@ -109,6 +115,19 @@ describe("useRegisterLogic — parental consent (#61)", () => {
       "Martin",
       "Léa",
       undefined,
+    );
+  });
+
+  // #894: the ticked box is the NEW account's acceptance, recorded on it
+  // once registered (before the session opens and the gate checks).
+  it("records the CGU acceptance on the new account", async () => {
+    const { result } = await fill(ADULT_LICENSE);
+
+    await act(async () => result.current.actions.onRegister());
+
+    expect(acceptCgu).toHaveBeenCalledWith({ kind: "account", id: "new-user" });
+    expect((acceptCgu as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
+      mockRefreshAuth.mock.invocationCallOrder[0],
     );
   });
 });

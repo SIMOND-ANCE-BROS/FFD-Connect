@@ -287,6 +287,28 @@ describe("AuthService", () => {
       );
     });
 
+    // #894: the new account's id replaces the previous session's (Sentry id,
+    // per-account CGU acceptance).
+    it("keeps the new account's id, not the previous session's", async () => {
+      (api.post as jest.Mock).mockResolvedValue({
+        data: {
+          access_token: "reg-token",
+          user: { id: "new-id", role: "LICENSEE", email: "new@test.com" },
+        },
+      });
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+        JSON.stringify({ isLoggedIn: false, userId: "previous-id" }),
+      );
+
+      await AuthService.register("new@test.com", "pw", "LIC-001", "Dupont");
+
+      const saved = (AsyncStorage.setItem as jest.Mock).mock.calls
+        .filter(([key]) => key === "auth_config")
+        .map(([, json]) => JSON.parse(json as string) as { userId?: string })
+        .pop();
+      expect(saved?.userId).toBe("new-id");
+    });
+
     it("throws license-not-found message on 404", async () => {
       (api.post as jest.Mock).mockRejectedValue({
         isAxiosError: true,

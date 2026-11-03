@@ -17,9 +17,10 @@
  * version. 2026-10-17: export contents and support access (#387, #733,
  * #759, #760, #761). 2026-10-18: competition results imported from a
  * TopTurnier export, uploaded or temporarily read from its public results
- * page, and linked by bib number (#786, #787).
+ * page, and linked by bib number (#786, #787). 2026-11-03: the CGU
+ * acceptance (version and date) kept with the account and in the export (#894).
  */
-export const PRIVACY_POLICY_VERSION = "2026-10-18";
+export const PRIVACY_POLICY_VERSION = "2026-11-03";
 
 /** Shape accepted for a version in an acknowledgement. */
 export const PRIVACY_POLICY_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}$/;

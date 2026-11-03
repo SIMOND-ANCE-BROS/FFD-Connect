@@ -533,6 +533,8 @@ export const AuthService = {
         ageGroup: user.ageGroup ?? undefined,
         isGuest: false,
         username: user.email,
+        // Same as login: identifies the account (Sentry, CGU acceptance #894).
+        userId: user.id,
         lastLoginDate: new Date().toISOString(),
       };
       await AuthService.saveAuthConfig(newConfig);

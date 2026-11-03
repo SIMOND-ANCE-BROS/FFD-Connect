@@ -10,17 +10,18 @@ tags:
     maxRetries: 2
     commands:
       - launchApp: { clearState: true }
-      # On a cleared state the CGU gate covers the login screen — accept it and wait
-      # for the login screen (cold boot can take a while) before tapping guest.
-      - extendedWaitUntil:
-          visible: { id: "cgu-accept-button" }
-          timeout: 60000
-          optional: true
-      - tapOn: { id: "cgu-accept-button", optional: true }
+      # Wait for the login screen (cold boot can take a while) before tapping guest.
       - extendedWaitUntil:
           visible: { id: "login-guest-button" }
-          timeout: 30000
+          timeout: 60000
 - tapOn: { id: "login-guest-button" }
+# CGU gate (#894): asked for the device on entering guest mode
+# (no longer on the login screen). Absent once accepted on this device.
+- extendedWaitUntil:
+    visible: { id: "cgu-accept-button" }
+    timeout: 15000
+    optional: true
+- tapOn: { id: "cgu-accept-button", optional: true }
 - extendedWaitUntil:
     visible: { id: "tab-competitions" }
     timeout: 20000
