@@ -4,36 +4,65 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppButton } from "../../components/AppButton";
 import { AppText } from "../../components/AppText";
 import { useTheme } from "../../context/ThemeContext";
-import { acceptCgu, hasAcceptedCgu } from "./cguConsent";
+import { acceptCgu, CguSubject, needsCguAcceptance } from "./cguConsent";
+import { currentCguSubject } from "./cguSubject";
 import { LEGAL_DOCUMENTS } from "./legalContent";
 
+interface CguAcceptanceModalProps {
+  /**
+   * A session that may be asked: signed in (account or guest) and not a
+   * support session. Its changes (sign-in, sign-out, guest, impersonation)
+   * re-run the check for the new identity.
+   */
+  active: boolean;
+  /** Guest session: the acceptance belongs to the device, not an account. */
+  isGuest: boolean;
+}
+
 /**
- * Acceptation des CGU au premier lancement (#424).
+ * Acceptation des CGU (#424), par compte (#894).
  *
- * Autonome : monte-la une fois à la racine (AppNavigator) ; elle vérifie
- * elle-même l'état d'acceptation et ne rend rien si les CGU (version
- * courante) sont déjà acceptées. Le texte intégral est scrollable dans la
- * modale — pas de dépendance à la navigation.
+ * Montée une fois à la racine (AppNavigator) ; elle vérifie elle-même si la
+ * session en cours a accepté la version courante (le compte côté serveur, un
+ * invité sur l'appareil) et ne rend rien sinon. Le texte intégral est
+ * scrollable dans la modale — pas de dépendance à la navigation.
  */
-export const CguAcceptanceModal = () => {
+export const CguAcceptanceModal = ({
+  active,
+  isGuest,
+}: CguAcceptanceModalProps) => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  // null = état inconnu (lecture AsyncStorage en cours) → ne rien afficher.
-  const [accepted, setAccepted] = useState<boolean | null>(null);
+  // Who is asked; null = nobody (state unknown, accepted, or not eligible).
+  const [pending, setPending] = useState<CguSubject | null>(null);
 
   useEffect(() => {
-    hasAcceptedCgu()
-      .then(setAccepted)
-      .catch(() => setAccepted(true));
-  }, []);
+    setPending(null);
+    if (!active) return;
+    // The identity may change while the check is in flight: a stale answer
+    // must never ask the next session.
+    const run = { current: true };
+    void (async () => {
+      try {
+        const subject = await currentCguSubject();
+        if (!subject || !(await needsCguAcceptance(subject))) return;
+        if (run.current) setPending(subject);
+      } catch {
+        // Unreadable state: never block the app, asked again next launch.
+      }
+    })();
+    return () => {
+      run.current = false;
+    };
+  }, [active, isGuest]);
 
-  if (accepted !== false) return null;
+  if (!active || pending === null) return null;
 
   const cgu = LEGAL_DOCUMENTS.cgu;
 
   const handleAccept = () => {
-    setAccepted(true);
-    acceptCgu().catch(() => {});
+    setPending(null);
+    void acceptCgu(pending);
   };
 
   return (

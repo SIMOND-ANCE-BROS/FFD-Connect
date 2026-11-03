@@ -32,6 +32,7 @@ import { LicensesModule } from "./licenses/licenses.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { ParentalConsentModule } from "./parental-consent/parental-consent.module";
 import { PrivacyPolicyModule } from "./privacy-policy/privacy-policy.module";
+import { CguModule } from "./cgu/cgu.module";
 import { PaymentModule } from "./payment/payment.module";
 import { buildBullConnection } from "./redis/bullmq-connection";
 import { RedisModule } from "./redis/redis.module";
@@ -87,6 +88,7 @@ import { WdsfModule } from "./wdsf/wdsf.module";
     LicensesModule,
     ParentalConsentModule,
     PrivacyPolicyModule,
+    CguModule,
     HealthModule,
     PaymentModule,
   ],
