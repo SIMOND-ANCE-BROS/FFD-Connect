@@ -24,7 +24,18 @@ collectées ou des sous-traitants doit être répercutée aux deux endroits.
 | Publication à des URL publiques                        | ✅ `deploy-landing.yml` — requis par Apple et Google                                                                    |
 | Lien depuis l'application                              | ✅ Réglages + gate CGU à la première ouverture                                                                          |
 | **Relecture par un·e juriste**                         | ❌ **jamais faite**                                                                                                     |
-| CGU en vigueur                                         | version 3 (15 octobre 2026) — acceptation demandée une fois par compte, enregistrée sur le compte (`CGU_VERSION`, #894) |
+| CGU en vigueur                                         | version 4 (3 novembre 2026) — acceptation demandée une fois par compte, enregistrée sur le compte (`CGU_VERSION`, #894) |
+
+**Historique des versions des CGU** (`CGU_VERSION`, backend `src/cgu/cgu-version.ts`
+et client `features/legal/cguConsent.ts`, toujours égales). Changer de version
+redemande l'acceptation à chaque compte et change la version qu'un représentant
+légal accepte pour un mineur.
+
+| Version | Date            | Changement                                                                                                                                                   |
+| ------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2       | —               | Vérification du certificat médical par une personne (§5, #270)                                                                                               |
+| 3       | 15 octobre 2026 | Comptes de mineurs ouverts avec l'accord d'un représentant légal (§3, #61)                                                                                   |
+| 4       | 3 novembre 2026 | Acceptation explicite par compte, enregistrée sur le compte (version et date), au lieu de « la poursuite de l'utilisation vaut acceptation » (§1, §11, #928) |
 
 Les textes décrivent les traitements réellement implémentés, ce qui est le minimum
 exigible — pas une validation juridique. Deux points méritent un avis avant un

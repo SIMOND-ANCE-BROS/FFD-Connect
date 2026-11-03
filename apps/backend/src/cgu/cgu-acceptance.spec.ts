@@ -21,8 +21,8 @@ describe("CGU acceptance per account (#894)", () => {
     });
 
     // Must stay equal to the client's CGU_VERSION (cguConsent.ts).
-    it("is v3, the version a parent accepts for a minor", () => {
-      expect(CGU_VERSION).toBe("3");
+    it("is v4, the version a parent accepts for a minor", () => {
+      expect(CGU_VERSION).toBe("4");
       expect(PARENTAL_CONSENT_CGU_VERSION).toBe(CGU_VERSION);
     });
   });
