@@ -203,6 +203,9 @@ model Result {
 /// numéro ni le nom. Aucune clé étrangère : la ligne survit au compte.
 model ErasedResultIdentity {
   fingerprint String   @id
+  /// Date du DERNIER effacement (remise à jour si le numéro, repris puis
+  /// supprimé à nouveau, est effacé une seconde fois) : un nouveau titulaire
+  /// du numéro n'est rattaché qu'aux classements postérieurs (#899).
   createdAt   DateTime @default(now())
 }
 

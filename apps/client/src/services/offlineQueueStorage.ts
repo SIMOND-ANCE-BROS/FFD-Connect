@@ -100,6 +100,32 @@ export function enqueueMutation(input: EnqueueInput): Promise<EnqueueResult> {
   });
 }
 
+/**
+ * Appends an entry unless one with the same collapse key is already pending
+ * (checked under the queue lock, so no producer can slip in between). Used to
+ * re-queue an abandoned action without collapsing a newer intent (#874).
+ * Returns whether the entry was added.
+ */
+export function enqueueIfAbsent(input: EnqueueInput): Promise<boolean> {
+  return withQueueLock(async () => {
+    const queue = await loadQueue();
+    if (
+      input.collapseKey &&
+      queue.some((m) => m.collapseKey === input.collapseKey)
+    ) {
+      return false;
+    }
+    const entry: PendingMutation = {
+      ...input,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      enqueuedAt: Date.now(),
+    };
+    await saveQueue([...queue, entry]);
+    log.info(`Re-enqueued mutation: ${input.endpoint}`);
+    return true;
+  });
+}
+
 /** Records a failed replay so a poison entry can be dropped eventually. */
 export function bumpAttempts(id: string): Promise<number> {
   return withQueueLock(async () => {
@@ -122,6 +148,27 @@ export function removeMutations(ids: string[]): Promise<void> {
     const queue = await loadQueue();
     await saveQueue(queue.filter((m) => !ids.includes(m.id)));
   });
+}
+
+/**
+ * Kicks a replay of the queue from outside the engine (a « Réessayer » button
+ * on an alert, #874). The mounted engine registers itself here; it only
+ * replays while connected, otherwise the entry waits for the next reconnect.
+ * Lives here, not in the hook, so feature code can call it without importing
+ * the engine (require cycle through queryClient.tsx).
+ */
+let replayTrigger: (() => void) | null = null;
+
+/** Registers the engine's trigger; returns its unregistration. */
+export function registerReplayTrigger(trigger: () => void): () => void {
+  replayTrigger = trigger;
+  return () => {
+    if (replayTrigger === trigger) replayTrigger = null;
+  };
+}
+
+export function requestReplay(): void {
+  replayTrigger?.();
 }
 
 /** Full logout: queued actions belong to the session that created them. */

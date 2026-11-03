@@ -15,6 +15,7 @@ import {
   UNLINKED_RESULT_USER_ID,
 } from "../src/competitions/services/competition-results-import.service";
 import { CompetitionAccessService } from "../src/competitions/services/competition-access.service";
+import { linkUnclaimedLicence } from "../src/licenses/license-relink";
 import { NotificationsService } from "../src/notifications/notifications.service";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { DELETED_USER_ID } from "../src/users/account-deletion.core";
@@ -57,6 +58,9 @@ describe("Competition results import (integration, real DB)", () => {
   let echoId: string;
   let clubAccountId: string;
   let clubId: string;
+  /** #899: account re-claiming a deleted account's licence, later competition. */
+  let newcomerId: string | undefined;
+  let laterCompetitionId: string | undefined;
   const sendToUsers = jest.fn();
   const staff = () => ({
     userId: staffId,
@@ -219,10 +223,28 @@ describe("Competition results import (integration, real DB)", () => {
   });
 
   afterAll(async () => {
-    const userIds = [staffId, alphaId, bravoId, echoId, clubAccountId];
+    const userIds = [
+      staffId,
+      alphaId,
+      bravoId,
+      echoId,
+      clubAccountId,
+      ...(newcomerId ? [newcomerId] : []),
+    ];
     await prisma.notification.deleteMany({
       where: { userId: { in: userIds } },
     });
+    if (laterCompetitionId) {
+      await prisma.result.deleteMany({
+        where: { event: { competitionId: laterCompetitionId } },
+      });
+      await prisma.event.deleteMany({
+        where: { competitionId: laterCompetitionId },
+      });
+      await prisma.competition.deleteMany({
+        where: { id: laterCompetitionId },
+      });
+    }
     await prisma.adminAuditLog.deleteMany({
       where: { targetType: "COMPETITION", targetId: competitionId },
     });
@@ -559,5 +581,80 @@ describe("Competition results import (integration, real DB)", () => {
       afterGrace(),
     );
     expect(sendToUsers).toHaveBeenCalledTimes(1);
+  });
+  it("a deleted account's licence re-claimed by a new account never re-attaches the old rankings, only later ones (#899)", async () => {
+    // Bravo was deleted above: the licence is free, and anyone knowing its
+    // number can claim it at registration (#897).
+    const licence = await prisma.license.findUnique({
+      where: { number: licenceBravo },
+      select: { id: true, userId: true },
+    });
+    expect(licence?.userId).toBeNull();
+    const newcomer = await prisma.user.create({
+      data: {
+        email: `results-import-newcomer-${suffix}@test.local`,
+        password: "x",
+        firstName: "Newcomer",
+        lastName,
+        role: UserRole.LICENSEE,
+      },
+    });
+    newcomerId = newcomer.id;
+    expect(
+      await linkUnclaimedLicence(prisma, licence?.id ?? "", newcomer.id),
+    ).not.toBeNull();
+
+    // Old published ranking (competition held before the erasure), new key.
+    const old = await importService.importCsv(
+      competitionId,
+      `epreuve;tour;classement;couple;licences\n${eventId};1/8 finale;4;Bravo ${lastName} / Yankee;${licenceBravo}\n`,
+      staff(),
+    );
+    expect(old).toMatchObject({ created: 1, anonymisedKept: 1, linked: 0 });
+    expect(
+      await prisma.result.findFirst({
+        where: { eventId, round: "1/8 finale" },
+        select: { userId: true, partnerUserId: true, details: true },
+      }),
+    ).toEqual({ userId: DELETED_USER_ID, partnerUserId: null, details: {} });
+    expect(
+      await prisma.result.count({
+        where: {
+          OR: [{ userId: newcomer.id }, { partnerUserId: newcomer.id }],
+        },
+      }),
+    ).toBe(0);
+
+    // A competition held after the newcomer's registration is theirs.
+    const later = await prisma.competition.create({
+      data: {
+        title: `Import résultats suivant ${suffix}`,
+        organizer: "Club Fictif A",
+        date: new Date(Date.now() + 30 * 24 * 3600 * 1000),
+        location: "Lyon",
+        status: "PAST",
+      },
+    });
+    laterCompetitionId = later.id;
+    const laterEvent = await prisma.event.create({
+      data: {
+        competitionId: later.id,
+        category: "Latin",
+        ageGroup: "Adulte",
+        eventType: "COUPLE",
+      },
+    });
+    const next = await importService.importCsv(
+      later.id,
+      `epreuve;tour;classement;couple;licences\n${laterEvent.id};Finale;1;Newcomer ${lastName} / Yankee;${licenceBravo}\n`,
+      staff(),
+    );
+    expect(next).toMatchObject({ created: 1, anonymisedKept: 0, linked: 1 });
+    expect(
+      await prisma.result.findFirst({
+        where: { eventId: laterEvent.id },
+        select: { userId: true },
+      }),
+    ).toEqual({ userId: newcomer.id });
   });
 });

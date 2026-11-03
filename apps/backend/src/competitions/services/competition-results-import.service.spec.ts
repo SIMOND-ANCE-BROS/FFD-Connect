@@ -34,6 +34,9 @@ const HEADER = "epreuve;tour;classement;couple;dossard;licences";
 const STAFF = { userId: "staff-1", role: "STAFF", roles: [UserRole.STAFF] };
 const CLUB = { userId: "club-1", role: "CLUB", roles: [UserRole.CLUB] };
 const ADMIN = { userId: "admin-1", role: "ADMIN", roles: [UserRole.ADMIN] };
+// The competition imported, and an erasure before it (#899).
+const COMPETITION_DATE = new Date("2026-06-13T00:00:00Z");
+const ERASED_AT = new Date("2026-03-01T10:00:00Z");
 
 function rowOf(csv: string, index = 0) {
   return parseResultsCsv(csv).rows[index];
@@ -48,7 +51,10 @@ describe("CompetitionResultsImportService (#652)", () => {
 
   beforeEach(async () => {
     prisma = mockDeep<PrismaClient>();
-    prisma.competition.findUnique.mockResolvedValue({ id: "comp-1" } as never);
+    prisma.competition.findUnique.mockResolvedValue({
+      date: COMPETITION_DATE,
+      endDate: null,
+    } as never);
     prisma.event.findMany.mockResolvedValue([{ id: "ev-latin" }] as never);
     prisma.license.findMany.mockResolvedValue([]);
     prisma.retiredLicenseNumber.findMany.mockResolvedValue([]);
@@ -443,7 +449,10 @@ describe("CompetitionResultsImportService (#652)", () => {
 
   it("writes anonymised a line carrying a deleted account's licence, keeping the surviving member (M2)", async () => {
     prisma.erasedResultIdentity.findMany.mockResolvedValue([
-      { fingerprint: erasedLicenceFingerprint(KEY, "100001") },
+      {
+        fingerprint: erasedLicenceFingerprint(KEY, "100001"),
+        createdAt: ERASED_AT,
+      },
     ] as never);
     prisma.license.findMany.mockResolvedValue([
       { number: "100002", userId: "user-bravo" },
@@ -475,7 +484,10 @@ describe("CompetitionResultsImportService (#652)", () => {
 
   it("anonymises an existing row once its licence is erased", async () => {
     prisma.erasedResultIdentity.findMany.mockResolvedValue([
-      { fingerprint: erasedLicenceFingerprint(KEY, "100001") },
+      {
+        fingerprint: erasedLicenceFingerprint(KEY, "100001"),
+        createdAt: ERASED_AT,
+      },
     ] as never);
     const csv = `${HEADER}\nev-latin;Finale;1;Alpha / Bravo;12;100001\n`;
     existingRows([
@@ -503,7 +515,10 @@ describe("CompetitionResultsImportService (#652)", () => {
 
   it("keeps a row already scrubbed for the erased partner with its surviving holder, instead of anonymising it", async () => {
     prisma.erasedResultIdentity.findMany.mockResolvedValue([
-      { fingerprint: erasedLicenceFingerprint(KEY, "100002") },
+      {
+        fingerprint: erasedLicenceFingerprint(KEY, "100002"),
+        createdAt: ERASED_AT,
+      },
     ] as never);
     prisma.license.findMany.mockResolvedValue([
       { number: "100001", userId: "user-alpha" },
@@ -526,20 +541,102 @@ describe("CompetitionResultsImportService (#652)", () => {
     expect(prisma.result.updateMany).not.toHaveBeenCalled();
   });
 
-  it("no longer applies the erasure to a licence held again by a living account", async () => {
-    prisma.erasedResultIdentity.findMany.mockResolvedValue([
-      { fingerprint: erasedLicenceFingerprint(KEY, "100001") },
-    ] as never);
-    prisma.license.findMany.mockResolvedValue([
-      { number: "100001", userId: "came-back" },
-    ] as never);
+  describe("licence held again by a living account (#899)", () => {
+    const erasedNumber = () =>
+      prisma.erasedResultIdentity.findMany.mockResolvedValue([
+        {
+          fingerprint: erasedLicenceFingerprint(KEY, "100001"),
+          createdAt: ERASED_AT,
+        },
+      ] as never);
+    const heldSince = (createdAt: Date, userId = "new-holder") =>
+      prisma.license.findMany.mockResolvedValue([
+        { number: "100001", userId, user: { createdAt } },
+      ] as never);
     const csv = `${HEADER}\nev-latin;Finale;1;Alpha / Bravo;12;100001\n`;
 
-    await service.importCsv("comp-1", csv, STAFF);
+    it("never re-attaches a ranking older than the erasure to the new holder of the number", async () => {
+      erasedNumber();
+      // An account older than everything, on a competition held before the
+      // erasure: the erasure date alone keeps it anonymised.
+      heldSince(new Date("2025-01-01T00:00:00Z"));
+      prisma.competition.findUnique.mockResolvedValue({
+        date: new Date("2026-02-01T00:00:00Z"),
+        endDate: null,
+      } as never);
 
-    expect(createdRows()[0]).toMatchObject({
-      userId: "came-back",
-      details: { participant: "Alpha / Bravo" },
+      const report = await service.importCsv("comp-1", csv, STAFF);
+
+      expect(report).toMatchObject({ anonymisedKept: 1, linked: 0 });
+      expect(createdRows()[0]).toMatchObject({
+        userId: DELETED_USER_ID,
+        partnerUserId: null,
+        details: {},
+      });
+    });
+
+    it("never re-attaches a ranking held before the new holder's account existed", async () => {
+      erasedNumber();
+      // Erased in March, competition in June, number claimed in July.
+      heldSince(new Date("2026-07-01T00:00:00Z"));
+
+      const report = await service.importCsv("comp-1", csv, STAFF);
+
+      expect(report).toMatchObject({ anonymisedKept: 1, linked: 0 });
+      expect(createdRows()[0]).toMatchObject({
+        userId: DELETED_USER_ID,
+        partnerUserId: null,
+      });
+    });
+
+    it("keeps the erased number's new holder out of the surviving member's slot", async () => {
+      erasedNumber();
+      prisma.license.findMany.mockResolvedValue([
+        {
+          number: "100001",
+          userId: "new-holder",
+          user: { createdAt: new Date("2026-07-01T00:00:00Z") },
+        },
+        {
+          number: "100002",
+          userId: "user-bravo",
+          user: { createdAt: new Date("2025-01-01T00:00:00Z") },
+        },
+      ] as never);
+      const coupleCsv = `${HEADER}\nev-latin;Finale;1;Alpha / Bravo;12;100001|100002\n`;
+
+      await service.importCsv("comp-1", coupleCsv, STAFF);
+
+      expect(createdRows()[0]).toMatchObject({
+        userId: DELETED_USER_ID,
+        partnerUserId: "user-bravo",
+      });
+    });
+
+    it("links the new holder to a competition held after the erasure and their registration", async () => {
+      erasedNumber();
+      // Came back in April, competition in June.
+      heldSince(new Date("2026-04-01T00:00:00Z"), "came-back");
+
+      await service.importCsv("comp-1", csv, STAFF);
+
+      expect(createdRows()[0]).toMatchObject({
+        userId: "came-back",
+        details: { participant: "Alpha / Bravo" },
+      });
+    });
+
+    it("keeps the erasure for a competition starting at the very instant of the erasure", async () => {
+      erasedNumber();
+      heldSince(new Date("2025-01-01T00:00:00Z"));
+      prisma.competition.findUnique.mockResolvedValue({
+        date: ERASED_AT,
+        endDate: null,
+      } as never);
+
+      const report = await service.importCsv("comp-1", csv, STAFF);
+
+      expect(report).toMatchObject({ anonymisedKept: 1, linked: 0 });
     });
   });
 
@@ -713,7 +810,10 @@ describe("CompetitionResultsImportService (#652)", () => {
         () => {
           prisma.license.findMany.mockResolvedValue([]);
           prisma.erasedResultIdentity.findMany.mockResolvedValue([
-            { fingerprint: erasedLicenceFingerprint(KEY, "100001") },
+            {
+              fingerprint: erasedLicenceFingerprint(KEY, "100001"),
+              createdAt: ERASED_AT,
+            },
           ] as never);
         },
       ]) {
@@ -795,17 +895,25 @@ describe("CompetitionResultsImportService (#652)", () => {
 
     it("a club's file still honours an erased licence held by nobody, and a living outsider still lifts it", async () => {
       prisma.erasedResultIdentity.findMany.mockResolvedValue([
-        { fingerprint: erasedLicenceFingerprint(KEY, "100001") },
+        {
+          fingerprint: erasedLicenceFingerprint(KEY, "100001"),
+          createdAt: ERASED_AT,
+        },
       ] as never);
       await service.importCsv("comp-1", licenceCsv, CLUB);
       expect(createdRows()[0].userId).toBe(DELETED_USER_ID);
 
       prisma.result.createMany.mockClear();
       prisma.license.findMany.mockResolvedValue([
-        { number: "100001", userId: "outsider" },
+        {
+          number: "100001",
+          userId: "outsider",
+          user: { createdAt: new Date("2026-04-01T00:00:00Z") },
+        },
       ] as never);
       await service.importCsv("comp-1", licenceCsv, CLUB);
-      // Not erased (the licence lives again), not linked (outsider).
+      // Not erased (the licence lives again since before the competition),
+      // not linked (outsider).
       expect(createdRows()[0].userId).toBe(UNLINKED_RESULT_USER_ID);
     });
 
