@@ -54,6 +54,11 @@ jest.mock("../src/features/settings/services/pushRegistration", () => ({
   registerDeviceTokenForPush: jest.fn().mockResolvedValue(undefined),
 }));
 
+const mockDeleteExportFile = jest.fn().mockResolvedValue(undefined);
+jest.mock("../src/features/settings/services/PrivacyService", () => ({
+  deleteExportFile: () => mockDeleteExportFile(),
+}));
+
 test("renders correctly", async () => {
   await render(<App />);
 });
@@ -62,4 +67,10 @@ test("wires the foreground push listeners on mount (#775)", async () => {
   mockSetupPushListeners.mockClear();
   await render(<App />);
   expect(mockSetupPushListeners).toHaveBeenCalledTimes(1);
+});
+
+test("purges a GDPR export left in the cache at launch (#912)", async () => {
+  mockDeleteExportFile.mockClear();
+  await render(<App />);
+  expect(mockDeleteExportFile).toHaveBeenCalledTimes(1);
 });
