@@ -12,9 +12,12 @@ const logger = createLogger("cguConsent");
  */
 // v2 (#270) : vérification du certificat médical par une personne (CGU §5).
 // v3 (#61) : comptes de mineurs ouverts avec l'accord d'un représentant légal
-// (CGU §6). Doit rester égale à CGU_VERSION côté backend (src/cgu/cgu-version.ts),
+// (CGU §6).
+// v4 (#928) : acceptation explicite par compte, enregistrée sur le compte
+// (version et date), au lieu de « la poursuite de l'utilisation vaut acceptation ».
+// Doit rester égale à CGU_VERSION côté backend (src/cgu/cgu-version.ts),
 // incrémentée côté backend AVANT de livrer l'app avec le nouveau texte.
-export const CGU_VERSION = "3";
+export const CGU_VERSION = "4";
 
 /**
  * Qui accepte (#894). Le consentement est PAR COMPTE : il est enregistré sur

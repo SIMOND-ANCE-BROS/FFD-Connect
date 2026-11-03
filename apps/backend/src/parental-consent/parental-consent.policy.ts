@@ -26,8 +26,8 @@ export const PARENTAL_CONSENT_CONFIRMATION_TTL_DAYS = 7;
 
 /**
  * Version of the CGU the parent accepts on the minor's behalf: the version in
- * force (`CGU_VERSION`, src/cgu/cgu-version.ts). v3 is the version whose §6
- * opens the app to minors with a parent's consent.
+ * force (`CGU_VERSION`, src/cgu/cgu-version.ts). v3 is the first version whose
+ * §6 opens the app to minors with a parent's consent; later versions keep it.
  */
 export const PARENTAL_CONSENT_CGU_VERSION = CGU_VERSION;
 

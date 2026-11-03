@@ -152,3 +152,22 @@ describe("privacy policy in the app", () => {
     );
   });
 });
+
+describe("CGU in the app", () => {
+  it("describes the explicit acceptance per account, never tacit acceptance (#928)", () => {
+    const cgu = LEGAL_DOCUMENTS.cgu;
+    const changes = cgu.sections.find(
+      (s) => s.heading === "9. Modification des conditions",
+    );
+    expect(changes?.body).toContain(
+      "chaque compte doit l'accepter explicitement",
+    );
+    expect(changes?.body).toContain("version et date");
+    expect(changes?.body).toContain("jamais réputée acceptée");
+    expect(cgu.sections[0].body).toContain("pour chaque compte");
+    expect(cgu.updatedAt).toBe("3 novembre 2026");
+    for (const section of cgu.sections) {
+      expect(section.body).not.toContain("vaut acceptation");
+    }
+  });
+});

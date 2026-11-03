@@ -49,11 +49,11 @@ export const LEGAL_DOCUMENTS: Record<LegalDoc, LegalDocument> = {
 
   cgu: {
     title: "Conditions générales d'utilisation",
-    updatedAt: "15 octobre 2026",
+    updatedAt: "3 novembre 2026",
     sections: [
       {
         heading: "1. Objet",
-        body: "Les présentes conditions encadrent l'utilisation de l'application FFD Connect, projet indépendant non affilié à la Fédération Française de Danse, qui permet aux licenciés, clubs et officiels de gérer licences, inscriptions aux compétitions, musiques d'entraînement et résultats.",
+        body: "Les présentes conditions encadrent l'utilisation de l'application FFD Connect, projet indépendant non affilié à la Fédération Française de Danse, qui permet aux licenciés, clubs et officiels de gérer licences, inscriptions aux compétitions, musiques d'entraînement et résultats. Vous acceptez ces conditions de façon explicite, dans l'application, pour chaque compte : l'acceptation est demandée avant d'utiliser les fonctionnalités du compte et enregistrée sur celui-ci (§9). Sans compte (invité), vous les acceptez de la même façon, sur votre appareil.",
       },
       {
         heading: "2. Compte et licence",
@@ -84,7 +84,11 @@ export const LEGAL_DOCUMENTS: Record<LegalDoc, LegalDocument> = {
         body: "Vous pouvez supprimer votre compte à tout moment depuis Réglages → Confidentialité et données. L'éditeur peut suspendre un compte en cas de violation des présentes conditions.",
       },
       {
-        heading: "9. Droit applicable",
+        heading: "9. Modification des conditions",
+        body: "Ces conditions peuvent être modifiées ; la date de dernière mise à jour figure en tête du texte. En cas de changement substantiel, la nouvelle version vous est présentée dans l'application, et chaque compte doit l'accepter explicitement pour continuer à utiliser ses fonctionnalités : elle n'est jamais réputée acceptée du seul fait que vous continuez à utiliser l'application. L'acceptation (version et date) est enregistrée sur votre compte, figure dans votre export, et cet enregistrement est supprimé avec le compte. Si vous ne souhaitez pas accepter une nouvelle version, vous pouvez demander la suppression de votre compte par e-mail à privacy@gabin-simond.fr ; la suppression depuis les Réglages n'est accessible qu'après acceptation.",
+      },
+      {
+        heading: "10. Droit applicable",
         body: "Les présentes conditions sont soumises au droit français. Tout litige relève des juridictions françaises compétentes.",
       },
     ],
