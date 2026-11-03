@@ -6,6 +6,7 @@ import {
   writeAsStringAsync,
 } from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
+import { Platform } from "react-native";
 import {
   usersControllerDeleteMyAccount,
   usersControllerExportMyData,
@@ -28,6 +29,8 @@ const EXPORT_FILE_URI = `${cacheDirectory}ffd-connect-mes-donnees.json`;
  * neither the share flow nor the logout.
  */
 export async function deleteExportFile(): Promise<void> {
+  // No file-system cache on web: nothing was ever written there.
+  if (Platform.OS === "web") return;
   try {
     await deleteAsync(EXPORT_FILE_URI, { idempotent: true });
   } catch (error) {
@@ -43,8 +46,8 @@ onSessionEnd(deleteExportFile);
 /**
  * Export RGPD (portabilité, art. 20) : télécharge les données personnelles,
  * les écrit en JSON dans le cache puis ouvre la feuille de partage iOS/Android
- * (AirDrop, Fichiers, mail…). Le fichier est supprimé dès la feuille fermée,
- * que le partage ait réussi, été annulé ou échoué (#912).
+ * (AirDrop, Fichiers, mail…). Le fichier est supprimé dès la feuille fermée
+ * (iOS) ou en cas d'échec ; sinon au prochain lancement / fin de session (#912).
  */
 export async function exportAndShareMyData(): Promise<void> {
   const { data, error } = await usersControllerExportMyData();
@@ -64,7 +67,16 @@ export async function exportAndShareMyData(): Promise<void> {
       dialogTitle: "Exporter mes données FFD Connect",
       UTI: "public.json",
     });
-  } finally {
+  } catch (shareError) {
+    await deleteExportFile();
+    throw shareError;
+  }
+
+  // iOS resolves once the share sheet's activity is done with the file. On
+  // Android the promise can resolve while the target (Drive, Quick Share…)
+  // still reads the content:// URI in the background, so the file is kept
+  // there and purged at the next launch or session end instead.
+  if (Platform.OS !== "android") {
     await deleteExportFile();
   }
 }

@@ -4,6 +4,7 @@
  */
 import { deleteAsync, writeAsStringAsync } from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
+import { Platform } from "react-native";
 import {
   usersControllerDeleteMyAccount,
   usersControllerExportMyData,
@@ -39,8 +40,18 @@ const writeMock = writeAsStringAsync as jest.Mock;
 const deleteFileMock = deleteAsync as jest.Mock;
 const shareMock = Sharing.shareAsync as jest.Mock;
 
+const originalOS = Platform.OS;
+function setPlatform(os: typeof Platform.OS): void {
+  Object.defineProperty(Platform, "OS", { value: os, configurable: true });
+}
+
+afterEach(() => {
+  setPlatform(originalOS);
+});
+
 beforeEach(() => {
   jest.clearAllMocks();
+  setPlatform("ios");
   (Sharing.isAvailableAsync as jest.Mock).mockResolvedValue(true);
   shareMock.mockResolvedValue(undefined);
   writeMock.mockResolvedValue(undefined);
@@ -77,7 +88,21 @@ describe("exportAndShareMyData", () => {
     );
   });
 
-  it("supprime le fichier quand le partage est annulé ou échoue (#912)", async () => {
+  it("garde le fichier sur Android après un partage réussi (lecture différée de la cible)", async () => {
+    exportMock.mockResolvedValue({ data: { ok: true } });
+    setPlatform("android");
+
+    await exportAndShareMyData();
+
+    expect(shareMock).toHaveBeenCalled();
+    // Purged at the next launch or session end instead.
+    expect(deleteFileMock).not.toHaveBeenCalled();
+  });
+
+  // expo-sharing resolves when the user dismisses the sheet (covered by the
+  // success case above); a rejection is a share failure.
+  it("supprime le fichier quand le partage échoue, Android compris (#912)", async () => {
+    setPlatform("android");
     exportMock.mockResolvedValue({ data: { ok: true } });
     shareMock.mockRejectedValue(new Error("cancelled"));
 
@@ -131,6 +156,14 @@ describe("deleteExportFile", () => {
     expect(deleteFileMock).toHaveBeenCalledWith(EXPORT_URI, {
       idempotent: true,
     });
+  });
+
+  it("ne fait rien sur le web (pas de cache fichier)", async () => {
+    setPlatform("web");
+
+    await deleteExportFile();
+
+    expect(deleteFileMock).not.toHaveBeenCalled();
   });
 
   it("ne lève jamais, même si la suppression échoue", async () => {
