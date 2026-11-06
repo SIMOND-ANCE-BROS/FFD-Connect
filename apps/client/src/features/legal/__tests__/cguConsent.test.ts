@@ -6,6 +6,7 @@ import {
   acceptCgu,
   CGU_VERSION,
   CguSubject,
+  forgetCguAcceptance,
   needsCguAcceptance,
 } from "../cguConsent";
 
@@ -177,5 +178,31 @@ describe("cguConsent — compte (#894)", () => {
       .spyOn(AsyncStorage, "getItem")
       .mockRejectedValueOnce(new Error("locked"));
     expect(await needsCguAcceptance(alice)).toBe(false);
+  });
+});
+
+describe("cguConsent — compte supprimé (#930)", () => {
+  it("forgetCguAcceptance retire la copie de ce compte seulement", async () => {
+    await acceptCgu(alice);
+    await acceptCgu(bob);
+    await acceptCgu(guest);
+    await flush();
+
+    await forgetCguAcceptance("alice");
+
+    expect(await AsyncStorage.getItem(ALICE_KEY)).toBeNull();
+    expect(await AsyncStorage.getItem("cgu_accepted_version:account:bob")).toBe(
+      CGU_VERSION,
+    );
+    expect(await AsyncStorage.getItem("cgu_accepted_version")).toBe(
+      CGU_VERSION,
+    );
+  });
+
+  it("ne rejette pas si le stockage échoue", async () => {
+    jest
+      .spyOn(AsyncStorage, "removeItem")
+      .mockRejectedValueOnce(new Error("locked"));
+    await expect(forgetCguAcceptance("alice")).resolves.toBeUndefined();
   });
 });

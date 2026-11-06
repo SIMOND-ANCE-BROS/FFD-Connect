@@ -10,6 +10,8 @@ import {
   usersControllerExportMyData,
 } from "../../../../api/generated/sdk.gen";
 import { runSessionEndCleanups } from "../../../../services/sessionCleanup";
+import { AuthService } from "../../../auth/services/AuthService";
+import { forgetCguAcceptance } from "../../../legal/cguConsent";
 import {
   deleteExportFile,
   deleteMyAccount,
@@ -25,6 +27,14 @@ jest.mock("expo-file-system/legacy", () => ({
   cacheDirectory: "file:///cache/",
   writeAsStringAsync: jest.fn().mockResolvedValue(undefined),
   deleteAsync: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock("../../../auth/services/AuthService", () => ({
+  AuthService: { getAuthConfig: jest.fn() },
+}));
+
+jest.mock("../../../legal/cguConsent", () => ({
+  forgetCguAcceptance: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock("expo-sharing", () => ({
@@ -182,6 +192,42 @@ describe("deleteExportFile", () => {
 });
 
 describe("deleteMyAccount", () => {
+  const getAuthConfigMock = AuthService.getAuthConfig as jest.Mock;
+  const forgetCguMock = forgetCguAcceptance as jest.Mock;
+
+  beforeEach(() => {
+    getAuthConfigMock.mockResolvedValue({ isLoggedIn: true, userId: "u-1" });
+  });
+
+  // #930: no account id left on the device once the account is gone.
+  it("retire la copie locale de l'acceptation des CGU du compte supprimé", async () => {
+    deleteMock.mockResolvedValue({ data: { message: "ok" }, response: {} });
+
+    await deleteMyAccount("s3cret");
+
+    expect(forgetCguMock).toHaveBeenCalledWith("u-1");
+  });
+
+  it("garde la copie des CGU si la suppression échoue", async () => {
+    deleteMock.mockResolvedValue({
+      error: { statusCode: 401 },
+      response: { status: 401 },
+    });
+
+    await expect(deleteMyAccount("bad")).rejects.toThrow("WRONG_PASSWORD");
+
+    expect(forgetCguMock).not.toHaveBeenCalled();
+  });
+
+  it("sans identifiant de compte connu, n'oublie rien", async () => {
+    getAuthConfigMock.mockResolvedValue({ isLoggedIn: true });
+    deleteMock.mockResolvedValue({ data: { message: "ok" }, response: {} });
+
+    await deleteMyAccount("s3cret");
+
+    expect(forgetCguMock).not.toHaveBeenCalled();
+  });
+
   it("envoie le mot de passe au backend", async () => {
     deleteMock.mockResolvedValue({ data: { message: "ok" }, response: {} });
 
