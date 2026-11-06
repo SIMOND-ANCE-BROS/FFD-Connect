@@ -15,6 +15,7 @@ import {
   type Tokens,
 } from "../../../api/tokenStore";
 import { isTokenStoreUnavailable } from "../../../api/tokenStoreErrors";
+import { withoutAccountData } from "./accountData";
 import { clearLicenseSnapshot } from "../../license/utils/licenseSnapshot";
 import { runSessionEndCleanups } from "../../../services/sessionCleanup";
 import {
@@ -292,29 +293,6 @@ async function readImpersonationBackupPrefs(): Promise<AuthConfig | null> {
   } catch {
     return null;
   }
-}
-
-/**
- * The impersonated account's own data a logout must not leave on the admin's
- * device (#599): identity and profile fields of a third party, maybe a minor.
- */
-function withoutAccountData(config: AuthConfig): AuthConfig {
-  return {
-    ...config,
-    username: undefined,
-    userId: undefined,
-    clubName: undefined,
-    ageGroup: undefined,
-    level: undefined,
-    category: undefined,
-    passportLevelLatin: undefined,
-    passportLevelStandard: undefined,
-    hasWdsfLicense: undefined,
-    licensePhotoUri: undefined,
-    registrationPolicy: undefined,
-    clubLogoUri: undefined,
-    clubDashboardConfig: undefined,
-  };
 }
 
 /**

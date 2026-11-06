@@ -15,6 +15,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 
 import { API_TIMEOUT_MS, API_URL } from "../config";
+import { withoutAccountData } from "../features/auth/services/accountData";
+import type { AuthConfig } from "../features/auth/services/AuthService";
 import { clearLicenseSnapshot } from "../features/license/utils/licenseSnapshot";
 import { runSessionEndCleanups } from "../services/sessionCleanup";
 import { useAuthStore } from "../stores/auth.store";
@@ -40,13 +42,20 @@ interface RefreshResponse {
 /** Met à jour le flag isLoggedIn dans le blob de préférences (AsyncStorage). */
 async function setLoggedInFlag(value: boolean): Promise<void> {
   const json = await AsyncStorage.getItem(AUTH_KEY);
-  let prefs: Record<string, unknown> = {};
+  let prefs: Partial<AuthConfig> = {};
   if (json) {
     try {
-      prefs = JSON.parse(json) as Record<string, unknown>;
+      prefs = JSON.parse(json) as Partial<AuthConfig>;
     } catch {
       prefs = {};
     }
+  }
+  if (!value && prefs.impersonating === true) {
+    // A support access ended without stopImpersonation() or logout() (token
+    // store unreadable, refresh token rejected): the preferences are still
+    // the impersonated account's. None of its data stays on the admin's
+    // device (#910), as at a logout (#599).
+    prefs = withoutAccountData(prefs);
   }
   prefs.isLoggedIn = value;
   if (!value) {
