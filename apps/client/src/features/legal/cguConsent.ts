@@ -60,6 +60,16 @@ async function forgetLocally(subject: CguSubject): Promise<void> {
 }
 
 /**
+ * Retire la copie locale de l'acceptation d'un compte (#930) : appelé quand le
+ * compte est supprimé, pour que son identifiant ne reste pas sur l'appareil.
+ * Conservée à la déconnexion : c'est le repli hors ligne de ce compte à sa
+ * prochaine connexion. Ne rejette jamais.
+ */
+export async function forgetCguAcceptance(accountId: string): Promise<void> {
+  await forgetLocally({ kind: "account", id: accountId });
+}
+
+/**
  * Envoie au compte une acceptation donnée sur l'appareil. Si le serveur est
  * sur une autre version des CGU que le texte montré (409), rien n'est
  * enregistré : la copie locale est oubliée pour que la question revienne,

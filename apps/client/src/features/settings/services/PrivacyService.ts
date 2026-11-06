@@ -12,6 +12,8 @@ import {
   usersControllerExportMyData,
 } from "../../../api/generated/sdk.gen";
 import { onSessionEnd } from "../../../services/sessionCleanup";
+import { AuthService } from "../../auth/services/AuthService";
+import { forgetCguAcceptance } from "../../legal/cguConsent";
 import { createLogger } from "../../../utils/logger";
 
 /**
@@ -87,6 +89,8 @@ export async function exportAndShareMyData(): Promise<void> {
  * Lève "WRONG_PASSWORD" (401) ou "DELETE_FAILED" ; l'appelant gère le logout.
  */
 export async function deleteMyAccount(password: string): Promise<void> {
+  // Read before the call: the caller logs out right after a deletion.
+  const { userId } = await AuthService.getAuthConfig();
   const { error, response } = await usersControllerDeleteMyAccount({
     body: { password },
   });
@@ -95,4 +99,7 @@ export async function deleteMyAccount(password: string): Promise<void> {
       response?.status === 401 ? "WRONG_PASSWORD" : "DELETE_FAILED",
     );
   }
+  // The deleted account's CGU acceptance copy goes with it (#930): its
+  // opaque id no longer lingers in that key.
+  if (userId) await forgetCguAcceptance(userId);
 }

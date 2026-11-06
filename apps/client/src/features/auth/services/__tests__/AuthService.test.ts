@@ -309,6 +309,35 @@ describe("AuthService", () => {
       expect(saved?.userId).toBe("new-id");
     });
 
+    // #929: a sign-up after the store-review session must not inherit its
+    // flag (it turns the usage measurement off).
+    it("drops the previous session's store-review flag", async () => {
+      (api.post as jest.Mock).mockResolvedValue({
+        data: {
+          access_token: "reg-token",
+          user: { id: "new-id", role: "LICENSEE", email: "new@test.com" },
+        },
+      });
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+        JSON.stringify({
+          isLoggedIn: false,
+          username: "review@example.com",
+          isStoreReview: true,
+        }),
+      );
+
+      await AuthService.register("new@test.com", "pw", "LIC-001", "Dupont");
+
+      const saved = (AsyncStorage.setItem as jest.Mock).mock.calls
+        .filter(([key]) => key === "auth_config")
+        .map(
+          ([, json]) =>
+            JSON.parse(json as string) as { isStoreReview?: boolean },
+        )
+        .pop();
+      expect(saved?.isStoreReview).toBe(false);
+    });
+
     it("throws license-not-found message on 404", async () => {
       (api.post as jest.Mock).mockRejectedValue({
         isAxiosError: true,

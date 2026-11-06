@@ -15,6 +15,7 @@ import {
   type Tokens,
 } from "../../../api/tokenStore";
 import { isTokenStoreUnavailable } from "../../../api/tokenStoreErrors";
+import { devicePreferencesOf, withoutAccountData } from "./accountData";
 import { clearLicenseSnapshot } from "../../license/utils/licenseSnapshot";
 import { runSessionEndCleanups } from "../../../services/sessionCleanup";
 import {
@@ -294,46 +295,6 @@ async function readImpersonationBackupPrefs(): Promise<AuthConfig | null> {
   }
 }
 
-/**
- * The impersonated account's own data a logout must not leave on the admin's
- * device (#599): identity and profile fields of a third party, maybe a minor.
- */
-function withoutAccountData(config: AuthConfig): AuthConfig {
-  return {
-    ...config,
-    username: undefined,
-    userId: undefined,
-    clubName: undefined,
-    ageGroup: undefined,
-    level: undefined,
-    category: undefined,
-    passportLevelLatin: undefined,
-    passportLevelStandard: undefined,
-    hasWdsfLicense: undefined,
-    licensePhotoUri: undefined,
-    registrationPolicy: undefined,
-    clubLogoUri: undefined,
-    clubDashboardConfig: undefined,
-  };
-}
-
-/**
- * The device-level preferences that carry into a support access (#879): an
- * allowlist, so a profile field added to AuthConfig later never crosses an
- * identity change by default. Everything else (identity, licence photo,
- * dancer profile, club settings, space memory…) belongs to the admin.
- */
-function devicePreferencesOf(config: AuthConfig): Partial<AuthConfig> {
-  return {
-    animationsEnabled: config.animationsEnabled,
-    appTheme: config.appTheme,
-    biometricsEnabled: config.biometricsEnabled,
-    defaultLibraryFilter: config.defaultLibraryFilter,
-    defaultCompetitionScope: config.defaultCompetitionScope,
-    defaultCompetitionStatus: config.defaultCompetitionStatus,
-  };
-}
-
 /** saveAuthConfig's body, throwing: for the impersonation switches. */
 async function writeAuthConfig(config: AuthConfig): Promise<void> {
   await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(withoutTokens(config)));
@@ -532,6 +493,9 @@ export const AuthService = {
         category: user.category ?? undefined,
         ageGroup: user.ageGroup ?? undefined,
         isGuest: false,
+        // A brand-new account is never the store-review one (#929): the flag
+        // left by a previous session must not turn off its usage measurement.
+        isStoreReview: false,
         username: user.email,
         // Same as login: identifies the account (Sentry, CGU acceptance #894).
         userId: user.id,
