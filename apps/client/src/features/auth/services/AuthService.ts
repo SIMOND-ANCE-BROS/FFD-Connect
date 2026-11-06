@@ -532,6 +532,9 @@ export const AuthService = {
         category: user.category ?? undefined,
         ageGroup: user.ageGroup ?? undefined,
         isGuest: false,
+        // A brand-new account is never the store-review one (#929): the flag
+        // left by a previous session must not turn off its usage measurement.
+        isStoreReview: false,
         username: user.email,
         // Same as login: identifies the account (Sentry, CGU acceptance #894).
         userId: user.id,
