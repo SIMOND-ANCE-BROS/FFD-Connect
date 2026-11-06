@@ -146,7 +146,10 @@ describe("refreshSession", () => {
     getItem.mockResolvedValue(
       JSON.stringify({
         isLoggedIn: true,
-        role: "LICENSEE",
+        role: "CLUB",
+        roles: ["CLUB"],
+        mainRole: "CLUB",
+        isStoreReview: true,
         appTheme: "dark",
         impersonating: true,
         impersonatedName: "Jane Doe",
@@ -157,12 +160,9 @@ describe("refreshSession", () => {
     await unreadableHandler?.();
 
     const saved = JSON.parse(setItem.mock.calls[0][1] as string);
-    // Device preferences stay; nothing of the licensee does.
-    expect(saved).toEqual({
-      isLoggedIn: false,
-      role: "LICENSEE",
-      appTheme: "dark",
-    });
+    // Device preferences stay; nothing of the licensee (identity, profile,
+    // roles) does.
+    expect(saved).toEqual({ isLoggedIn: false, appTheme: "dark" });
   });
 
   it("keeps the account's own profile when an ordinary session ends", async () => {

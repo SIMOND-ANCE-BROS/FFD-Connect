@@ -99,7 +99,7 @@ export async function deleteMyAccount(password: string): Promise<void> {
       response?.status === 401 ? "WRONG_PASSWORD" : "DELETE_FAILED",
     );
   }
-  // The deleted account's CGU acceptance copy goes with it (#930): no
-  // account id left on the device.
+  // The deleted account's CGU acceptance copy goes with it (#930): its
+  // opaque id no longer lingers in that key.
   if (userId) await forgetCguAcceptance(userId);
 }

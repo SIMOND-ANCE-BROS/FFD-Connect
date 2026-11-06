@@ -3,7 +3,7 @@ import type { AuthConfig } from "./AuthService";
 /**
  * The account's own identity and profile fields in `auth_config`. Kept in a
  * module without runtime imports so sessionRefresh, which must not import
- * AuthService (import cycle), strips the same list (#910).
+ * AuthService at runtime (import cycle), shares these helpers (#910).
  */
 const ACCOUNT_DATA_FIELDS = [
   "username",
@@ -34,4 +34,24 @@ export function withoutAccountData<T extends Partial<AuthConfig>>(
     stripped[field] = undefined;
   }
   return stripped;
+}
+
+/**
+ * The device-level preferences that carry into a support access (#879) and
+ * survive one ended without the admin's backup (#910): an allowlist, so a
+ * profile field added to AuthConfig later never crosses an identity change
+ * by default. Everything else (identity, roles, licence photo, dancer
+ * profile, club settings, space memory…) belongs to an account.
+ */
+export function devicePreferencesOf(
+  config: Partial<AuthConfig>,
+): Partial<AuthConfig> {
+  return {
+    animationsEnabled: config.animationsEnabled,
+    appTheme: config.appTheme,
+    biometricsEnabled: config.biometricsEnabled,
+    defaultLibraryFilter: config.defaultLibraryFilter,
+    defaultCompetitionScope: config.defaultCompetitionScope,
+    defaultCompetitionStatus: config.defaultCompetitionStatus,
+  };
 }

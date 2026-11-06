@@ -15,7 +15,7 @@ import {
   type Tokens,
 } from "../../../api/tokenStore";
 import { isTokenStoreUnavailable } from "../../../api/tokenStoreErrors";
-import { withoutAccountData } from "./accountData";
+import { devicePreferencesOf, withoutAccountData } from "./accountData";
 import { clearLicenseSnapshot } from "../../license/utils/licenseSnapshot";
 import { runSessionEndCleanups } from "../../../services/sessionCleanup";
 import {
@@ -293,23 +293,6 @@ async function readImpersonationBackupPrefs(): Promise<AuthConfig | null> {
   } catch {
     return null;
   }
-}
-
-/**
- * The device-level preferences that carry into a support access (#879): an
- * allowlist, so a profile field added to AuthConfig later never crosses an
- * identity change by default. Everything else (identity, licence photo,
- * dancer profile, club settings, space memory…) belongs to the admin.
- */
-function devicePreferencesOf(config: AuthConfig): Partial<AuthConfig> {
-  return {
-    animationsEnabled: config.animationsEnabled,
-    appTheme: config.appTheme,
-    biometricsEnabled: config.biometricsEnabled,
-    defaultLibraryFilter: config.defaultLibraryFilter,
-    defaultCompetitionScope: config.defaultCompetitionScope,
-    defaultCompetitionStatus: config.defaultCompetitionStatus,
-  };
 }
 
 /** saveAuthConfig's body, throwing: for the impersonation switches. */

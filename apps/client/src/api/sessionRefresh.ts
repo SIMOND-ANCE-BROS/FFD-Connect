@@ -7,7 +7,8 @@
  * session ne se termine QUE si le refresh token lui-même est invalide/expiré
  * (401/403) ou à la déconnexion explicite — comportement "Instagram".
  *
- * Module autonome (pas d'import d'AuthService ni du client HTTP intercepté) pour
+ * Module autonome (pas d'import runtime d'AuthService — `import type` seulement —
+ * ni du client HTTP intercepté) pour
  * éviter tout cycle d'import et toute récursion de refresh. Utilise un axios nu
  * (sans interceptor) pour appeler /auth/refresh.
  */
@@ -15,7 +16,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 
 import { API_TIMEOUT_MS, API_URL } from "../config";
-import { withoutAccountData } from "../features/auth/services/accountData";
+import { devicePreferencesOf } from "../features/auth/services/accountData";
 import type { AuthConfig } from "../features/auth/services/AuthService";
 import { clearLicenseSnapshot } from "../features/license/utils/licenseSnapshot";
 import { runSessionEndCleanups } from "../services/sessionCleanup";
@@ -52,10 +53,11 @@ async function setLoggedInFlag(value: boolean): Promise<void> {
   }
   if (!value && prefs.impersonating === true) {
     // A support access ended without stopImpersonation() or logout() (token
-    // store unreadable, refresh token rejected): the preferences are still
-    // the impersonated account's. None of its data stays on the admin's
-    // device (#910), as at a logout (#599).
-    prefs = withoutAccountData(prefs);
+    // store unreadable): the preferences are still the impersonated
+    // account's, and the admin's backup goes with the session. Only the
+    // device preferences stay (#910): nothing of a third party, maybe a
+    // minor, remains on the admin's device (#599).
+    prefs = devicePreferencesOf(prefs);
   }
   prefs.isLoggedIn = value;
   if (!value) {
