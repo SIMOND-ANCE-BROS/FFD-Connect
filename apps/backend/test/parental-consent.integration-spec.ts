@@ -205,7 +205,7 @@ describe("Parental consent (integration, real DB, #61)", () => {
     const granted = await prisma.parentalConsent.findFirstOrThrow({
       where: { userId: minor.id, status: "GRANTED" },
     });
-    expect(granted.cguVersion).toBe("3");
+    expect(granted.cguVersion).toBe("4");
 
     // A granted consent is never replaced by a new request.
     await request(app.getHttpServer())

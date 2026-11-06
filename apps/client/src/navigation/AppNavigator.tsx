@@ -360,9 +360,13 @@ export const AppNavigator = () => {
         {currentRouteName !== "PerformancePlayer" && (
           <MiniPlayer currentRouteName={currentRouteName} />
         )}
-        {/* Acceptation CGU au premier lancement (#424) — autonome, ne rend
-          rien si la version courante est déjà acceptée. */}
-        <CguAcceptanceModal />
+        {/* Acceptation CGU (#424), par compte (#894) — ne rend rien si la
+          session a déjà accepté la version courante, ni hors session, ni en
+          accès support. */}
+        <CguAcceptanceModal
+          active={isLoggedIn === true && !impersonating}
+          isGuest={isGuest}
+        />
         {/* Avis de mise à jour de la politique de confidentialité (#734) —
           information non bloquante, comptes connectés seulement. */}
         <PrivacyPolicyNotice

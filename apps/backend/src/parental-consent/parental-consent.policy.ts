@@ -1,3 +1,4 @@
+import { CGU_VERSION } from "../cgu/cgu-version";
 import {
   assessLegalAge,
   LEGAL_MAJORITY_AGE_YEARS,
@@ -24,11 +25,11 @@ export const PARENTAL_CONSENT_AGE_YEARS = LEGAL_MAJORITY_AGE_YEARS;
 export const PARENTAL_CONSENT_CONFIRMATION_TTL_DAYS = 7;
 
 /**
- * Version of the CGU the parent accepts on the minor's behalf. Must equal the
- * client's `CGU_VERSION` (apps/client/src/features/legal/cguConsent.ts): v3
- * is the version whose §6 opens the app to minors with a parent's consent.
+ * Version of the CGU the parent accepts on the minor's behalf: the version in
+ * force (`CGU_VERSION`, src/cgu/cgu-version.ts). v3 is the first version whose
+ * §6 opens the app to minors with a parent's consent; later versions keep it.
  */
-export const PARENTAL_CONSENT_CGU_VERSION = "3";
+export const PARENTAL_CONSENT_CGU_VERSION = CGU_VERSION;
 
 /** Stored statuses of a `ParentalConsent` row. */
 export const PARENTAL_CONSENT_STATUSES = [

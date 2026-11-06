@@ -485,6 +485,9 @@ export class UsersService {
         disabledAt: true,
         // Dernière version de la politique de confidentialité lue (#734).
         privacyPolicySeenVersion: true,
+        // Preuve de l'acceptation des CGU par ce compte (#894).
+        cguAcceptedVersion: true,
+        cguAcceptedAt: true,
         license: {
           select: {
             number: true,

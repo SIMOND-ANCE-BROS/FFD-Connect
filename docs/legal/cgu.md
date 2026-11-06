@@ -1,6 +1,6 @@
 # Conditions Générales d'Utilisation (CGU)
 
-_Dernière mise à jour : 15 octobre 2026_
+_Dernière mise à jour : 3 novembre 2026_
 
 > **Projet indépendant.** FFD Connect n'est pas une application officielle de la
 > Fédération Française de Danse, qui n'en est ni l'éditrice ni la responsable de
@@ -8,7 +8,7 @@ _Dernière mise à jour : 15 octobre 2026_
 
 ## 1. Objet
 
-Les présentes CGU régissent l'accès et l'utilisation de l'application **FFD-Connect** (ci-après « l'Application »), éditée par Gabin Simond (voir [mentions légales](./mentions-legales.md)). En créant un compte, l'utilisateur accepte sans réserve les présentes CGU.
+Les présentes CGU régissent l'accès et l'utilisation de l'application **FFD-Connect** (ci-après « l'Application »), éditée par Gabin Simond (voir [mentions légales](./mentions-legales.md)). Elles sont acceptées de façon explicite, dans l'Application, pour chaque compte : l'acceptation est demandée avant l'utilisation des fonctionnalités du compte et enregistrée sur celui-ci (voir article 11). Un utilisateur sans compte (invité) les accepte de la même façon, sur son appareil.
 
 ## 2. Description du service
 
@@ -81,7 +81,11 @@ L'utilisateur peut supprimer son compte à tout moment depuis l'Application. L'�
 
 ## 11. Modification des CGU
 
-Les CGU peuvent être modifiées. Les utilisateurs seront informés des changements substantiels ; la poursuite de l'utilisation vaut acceptation de la version en vigueur.
+Les CGU peuvent être modifiées. La date de dernière mise à jour figure en tête du texte.
+
+- En cas de changement substantiel, la nouvelle version est présentée dans l'Application. Chaque compte doit l'accepter explicitement pour continuer à utiliser les fonctionnalités de son compte ; elle n'est jamais réputée acceptée du seul fait de la poursuite de l'utilisation.
+- L'acceptation (numéro de version et date) est enregistrée sur le compte. Elle figure dans l'export des données, et cet enregistrement est supprimé avec le compte (voir [politique de confidentialité](./politique-confidentialite.md)).
+- L'utilisateur qui ne souhaite pas accepter la nouvelle version peut demander la suppression de son compte par e-mail à **privacy@gabin-simond.fr** (voir [suppression du compte](./suppression-compte.md)) ; la suppression depuis l'Application (article 10) n'est accessible qu'après acceptation.
 
 ## 12. Droit applicable
 

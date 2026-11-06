@@ -124,6 +124,58 @@ describe("refreshSession", () => {
     expect(mockRefreshAuth).toHaveBeenCalledTimes(1);
   });
 
+  // #910: a support access ended by an unreadable token store must not keep
+  // the licensee's profile in auth_config on the admin's device.
+  const licenseeProfile = {
+    username: "licensee@example.com",
+    userId: "licensee-id",
+    clubName: "Club",
+    ageGroup: "Junior",
+    level: "C",
+    category: "Latin",
+    passportLevelLatin: "C",
+    passportLevelStandard: "D",
+    hasWdsfLicense: true,
+    licensePhotoUri: "file:///photo.jpg",
+    registrationPolicy: "CLUB_ONLY",
+    clubLogoUri: "file:///logo.png",
+    clubDashboardConfig: "{}",
+  };
+
+  it("drops the licensee's profile when a support access ends on an unreadable store", async () => {
+    getItem.mockResolvedValue(
+      JSON.stringify({
+        isLoggedIn: true,
+        role: "CLUB",
+        roles: ["CLUB"],
+        mainRole: "CLUB",
+        isStoreReview: true,
+        appTheme: "dark",
+        impersonating: true,
+        impersonatedName: "Jane Doe",
+        ...licenseeProfile,
+      }),
+    );
+
+    await unreadableHandler?.();
+
+    const saved = JSON.parse(setItem.mock.calls[0][1] as string);
+    // Device preferences stay; nothing of the licensee (identity, profile,
+    // roles) does.
+    expect(saved).toEqual({ isLoggedIn: false, appTheme: "dark" });
+  });
+
+  it("keeps the account's own profile when an ordinary session ends", async () => {
+    getItem.mockResolvedValue(
+      JSON.stringify({ isLoggedIn: true, ...licenseeProfile }),
+    );
+
+    await unreadableHandler?.();
+
+    const saved = JSON.parse(setItem.mock.calls[0][1] as string);
+    expect(saved).toEqual({ isLoggedIn: false, ...licenseeProfile });
+  });
+
   it("refreshes and persists the new access + rotated refresh token", async () => {
     mockGetTokens.mockResolvedValue({ refreshToken: "r1" });
     post.mockResolvedValue({
