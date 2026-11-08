@@ -243,6 +243,9 @@ export class AuthTokenService {
     try {
       const { sub } = this.jwtService.verify<{ sub?: unknown }>(accessToken, {
         ignoreExpiration: true,
+        // A legitimate app always holds a token younger than its refresh
+        // token: an older one (a leaked backup) answers nothing more.
+        maxAge: `${this.REFRESH_TOKEN_EXPIRY_DAYS + 1}d`,
       });
       if (typeof sub !== "string" || sub.length === 0) return false;
       const user = await this.prisma.user.findUnique({

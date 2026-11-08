@@ -13,11 +13,14 @@ const logger = createLogger("accountImages");
  */
 const IMAGE_PICKER_DIR = "ImagePicker/";
 
-/** A file in the app's own folders, never a gallery original or a URL. */
+/**
+ * A file in the app's own folders, never a gallery original, a URL, nor a
+ * folder (a corrupted URI equal to a root folder must not wipe it).
+ */
 function isAppFile(uri: string | undefined): uri is string {
-  if (!uri || uri.includes("..")) return false;
+  if (!uri || uri.endsWith("/") || /\.\.|%2e/i.test(uri)) return false;
   return [documentDirectory, cacheDirectory].some(
-    (dir) => !!dir && uri.startsWith(dir),
+    (dir) => !!dir && uri.length > dir.length && uri.startsWith(dir),
   );
 }
 

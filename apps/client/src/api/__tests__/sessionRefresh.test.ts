@@ -341,6 +341,9 @@ describe("refreshSession", () => {
 
       expect(mockClearTokens).toHaveBeenCalledWith("r1");
       expect(wipe).toHaveBeenCalledTimes(1);
+      // Its id may be gone from auth_config (biometric lock): the token
+      // still names the account.
+      expect(wipe).toHaveBeenCalledWith("a1");
       // The wipe owns auth_config: the plain session end never rewrites it
       // from the profile it read.
       expect(setItem).not.toHaveBeenCalled();

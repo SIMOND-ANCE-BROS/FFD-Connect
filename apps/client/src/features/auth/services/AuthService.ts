@@ -1170,8 +1170,11 @@ export const AuthService = {
  * refresh: it runs inside one in the second case. Never throws: each step is
  * best-effort so one failure never skips the others.
  */
-async function wipeDeletedAccountData(): Promise<void> {
+async function wipeDeletedAccountData(accessToken?: string): Promise<void> {
   const config = await AuthService.getAuthConfig();
+  // A biometric lock (logout) already dropped userId: the last access token
+  // still names the account.
+  const accountId = config.userId ?? subjectOf(accessToken);
   // Local only: the server dropped the device rows with the account, and
   // without tokens an unregister request could only fail. Never throws.
   await deleteLocalPushToken();
@@ -1180,7 +1183,7 @@ async function wipeDeletedAccountData(): Promise<void> {
   await dropImpersonationBackup();
   // Its CGU acceptance copy (#930): the opaque account id no longer lingers
   // in that key. Never throws.
-  if (config.userId) await forgetCguAcceptance(config.userId);
+  if (accountId) await forgetCguAcceptance(accountId);
   // Device-side leftovers a logout keeps for the same user (#936): planned
   // deadline reminders and their keys, downloaded favourites, the licence
   // photo / club logo files and saved programmes. Never throw.
@@ -1209,6 +1212,22 @@ async function wipeDeletedAccountData(): Promise<void> {
   // Server cache, per-account stores, Sentry user, export file… Never throws.
   await runSessionEndCleanups();
   logger.info("Deleted account's local data wiped");
+}
+
+/**
+ * `sub` of a JWT, read WITHOUT verifying it: only to name a local key to
+ * delete, never to trust anything. Undefined when unreadable.
+ */
+function subjectOf(token: string | undefined): string | undefined {
+  try {
+    const payload = token?.split(".")[1];
+    if (!payload) return undefined;
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const { sub } = JSON.parse(atob(base64)) as { sub?: unknown };
+    return typeof sub === "string" && sub.length > 0 ? sub : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Runs one step of a wipe, logging instead of throwing. */

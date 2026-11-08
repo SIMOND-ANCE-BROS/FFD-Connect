@@ -41,6 +41,11 @@ describe("deleteAccountImages", () => {
       "file:///var/mobile/Media/DCIM/photo.jpg",
       "https://cdn.example/logo.png",
       "file:///app/Caches/../../etc/hosts",
+      "file:///app/Caches/%2E%2E/x.jpg",
+      // A corrupted URI naming a root folder never wipes it.
+      "file:///app/Documents/",
+      "file:///app/Documents",
+      "file:///app/Documents/tracks/",
       undefined,
       "",
     ]);

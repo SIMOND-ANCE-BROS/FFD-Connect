@@ -73,7 +73,7 @@ jest.mock("../../../../api/sessionRefresh", () => ({
 const deletedAccountWipe = jest.requireMock<{
   setDeletedAccountSessionHandler: jest.Mock;
 }>("../../../../api/sessionRefresh").setDeletedAccountSessionHandler.mock
-  .calls[0]?.[0] as (() => Promise<void>) | undefined;
+  .calls[0]?.[0] as ((accessToken?: string) => Promise<void>) | undefined;
 
 jest.mock("../../../../utils/logger", () => ({
   createLogger: jest.fn(() => ({
@@ -293,6 +293,26 @@ describe("AuthService.endDeletedAccountSession (#933)", () => {
   describe("account deleted from another device (#935)", () => {
     it("registers the wipe for a refresh refused with ACCOUNT_DELETED", () => {
       expect(deletedAccountWipe).toEqual(expect.any(Function));
+    });
+
+    it("names the CGU copy from the access token when a biometric lock dropped the id", async () => {
+      stored({ ...ACCOUNT, userId: undefined, isLoggedIn: false });
+      const payload = btoa(JSON.stringify({ sub: "deleted-id" }))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+
+      await deletedAccountWipe?.(`h.${payload}.s`);
+
+      expect(mockForgetCguAcceptance).toHaveBeenCalledWith("deleted-id");
+    });
+
+    it("forgets no CGU copy from an unreadable token", async () => {
+      stored({ ...ACCOUNT, userId: undefined });
+
+      await deletedAccountWipe?.("not-a-jwt");
+
+      expect(mockForgetCguAcceptance).not.toHaveBeenCalled();
     });
 
     it("wipes the account's data without waiting for the refresh it runs in", async () => {

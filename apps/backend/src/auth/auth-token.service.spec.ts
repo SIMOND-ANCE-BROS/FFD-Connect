@@ -348,6 +348,7 @@ describe("AuthTokenService", () => {
         // signature is checked all the same.
         expect(mockJwtService.verify).toHaveBeenCalledWith("expired.jwt", {
           ignoreExpiration: true,
+          maxAge: "31d",
         });
         expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
           where: { id: "deleted-id" },

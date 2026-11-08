@@ -116,7 +116,8 @@ function isDeletedAccountRefusal(error: unknown): boolean {
   );
 }
 
-type DeletedAccountSessionHandler = () => Promise<void>;
+/** Receives the deleted account's last access token, if any. */
+type DeletedAccountSessionHandler = (accessToken?: string) => Promise<void>;
 let deletedAccountSessionHandler: DeletedAccountSessionHandler | null = null;
 
 /**
@@ -206,7 +207,7 @@ async function performRefresh(): Promise<string | null> {
         // was lost): none of its data stays here, biometrics or not (#935).
         logger.warn("Account deleted — local data wiped");
         try {
-          await handler();
+          await handler(authToken);
         } catch (wipeError) {
           logger.error("Deleted account wipe failed", wipeError);
         }
