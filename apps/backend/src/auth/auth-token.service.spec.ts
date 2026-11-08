@@ -4,7 +4,11 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { UserRole } from "@prisma/client";
 import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
-import { AuthTokenService, REFRESH_REUSE_GRACE_MS } from "./auth-token.service";
+import {
+  ACCOUNT_DELETED_CODE,
+  AuthTokenService,
+  REFRESH_REUSE_GRACE_MS,
+} from "./auth-token.service";
 
 /** Mirror the hash logic from the service for test assertions */
 function hashToken(token: string): string {
@@ -39,6 +43,7 @@ describe("AuthTokenService", () => {
 
   const mockJwtService = {
     sign: jest.fn(),
+    verify: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -301,6 +306,129 @@ describe("AuthTokenService", () => {
       await expect(service.refreshAccessToken("invalid-token")).rejects.toThrow(
         "Invalid or expired refresh token",
       );
+    });
+
+    describe("refresh of a deleted account (#935)", () => {
+      /** Body of the 401 a refresh rejects with. */
+      const refusalOf = async (
+        promise: Promise<unknown>,
+      ): Promise<Record<string, unknown>> => {
+        try {
+          await promise;
+        } catch (error) {
+          expect(error).toBeInstanceOf(UnauthorizedException);
+          return (error as UnauthorizedException).getResponse() as Record<
+            string,
+            unknown
+          >;
+        }
+        throw new Error("the refresh was not refused");
+      };
+
+      beforeEach(() => {
+        // The deletion cascaded to the refresh tokens.
+        mockPrismaService.refreshToken.findUnique.mockResolvedValue(null);
+      });
+
+      it("tells the app the account is gone when its access token names a missing user", async () => {
+        mockJwtService.verify.mockReturnValue({ sub: "deleted-id" });
+        mockPrismaService.user.findUnique.mockResolvedValue(null);
+
+        const body = await refusalOf(
+          service.refreshAccessToken("plain", "expired.jwt"),
+        );
+
+        expect(body).toMatchObject({
+          statusCode: 401,
+          code: ACCOUNT_DELETED_CODE,
+          // Same text as any rejected refresh: older apps behave as before.
+          message: "Invalid or expired refresh token",
+        });
+        // An expired access token still identifies its account; its
+        // signature is checked all the same.
+        expect(mockJwtService.verify).toHaveBeenCalledWith("expired.jwt", {
+          ignoreExpiration: true,
+        });
+        expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
+          where: { id: "deleted-id" },
+          select: { id: true },
+        });
+      });
+
+      it("answers the generic 401 when the account still exists", async () => {
+        mockJwtService.verify.mockReturnValue({ sub: "u1" });
+        mockPrismaService.user.findUnique.mockResolvedValue({ id: "u1" });
+
+        const body = await refusalOf(
+          service.refreshAccessToken("plain", "expired.jwt"),
+        );
+
+        expect(body.code).toBeUndefined();
+      });
+
+      it("answers the generic 401 without an access token (older apps)", async () => {
+        const body = await refusalOf(service.refreshAccessToken("plain"));
+
+        expect(body.code).toBeUndefined();
+        expect(mockJwtService.verify).not.toHaveBeenCalled();
+        expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+      });
+
+      it("never trusts an access token whose signature does not verify", async () => {
+        mockJwtService.verify.mockImplementation(() => {
+          throw new Error("invalid signature");
+        });
+
+        const body = await refusalOf(
+          service.refreshAccessToken("plain", "forged.jwt"),
+        );
+
+        expect(body.code).toBeUndefined();
+        expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+      });
+
+      it("ignores a verified token without a subject", async () => {
+        mockJwtService.verify.mockReturnValue({ email: "a@b.c" });
+
+        const body = await refusalOf(
+          service.refreshAccessToken("plain", "odd.jwt"),
+        );
+
+        expect(body.code).toBeUndefined();
+        expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+      });
+
+      it("answers the generic 401 when the account lookup fails", async () => {
+        mockJwtService.verify.mockReturnValue({ sub: "u1" });
+        mockPrismaService.user.findUnique.mockRejectedValue(
+          new Error("db down"),
+        );
+
+        const body = await refusalOf(
+          service.refreshAccessToken("plain", "expired.jwt"),
+        );
+
+        expect(body.code).toBeUndefined();
+      });
+
+      it("only looks for a deleted account when the refresh token is unknown", async () => {
+        // A valid token of an existing account rotates: the access token
+        // sent along plays no part.
+        mockPrismaService.refreshToken.findUnique.mockResolvedValue({
+          id: "rt-1",
+          userId: "u1",
+          familyId: "rt-1",
+          revoked: false,
+          revokedAt: null,
+          expiresAt: new Date(Date.now() + 86_400_000),
+          user: { id: "u1", email: "a@b.c", role: UserRole.LICENSEE },
+        });
+        mockJwtService.sign.mockReturnValue("jwt");
+
+        await service.refreshAccessToken("plain", "expired.jwt");
+
+        expect(mockJwtService.verify).not.toHaveBeenCalled();
+      });
     });
 
     it("should throw when refresh token is revoked", async () => {
@@ -789,7 +917,6 @@ describe("AuthTokenService", () => {
             club: { disabledAt: new Date() },
           },
         ],
-        ["the account was deleted", UserRole.LICENSEE, null],
       ])(
         "issues nothing when %s while the refresh waited",
         async (_label, role, status) => {
@@ -811,6 +938,33 @@ describe("AuthTokenService", () => {
           expect(mockJwtService.sign).not.toHaveBeenCalled();
         },
       );
+    });
+  });
+
+  describe("account deleted while the refresh waited (#935)", () => {
+    it("issues nothing and tells the app the account is gone", async () => {
+      mockPrismaService.refreshToken.findUnique.mockResolvedValue({
+        id: "rt-1",
+        userId: "u1",
+        familyId: "rt-1",
+        revoked: false,
+        revokedAt: null,
+        expiresAt: new Date(Date.now() + 86_400_000),
+        user: { id: "u1", email: "a@b.c", role: UserRole.LICENSEE },
+      });
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+
+      const refusal = service.refreshAccessToken("plain");
+
+      await expect(refusal).rejects.toBeInstanceOf(UnauthorizedException);
+      await refusal.catch((error: UnauthorizedException) => {
+        expect(error.getResponse()).toMatchObject({
+          code: ACCOUNT_DELETED_CODE,
+        });
+      });
+      expect(mockPrismaService.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(mockPrismaService.refreshToken.create).not.toHaveBeenCalled();
+      expect(mockJwtService.sign).not.toHaveBeenCalled();
     });
   });
 
