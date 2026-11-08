@@ -37,7 +37,9 @@ import { useFocusOnChange } from "../../../utils/a11yFocus";
 import { announce } from "../../../utils/announce";
 import { createLogger } from "../../../utils/logger";
 import { useAuthRepository } from "../../auth/context/AuthContext";
+import { useClubCompetitions } from "../hooks/useClubCompetitions";
 import { ClubService } from "../services/ClubService";
+import { countActiveClubCompetitions } from "../utils/clubCompetitionStatus";
 // Side-effect : configure le client OpenAPI généré (baseUrl + auth + refresh).
 import "../../../api/client";
 import { clubRefundsDueControllerList } from "../../../api/generated/sdk.gen";
@@ -180,12 +182,19 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
   const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const scrollY = useRef(new Animated.Value(0)).current;
-  const [clubName, setClubName] = React.useState("Danse Club Paris");
+  // Neutral title until the session config gives the club's real name.
+  const [clubName, setClubName] = React.useState("Mon club");
+
+  // The club's real competitions (#441), shared with « Mes compétitions »
+  // (same query, reloaded on refocus). No figure while it is unknown.
+  const clubCompetitions = useClubCompetitions();
+  const activeCompetitions: number | "-" = clubCompetitions.data
+    ? countActiveClubCompetitions(clubCompetitions.data)
+    : "-";
 
   // State for dashboard stats — fetched via useFocusEffect below
   const [stats, setStats] = React.useState({
     members: 0,
-    activeCompetitions: 0,
     pendingRegistrations: 0,
     nextEvent: null as string | null,
   });
@@ -596,7 +605,7 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
                 def.id === "members"
                   ? stats.members
                   : def.id === "competitions"
-                    ? stats.activeCompetitions
+                    ? activeCompetitions
                     : def.id === "registrations"
                       ? stats.pendingRegistrations
                       : def.id === "couples"

@@ -5,10 +5,7 @@ import type { MockFluidSegmentedTabProps } from "../../../../__tests__/mocks/typ
 import { competitionsControllerGetClubCompetitions } from "../../../../api/generated/sdk.gen";
 import { useTheme } from "../../../../context/ThemeContext";
 import { createMockScreenProps } from "../../../../utils/testUtils";
-import {
-  ClubCompetitionsScreen,
-  displayStatus,
-} from "../ClubCompetitionsScreen";
+import { ClubCompetitionsScreen } from "../ClubCompetitionsScreen";
 
 jest.mock("../../../../context/ThemeContext", () => ({
   ThemeProvider: ({ children }: PropsWithChildren) => <>{children}</>,
@@ -189,27 +186,5 @@ describe("ClubCompetitionsScreen", () => {
 
     expect(await findByText("Gala du club")).toBeTruthy();
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
-  });
-});
-
-describe("displayStatus", () => {
-  const now = new Date("2026-06-01T12:00:00Z");
-
-  it("keeps a cancelled competition cancelled", () => {
-    expect(
-      displayStatus({ status: "CANCELLED", date: "2099-01-01" }, now),
-    ).toBe("CANCELLED");
-  });
-
-  it("keeps LIVE and derives past/upcoming from the date", () => {
-    expect(displayStatus({ status: "LIVE", date: "2026-05-30" }, now)).toBe(
-      "LIVE",
-    );
-    expect(displayStatus({ status: "UPCOMING", date: "2026-01-01" }, now)).toBe(
-      "PAST",
-    );
-    expect(displayStatus({ status: "PAST", date: "2026-07-01" }, now)).toBe(
-      "UPCOMING",
-    );
   });
 });

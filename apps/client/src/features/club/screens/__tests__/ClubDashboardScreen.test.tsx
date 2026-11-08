@@ -1,9 +1,13 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
-import React from "react";
+import React, { PropsWithChildren } from "react";
 import { mockNavigation } from "../../../../__tests__/mocks/mockNavigation";
 import { useTheme } from "../../../../context/ThemeContext";
 import { useAuthRepository } from "../../../../features/auth/context/AuthContext";
-import { clubRefundsDueControllerList } from "../../../../api/generated/sdk.gen";
+import {
+  clubRefundsDueControllerList,
+  competitionsControllerGetClubCompetitions,
+} from "../../../../api/generated/sdk.gen";
 import { ClubService } from "../../services/ClubService";
 import { ClubDashboardScreen } from "../ClubDashboardScreen";
 
@@ -75,8 +79,20 @@ jest.mock("react-native-draggable-flatlist", () => {
 jest.mock("../../../../api/client", () => ({}));
 jest.mock("../../../../api/generated/sdk.gen", () => ({
   clubRefundsDueControllerList: jest.fn(),
+  competitionsControllerGetClubCompetitions: jest.fn(),
 }));
 const refundsDueMock = clubRefundsDueControllerList as jest.Mock;
+const clubCompetitionsMock =
+  competitionsControllerGetClubCompetitions as jest.Mock;
+
+// The competitions card reads the club's competitions through React Query
+// (#441): a fresh cache per render keeps the tests independent.
+const QueryWrapper = ({ children }: PropsWithChildren) => {
+  const [client] = React.useState(
+    () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  );
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+};
 
 describe("ClubDashboardScreen", () => {
   const mockTheme = {
@@ -106,6 +122,7 @@ describe("ClubDashboardScreen", () => {
       setClubDashboardConfig: jest.fn().mockResolvedValue(undefined),
     });
     (ClubService.getMembers as jest.Mock).mockResolvedValue([]);
+    clubCompetitionsMock.mockResolvedValue({ data: [] });
     const { findByText, unmount } = await render(
       <ClubDashboardScreen
         navigation={
@@ -123,6 +140,7 @@ describe("ClubDashboardScreen", () => {
           >["route"]
         }
       />,
+      { wrapper: QueryWrapper },
     );
     // Let the focus loads settle before unmounting.
     await findByText("Mon Club");
@@ -147,6 +165,48 @@ describe("ClubDashboardScreen", () => {
     refundsDueMock.mockResolvedValue({
       data: { data: [], meta: { total: 0, skip: 0, take: 1, hasMore: false } },
     });
+    clubCompetitionsMock.mockResolvedValue({ data: [] });
+  });
+
+  it("counts the club's upcoming competitions from the API (#441)", async () => {
+    clubCompetitionsMock.mockResolvedValue({
+      data: [
+        { id: "c1", status: "UPCOMING", date: "2099-03-12T09:00:00.000Z" },
+        { id: "c2", status: "LIVE", date: "2099-04-01T09:00:00.000Z" },
+        { id: "c3", status: "UPCOMING", date: "2000-01-01T09:00:00.000Z" },
+        { id: "c4", status: "CANCELLED", date: "2099-05-01T09:00:00.000Z" },
+      ],
+    });
+
+    const { findByRole } = await renderDashboard();
+
+    const card = await findByRole("button", { name: "Compétitions, 2" });
+    expect(card.props.testID).toBe("club-dashboard-competitions-card");
+    expect(clubCompetitionsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows no competition figure while the count is unknown", async () => {
+    clubCompetitionsMock.mockResolvedValue({ error: { message: "boom" } });
+
+    const { findByRole, queryByRole } = await renderDashboard();
+
+    await waitFor(() => expect(clubCompetitionsMock).toHaveBeenCalled());
+    // "-" is a visual placeholder, not read aloud: never a made-up 0.
+    expect(await findByRole("button", { name: "Compétitions" })).toBeTruthy();
+    expect(queryByRole("button", { name: "Compétitions, 0" })).toBeNull();
+  });
+
+  it("does not show a made-up club name when the session has none", async () => {
+    (useAuthRepository as jest.Mock).mockReturnValue({
+      getAuthConfig: jest.fn().mockResolvedValue({}),
+      getClubDashboardConfig: jest.fn().mockResolvedValue(null),
+      setClubDashboardConfig: jest.fn().mockResolvedValue(undefined),
+    });
+
+    const { findByText, queryByText } = await renderDashboard();
+
+    expect(await findByText("Mon club")).toBeTruthy();
+    expect(queryByText("Danse Club Paris")).toBeNull();
   });
 
   const renderDashboard = () =>
@@ -167,6 +227,7 @@ describe("ClubDashboardScreen", () => {
           >["route"]
         }
       />,
+      { wrapper: QueryWrapper },
     );
 
   it("shows the number of refunds due and opens their list (#516)", async () => {
@@ -225,6 +286,7 @@ describe("ClubDashboardScreen", () => {
           >["route"]
         }
       />,
+      { wrapper: QueryWrapper },
     );
 
     await waitFor(() => {
@@ -258,6 +320,7 @@ describe("ClubDashboardScreen", () => {
           >["route"]
         }
       />,
+      { wrapper: QueryWrapper },
     );
 
     await waitFor(() => {
@@ -289,6 +352,7 @@ describe("ClubDashboardScreen", () => {
           >["route"]
         }
       />,
+      { wrapper: QueryWrapper },
     );
 
     await waitFor(() => {
