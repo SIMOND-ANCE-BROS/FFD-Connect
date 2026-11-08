@@ -210,6 +210,9 @@ async function performRefresh(): Promise<string | null> {
           await handler(authToken);
         } catch (wipeError) {
           logger.error("Deleted account wipe failed", wipeError);
+          // Never leave a "logged in" profile without tokens behind.
+          await clearLicenseSnapshot();
+          await endSessionState();
         }
         await refreshAuthState();
         return null;

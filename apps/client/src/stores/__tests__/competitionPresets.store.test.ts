@@ -259,9 +259,10 @@ describe("clearCompetitionPresets (#936)", () => {
     store().save("Open de Lyon — Julie & Marc", config());
 
     clearCompetitionPresets();
+    await Promise.resolve();
 
     expect(store().presets).toEqual([]);
     expect(store().activePresetId).toBeNull();
-    expect((await saved())?.state).toEqual({ presets: [] });
+    expect(await saved()).toBeNull();
   });
 });

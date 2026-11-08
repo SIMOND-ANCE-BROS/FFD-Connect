@@ -54,16 +54,24 @@ export const DeleteAccountModal = ({
       handleClose();
       onDeleted();
     } catch (e) {
-      const wrongPassword =
-        e instanceof Error && e.message === "WRONG_PASSWORD";
+      const reason = e instanceof Error ? e.message : "";
+      if (reason === "SESSION_ENDED") {
+        // The account was already deleted: this device is signed out.
+        handleClose();
+        Alert.alert(
+          "Compte supprimé",
+          "Votre compte a déjà été supprimé : ses données ont été effacées de ce téléphone.",
+        );
+        return;
+      }
       Alert.alert(
         "Erreur",
-        wrongPassword
+        reason === "WRONG_PASSWORD"
           ? "Mot de passe incorrect."
           : // Unconfirmed, not failed: the server may have deleted the
             // account and the response been lost. The next request then
             // signs out and wipes the account's data on its own (#935).
-            "La suppression n'a pas pu être confirmée. Si elle a abouti, vous serez déconnecté automatiquement ; sinon, réessayez plus tard.",
+            "La suppression n'a pas pu être confirmée. Si elle a abouti, la session se fermera d'elle-même ; sinon, réessayez plus tard.",
       );
     } finally {
       setLoading(false);

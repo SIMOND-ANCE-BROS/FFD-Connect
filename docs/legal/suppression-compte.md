@@ -50,9 +50,10 @@ La suppression efface votre compte et les données qui y sont rattachées :
   rappels de date limite d'inscription programmés, les musiques favorites
   téléchargées pour l'écoute hors ligne, les photos choisies dans l'application
   (photo de licence, logo du club…) et les programmes de compétition enregistrés ;
-- sur vos autres téléphones où vous êtes encore connecté·e (ou verrouillé·e par
-  Face ID, Touch ID ou l'empreinte digitale) : les mêmes données sont effacées la
-  prochaine fois que l'application y contacte le serveur. Une version ancienne de
+- sur vos autres téléphones où votre session est encore ouverte (y compris
+  verrouillée par Face ID, Touch ID ou l'empreinte digitale) : les mêmes données
+  sont effacées la prochaine fois que l'application s'y connecte au serveur avec
+  cette session. Une version ancienne de
   l'application vous y déconnecte seulement. Sur un téléphone où vous vous étiez
   déjà déconnecté·e, ou avec une version ancienne, désinstallez l'application
   pour tout effacer.

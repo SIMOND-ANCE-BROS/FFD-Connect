@@ -1168,7 +1168,10 @@ export const AuthService = {
  * deleting device) and a refresh refused with ACCOUNT_DELETED (its other
  * devices, or a deletion whose response was lost). Must not wait for a
  * refresh: it runs inside one in the second case. Never throws: each step is
- * best-effort so one failure never skips the others.
+ * best-effort so one failure never skips the others. No compare-and-set on
+ * auth_config: the UI stays on the deleted session until the wipe ends, so
+ * no login can interleave; a favourites sync already downloading may still
+ * leave a file behind.
  */
 async function wipeDeletedAccountData(accessToken?: string): Promise<void> {
   const config = await AuthService.getAuthConfig();

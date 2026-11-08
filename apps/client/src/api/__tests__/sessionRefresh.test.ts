@@ -399,12 +399,16 @@ describe("refreshSession", () => {
       expect(mockRefreshAuth).toHaveBeenCalledTimes(1);
     });
 
-    it("still refreshes the auth state when the wipe fails", async () => {
+    it("falls back to the plain session end when the wipe fails", async () => {
       wipe.mockRejectedValue(new Error("boom"));
       post.mockRejectedValue(deletedRefusal);
 
       await expect(refreshSession()).resolves.toBeNull();
 
+      expect(mockClearLicenseSnapshot).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(setItem.mock.calls[0][1] as string).isLoggedIn).toBe(
+        false,
+      );
       expect(mockRefreshAuth).toHaveBeenCalledTimes(1);
     });
   });

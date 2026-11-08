@@ -64,6 +64,13 @@ describe("DeleteAccountModal", () => {
       return alert.mock.calls[0][1];
     };
 
+    it("says the account is already gone when the session ended", async () => {
+      await expect(submit(new Error("SESSION_ENDED"))).resolves.toMatch(
+        /déjà été supprimé/,
+      );
+      expect(onClose).toHaveBeenCalled();
+    });
+
     it("says the password is wrong", async () => {
       await expect(submit(new Error("WRONG_PASSWORD"))).resolves.toBe(
         "Mot de passe incorrect.",
@@ -77,7 +84,7 @@ describe("DeleteAccountModal", () => {
 
       expect(message).not.toMatch(/a échoué/);
       expect(message).toMatch(/pas pu être confirmée/);
-      expect(message).toMatch(/déconnecté/);
+      expect(message).toMatch(/session se fermera/);
     });
   });
 });
