@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react-native";
+import { useFocusEffect } from "@react-navigation/native";
+import { act, renderHook, waitFor } from "@testing-library/react-native";
 import React, { PropsWithChildren } from "react";
 import { competitionsControllerGetClubPendingRegistrations } from "../../../../api/generated/sdk.gen";
 import { useAuthStore } from "../../../../stores/auth.store";
@@ -19,6 +20,8 @@ jest.mock("../../../../api/generated/sdk.gen", () => ({
 
 const pendingMock =
   competitionsControllerGetClubPendingRegistrations as jest.Mock;
+
+const focusEffectMock = useFocusEffect as jest.Mock;
 
 const wrapper = ({ children }: PropsWithChildren) => {
   const [client] = React.useState(
@@ -67,6 +70,7 @@ describe("clubPendingRegistrationsCountQueryKey", () => {
 describe("useClubPendingRegistrationsCount", () => {
   beforeEach(() => {
     pendingMock.mockReset();
+    focusEffectMock.mockReset();
     useAuthStore.setState({ impersonating: false, impersonatedName: null });
   });
 
@@ -84,7 +88,34 @@ describe("useClubPendingRegistrationsCount", () => {
       () => useClubPendingRegistrationsCount(false),
       { wrapper },
     );
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(result.current.data).toBeUndefined();
     expect(pendingMock).not.toHaveBeenCalled();
+  });
+
+  it("reloads the count when the screen comes back into focus", async () => {
+    let focusCallback: (() => void) | undefined;
+    focusEffectMock.mockImplementation((cb: () => void) => {
+      focusCallback = cb;
+    });
+    pendingMock.mockResolvedValueOnce({ data: [{ id: "r1" }, { id: "r2" }] });
+    pendingMock.mockResolvedValueOnce({ data: [{ id: "r1" }] });
+
+    const { result } = await renderHook(
+      () => useClubPendingRegistrationsCount(true),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.data).toBe(2));
+
+    // First focus = mount: the initial query already ran, no second call.
+    await act(async () => focusCallback?.());
+    expect(pendingMock).toHaveBeenCalledTimes(1);
+
+    // Coming back (after validating requests) reloads the real count.
+    await act(async () => focusCallback?.());
+    await waitFor(() => expect(result.current.data).toBe(1));
+    expect(pendingMock).toHaveBeenCalledTimes(2);
   });
 });
