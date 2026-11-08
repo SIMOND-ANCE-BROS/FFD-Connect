@@ -1441,7 +1441,11 @@ describe("AuthService", () => {
           authToken: "a2",
           refreshToken: "r2",
         });
-        expect(order).toEqual(["setTokens", "auth_config"]);
+        // A first login wipes the unknown previous account's data (#940),
+        // which writes other keys (presets…): only these two are ordered.
+        expect(
+          order.filter((k) => k === "setTokens" || k === "auth_config"),
+        ).toEqual(["setTokens", "auth_config"]);
         (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
       },
     );

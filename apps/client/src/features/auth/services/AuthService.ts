@@ -78,6 +78,12 @@ export interface AuthConfig {
   lastUser?: string;
   /** Space of the last session, reopened at the next login of `lastUser`. */
   lastSpace?: UserRole;
+  /**
+   * Opaque id of the account of the last session, kept across logout: the
+   * next login compares it with its own to keep or drop the local profile
+   * (#940). Missing on configs written before #940.
+   */
+  lastUserId?: string;
   isGuest?: boolean;
   /** Account handed to the store reviewers (#212): no usage measurement (lot 5). */
   isStoreReview?: boolean;
@@ -396,13 +402,16 @@ export const AuthService = {
       // — a failed attempt changes nothing — and before the new tokens, so
       // nothing refetched in between can be this account's. Never throws.
       await runSessionEndCleanups();
+      // Another account than the previous one (#940): none of its local
+      // profile nor device-side data crosses over. Before the new tokens.
+      const base = await sessionBaseFor(currentConfig, user.id);
       // Tokens first, explicitly (saveAuthConfig writes preferences only):
       // isLoggedIn must never be persisted without the session behind it.
       await setTokens({ authToken: access_token, refreshToken: refresh_token });
       // A fresh session is never an impersonation (#598 review).
       await dropImpersonationBackup();
       const newConfig: AuthConfig = {
-        ...currentConfig,
+        ...base,
         isLoggedIn: true,
         impersonating: undefined,
         impersonatedName: undefined,
@@ -486,11 +495,13 @@ export const AuthService = {
 
       // Same as login (#892): a new account starts from an empty cache.
       await runSessionEndCleanups();
+      // A new account is never the previous one (#940).
+      const base = await sessionBaseFor(currentConfig, user.id);
       await setTokens({ authToken: access_token, refreshToken: refresh_token });
       // A fresh session is never an impersonation (#598 review).
       await dropImpersonationBackup();
       const newConfig: AuthConfig = {
-        ...currentConfig,
+        ...base,
         isLoggedIn: true,
         impersonating: undefined,
         impersonatedName: undefined,
@@ -1181,21 +1192,11 @@ async function wipeDeletedAccountData(accessToken?: string): Promise<void> {
   // Local only: the server dropped the device rows with the account, and
   // without tokens an unregister request could only fail. Never throws.
   await deleteLocalPushToken();
-  // Offline licence snapshot + entry QR batch (PII, signed QR). Never throws.
-  await clearLicenseSnapshot();
   await dropImpersonationBackup();
   // Its CGU acceptance copy (#930): the opaque account id no longer lingers
   // in that key. Never throws.
   if (accountId) await forgetCguAcceptance(accountId);
-  // Device-side leftovers a logout keeps for the same user (#936): planned
-  // deadline reminders and their keys, downloaded favourites, the licence
-  // photo / club logo files and saved programmes. Never throw.
-  await clearAllDeadlineReminders();
-  await bestEffort("offline favourites", deleteFavoriteDownloads);
-  await bestEffort("account images", () =>
-    deleteAccountImages([config.licensePhotoUri, config.clubLogoUri]),
-  );
-  await bestEffort("competition presets", clearCompetitionPresets);
+  await wipeAccountDeviceData(config);
   const deviceOnly: AuthConfig = {
     ...devicePreferencesOf(config),
     isLoggedIn: false,
@@ -1233,6 +1234,57 @@ function subjectOf(token: string | undefined): string | undefined {
   }
 }
 
+/**
+ * Device-side leftovers a logout keeps for the same user (#936), wiped when
+ * the account is deleted or another one logs in (#940): offline licence
+ * snapshot + entry QR batch, planned deadline reminders and their keys,
+ * downloaded favourites, the licence photo / club logo files and saved
+ * programmes. Never throws.
+ */
+async function wipeAccountDeviceData(config: AuthConfig): Promise<void> {
+  await bestEffort("licence snapshot", clearLicenseSnapshot);
+  await bestEffort("deadline reminders", clearAllDeadlineReminders);
+  await bestEffort("offline favourites", deleteFavoriteDownloads);
+  await bestEffort("account images", () =>
+    deleteAccountImages([config.licensePhotoUri, config.clubLogoUri]),
+  );
+  await bestEffort("competition presets", clearCompetitionPresets);
+}
+
+/**
+ * Id of the account the local profile in `config` belongs to: the logged-in
+ * one, the one the last logout remembered, else the one a biometric lock's
+ * retained token names. Undefined when unknown.
+ */
+function previousAccountIdOf(config: AuthConfig): string | undefined {
+  return config.userId ?? config.lastUserId ?? subjectOf(config.authToken);
+}
+
+/**
+ * What a login / register of `userId` starts from (#940, #913). The same
+ * account logging in again keeps its local profile (licence photo, level,
+ * club settings…). Any other account — or when the previous one is unknown —
+ * starts from the device preferences only, without the biometric quick-login
+ * it never turned on, and the previous account's retained tokens, offline
+ * queue and device-side data go. Throws only when the token store refuses
+ * the purge: the login then fails rather than hand the queue to this account.
+ */
+async function sessionBaseFor(
+  config: AuthConfig,
+  userId: string,
+): Promise<Partial<AuthConfig>> {
+  const previousId = previousAccountIdOf(config);
+  if (previousId !== undefined && previousId === userId) return config;
+  await clearTokens();
+  await wipeAccountDeviceData(config);
+  logger.info("Another account logged in — previous local data wiped");
+  return {
+    ...DEFAULT_CONFIG,
+    ...devicePreferencesOf(config),
+    biometricsEnabled: false,
+  };
+}
+
 /** Runs one step of a wipe, logging instead of throwing. */
 async function bestEffort(
   label: string,
@@ -1241,7 +1293,7 @@ async function bestEffort(
   try {
     await step();
   } catch (error) {
-    logger.error(`Failed to wipe the deleted account's ${label}`, error);
+    logger.error(`Failed to wipe the account's ${label}`, error);
   }
 }
 
