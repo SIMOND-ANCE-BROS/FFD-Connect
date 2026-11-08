@@ -97,8 +97,19 @@ describe("useClubMembersCount", () => {
 
   it("stays unknown when the request fails", async () => {
     membersMock.mockResolvedValue({ error: { message: "boom" } });
+    // React Query's default retry policy, so only the hook's own option
+    // keeps a failed request from being replayed.
+    const retryingWrapper = ({ children }: PropsWithChildren) => {
+      const [client] = React.useState(
+        () =>
+          new QueryClient({ defaultOptions: { queries: { retryDelay: 0 } } }),
+      );
+      return (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      );
+    };
     const { result } = await renderHook(() => useClubMembersCount(), {
-      wrapper,
+      wrapper: retryingWrapper,
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.data).toBeUndefined();
