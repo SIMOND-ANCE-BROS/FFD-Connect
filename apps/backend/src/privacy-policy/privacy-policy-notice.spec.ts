@@ -25,7 +25,7 @@ describe("privacy policy notice (#734)", () => {
     // The #894 update (CGU acceptance in the export) must reach every
     // existing account once.
     it("announces the #894 update", () => {
-      expect(PRIVACY_POLICY_VERSION).toBe("2026-11-03");
+      expect(PRIVACY_POLICY_VERSION).toBe("2026-11-08");
     });
   });
 
