@@ -16,6 +16,16 @@ jest.mock("../../../../api/generated", () => ({
   authControllerLogout: (...args: unknown[]) => mockLogout(...args) as unknown,
 }));
 
+const mockCreateClient = jest.fn((config: unknown) => ({ config }));
+
+jest.mock("../../../../api/generated/client", () => ({
+  createClient: (config: unknown) => mockCreateClient(config),
+}));
+
+jest.mock("../../../../config", () => ({
+  BACKEND_URL: "https://api.test/api/v1",
+}));
+
 jest.mock("../../../../utils/backendWake", () => ({
   rawFetch: () => mockRawFetch,
 }));
@@ -32,7 +42,7 @@ jest.mock("../../../../utils/logger", () => ({
 type LogoutOptions = {
   body: { refresh_token: string };
   signal: AbortSignal;
-  fetch: unknown;
+  client: { config: { baseUrl: string; fetch: unknown } };
 };
 const lastOptions = (): LogoutOptions =>
   mockLogout.mock.calls[0][0] as LogoutOptions;
@@ -61,7 +71,17 @@ describe("revokeRefreshTokenInBackground", () => {
   it("bypasses the wake wrapper: raw fetch, no overlay, no replay", () => {
     revokeRefreshTokenInBackground("refresh-1");
 
-    expect(lastOptions().fetch).toBe(mockRawFetch);
+    expect(lastOptions().client.config.fetch).toBe(mockRawFetch);
+  });
+
+  it("uses a client of its own, without the shared interceptors (no access token attached)", () => {
+    revokeRefreshTokenInBackground("refresh-1");
+
+    expect(mockCreateClient).toHaveBeenCalledWith({
+      baseUrl: "https://api.test/api/v1",
+      fetch: mockRawFetch,
+    });
+    expect(lastOptions().client).toBe(mockCreateClient.mock.results[0].value);
   });
 
   it("does nothing without a refresh token", () => {

@@ -301,6 +301,28 @@ async function readImpersonationBackupRefreshToken(): Promise<
   }
 }
 
+/**
+ * The live session's refresh token, read from the token store at the moment
+ * it is needed (a refresh may have rotated it); `fallback` when unreadable.
+ */
+async function liveRefreshToken(
+  fallback: string | undefined,
+): Promise<string | undefined> {
+  try {
+    return (await getTokens()).refreshToken;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Revokes on the server the admin's refresh token an impersonation set aside
+ * (#942), before a new session drops it. Never throws.
+ */
+async function revokeImpersonationBackup(): Promise<void> {
+  revokeRefreshTokenInBackground(await readImpersonationBackupRefreshToken());
+}
+
 /** Drops both halves of the impersonation backup. */
 async function clearImpersonationBackup(): Promise<void> {
   await Promise.all([
@@ -425,9 +447,13 @@ export const AuthService = {
       // Tokens first, explicitly (saveAuthConfig writes preferences only):
       // isLoggedIn must never be persisted without the session behind it.
       await setTokens({ authToken: access_token, refreshToken: refresh_token });
-      // The refresh token a biometric lock kept is now unreachable (#942).
-      revokeReplacedRefreshToken(currentConfig, refresh_token);
+      // The refresh token a biometric lock kept for this same account is now
+      // unreachable (#942); another account's went in sessionBaseFor.
+      if (isSameAccount(currentConfig, user.id)) {
+        revokeReplacedRefreshToken(currentConfig, refresh_token);
+      }
       // A fresh session is never an impersonation (#598 review).
+      await revokeImpersonationBackup();
       await dropImpersonationBackup();
       const newConfig: AuthConfig = {
         ...base,
@@ -517,8 +543,11 @@ export const AuthService = {
       // A new account is never the previous one (#940).
       const base = await sessionBaseFor(currentConfig, user.id);
       await setTokens({ authToken: access_token, refreshToken: refresh_token });
-      revokeReplacedRefreshToken(currentConfig, refresh_token);
+      if (isSameAccount(currentConfig, user.id)) {
+        revokeReplacedRefreshToken(currentConfig, refresh_token);
+      }
       // A fresh session is never an impersonation (#598 review).
+      await revokeImpersonationBackup();
       await dropImpersonationBackup();
       const newConfig: AuthConfig = {
         ...base,
@@ -794,10 +823,12 @@ export const AuthService = {
         // for the (maybe sleeping) backend nor fails the logout. During a
         // support access the live token is the target's short one (no
         // refresh token): the admin's own session is the one to close.
+        // Read now, not from currentConfig: the unregister above may have
+        // hit an expired access token and rotated the refresh token.
         revokeRefreshTokenInBackground(
           impersonating
             ? await readImpersonationBackupRefreshToken()
-            : currentConfig.refreshToken,
+            : await liveRefreshToken(currentConfig.refreshToken),
         );
         // Explicit clear — setTokens never deletes on undefined.
         await clearTokens();
@@ -1303,8 +1334,7 @@ async function sessionBaseFor(
   config: AuthConfig,
   userId: string,
 ): Promise<Partial<AuthConfig>> {
-  const previousId = previousAccountIdOf(config);
-  if (previousId !== undefined && previousId === userId) return config;
+  if (isSameAccount(config, userId)) return config;
   // A biometric lock kept the previous account's push registration: a new
   // FCM token leaves its server row dead even if this account's registration
   // fails (no retry), so its notifications never show here. Never throws.
@@ -1317,6 +1347,9 @@ async function sessionBaseFor(
       "Impossible de préparer la session sur cet appareil. Déverrouillez-le puis réessayez.",
     );
   }
+  // Gone from the device: revoke the token a biometric lock kept on the
+  // server too (#942), whatever happens to this login next. Never throws.
+  revokeRefreshTokenInBackground(config.refreshToken);
   await wipeAccountDeviceData(config);
   logger.info("Another account logged in — previous local data wiped");
   return {
@@ -1326,12 +1359,17 @@ async function sessionBaseFor(
   };
 }
 
+/** Whether `userId` is the account the local profile in `config` belongs to. */
+function isSameAccount(config: AuthConfig, userId: string): boolean {
+  const previousId = previousAccountIdOf(config);
+  return previousId !== undefined && previousId === userId;
+}
+
 /**
- * A login / register just stored a new session (#942): the refresh token the
- * device held before — kept by a biometric lock, of this account or of the
- * previous one — can no longer be reached and is revoked on the server.
- * Only once the new tokens are stored: if that fails the kept ones still
- * unlock the same account. Fire-and-forget, never throws.
+ * A login / register of the SAME account just stored a new session (#942):
+ * the refresh token a biometric lock kept can no longer be reached and is
+ * revoked on the server. Only once the new tokens are stored: if that fails
+ * the kept ones still unlock the account. Fire-and-forget, never throws.
  */
 function revokeReplacedRefreshToken(
   previous: AuthConfig,

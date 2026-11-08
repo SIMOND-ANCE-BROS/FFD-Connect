@@ -157,6 +157,33 @@ describe("logout (#942)", () => {
     expect(order).toEqual(["revoke", "clearTokens"]);
   });
 
+  it("revokes the token as it is when cleared, after a refresh rotated it during the logout", async () => {
+    device(loggedInA, { authToken: A_ACCESS, refreshToken: "refresh-a" });
+    // The unregister met an expired access token: the 401 interceptor
+    // refreshed the session, so the server already revoked "refresh-a".
+    mockUnregisterPush.mockImplementation(async () => {
+      (getTokens as jest.Mock).mockResolvedValue({
+        authToken: "access-a2",
+        refreshToken: "refresh-a2",
+      });
+    });
+
+    await AuthService.logout();
+
+    expect(revokedTokens()).toEqual(["refresh-a2"]);
+  });
+
+  it("falls back to the token read at the start when the store turns unreadable", async () => {
+    device(loggedInA, { authToken: A_ACCESS, refreshToken: "refresh-a" });
+    mockUnregisterPush.mockImplementation(async () => {
+      (getTokens as jest.Mock).mockRejectedValue(new Error("locked"));
+    });
+
+    await AuthService.logout();
+
+    expect(revokedTokens()).toEqual(["refresh-a"]);
+  });
+
   it("never waits for the server: a hanging request does not hold the logout", async () => {
     mockLogoutRequest.mockReturnValue(new Promise(() => undefined));
     device(loggedInA, { authToken: A_ACCESS, refreshToken: "refresh-a" });
@@ -254,7 +281,31 @@ describe("login replacing the previous session's token (#942)", () => {
     await AuthService.login("b@club.fr", "pw");
 
     expect(revokedTokens()).toEqual(["refresh-a"]);
-    expect(order).toEqual(["clearTokens", "setTokens", "revoke"]);
+    // As soon as it leaves the device, before the new session is stored.
+    expect(order).toEqual(["clearTokens", "revoke", "setTokens"]);
+  });
+
+  it("still revokes the previous account's token when the new tokens cannot be stored", async () => {
+    device(
+      { isLoggedIn: false, biometricsEnabled: true, lastUserId: "id-a" },
+      { authToken: A_ACCESS, refreshToken: "refresh-a" },
+    );
+    loginResponse(userB);
+    mockSetTokens.mockRejectedValue(new Error("keychain locked"));
+
+    await expect(AuthService.login("b@club.fr", "pw")).rejects.toThrow();
+
+    expect(revokedTokens()).toEqual(["refresh-a"]);
+  });
+
+  it("revokes the admin's set-aside token a failed switch-back left behind", async () => {
+    mockBackupRefresh.mockResolvedValue("admin-refresh");
+    device({ isLoggedIn: false, lastUserId: "id-a" }, {});
+    loginResponse(userA);
+
+    await AuthService.login("a@club.fr", "pw");
+
+    expect(revokedTokens()).toEqual(["admin-refresh"]);
   });
 
   it("revokes the token a biometric lock kept when the same account logs in with its password", async () => {
