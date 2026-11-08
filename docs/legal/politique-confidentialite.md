@@ -1,6 +1,6 @@
 # Politique de confidentialité
 
-_Dernière mise à jour : 3 novembre 2026_
+_Dernière mise à jour : 8 novembre 2026_
 
 > **Projet indépendant.** FFD Connect n'est pas une application officielle de la
 > Fédération Française de Danse. La fédération n'en est ni l'éditrice, ni
@@ -126,7 +126,10 @@ comparer à la personne présente.
 
 - **Sur votre téléphone** : pour fonctionner sans réseau, l'application garde les
   QR des 12 prochaines heures. Ils sont liés à votre compte et effacés à la
-  déconnexion.
+  déconnexion, sauf si vous avez activé Face ID, Touch ID ou l'empreinte
+  digitale : la déconnexion ne fait alors que verrouiller l'application, et ils
+  restent sur le téléphone jusqu'à leur effacement (voir §5, « Verrouillage par
+  Face ID, Touch ID ou l'empreinte digitale »).
 - **Sur le téléphone du scanner** : un scan fait sans réseau y reste en attente
   (avec, pour un bénévole, son lien d'accès temporaire) jusqu'au retour du réseau,
   **12 heures au plus** ; passé ce délai il est supprimé sans être envoyé. Les clés
@@ -150,11 +153,12 @@ comparer à la personne présente.
 - **Données de santé (certificat médical)** : conservées le temps nécessaire à la vérification de l'aptitude, puis supprimées **au plus tard 12 mois après la fin de validité** du certificat. Un certificat **refusé** est supprimé **au plus tard 30 jours après la décision**, avec les informations lues sur le document et le commentaire de l'administrateur ; un motif de refus d'ordre médical (contre-indication) est alors remplacé par un motif neutre.
 - **Résultats de compétition** : après la suppression du compte, ils sont conservés **sans aucun lien** avec votre compte ni avec votre nom, afin de ne pas fausser le classement des autres couples (l'épreuve, le tour, le classement, le nombre de participants, le statut et les marques subsistent). Les classements de la FFD étant publics à la source, il s'agit d'une **pseudonymisation** et non d'une anonymisation complète. Si le résultat de votre couple est rattaché au compte de votre partenaire, il reste le sien : la partie du libellé qui vous nomme est remplacée par « Partenaire supprimé », lorsque l'épreuve permet de faire le lien avec votre compte. L'empreinte de vos numéros de licence (§4 quater) est conservée tant que des résultats importés peuvent vous concerner.
 - **Données de paiement** : conservées par HelloAsso selon ses propres obligations comptables.
-- **Jetons de notification push (identifiants d'appareil)** : **90 jours** sans réutilisation de l'appareil. L'application réenregistre le jeton à chaque ouverture de session : passé ce délai sans signe de vie, l'appareil est considéré comme abandonné (application désinstallée, appareil remplacé) et la ligne est supprimée automatiquement. Le jeton est également supprimé immédiatement à la déconnexion, à la suppression du compte, et dès que Firebase le déclare invalide.
+- **Jetons de notification push (identifiants d'appareil)** : **90 jours** sans réutilisation de l'appareil. L'application réenregistre le jeton à chaque ouverture de session : passé ce délai sans signe de vie, l'appareil est considéré comme abandonné (application désinstallée, appareil remplacé) et la ligne est supprimée automatiquement. Le jeton est également supprimé à la suppression du compte et dès que Firebase le déclare invalide. À la déconnexion, l'application demande au serveur de supprimer la ligne, puis efface le jeton du téléphone, qui ne reçoit plus les notifications du compte ; si le serveur ne répond pas dans les 3 secondes, la ligne est supprimée lorsque Firebase déclare le jeton invalide, ou au terme des 90 jours. Exception : le verrouillage par Face ID, Touch ID ou l'empreinte digitale (ci-dessous) garde l'appareil enregistré.
 - **Acceptation des CGU** : la version acceptée et sa date sont conservées avec le compte, comme preuve de l'acceptation, et supprimées avec lui. L'application en garde aussi une copie sur votre téléphone (sans votre nom ni votre adresse e-mail), utilisée seulement quand le serveur est injoignable.
 - **Accord parental (mineurs)** : la preuve de l'accord (statut, dates, version des CGU, adresse masquée et empreinte) est conservée tant que le compte existe, et supprimée avec lui. Une demande non confirmée cesse d'être valable **7 jours** après son envoi ; elle reste dans l'historique du compte (sans l'adresse en clair). Le lien envoyé au représentant légal n'est jamais stocké en clair (seule son empreinte l'est).
-- **QR d'entrée** : 12 heures sur votre téléphone (renouvelés en ligne), effacés à la déconnexion ; un scan hors ligne reste au plus **12 heures** sur le téléphone du scanner (voir §4 ter).
-- **Jetons de session** : 30 jours maximum.
+- **QR d'entrée** : 12 heures sur votre téléphone (renouvelés en ligne), effacés à la déconnexion (sauf verrouillage par Face ID, Touch ID ou l'empreinte digitale, ci-dessous) ; un scan hors ligne reste au plus **12 heures** sur le téléphone du scanner (voir §4 ter).
+- **Jetons de session** : 30 jours maximum. À la déconnexion, ils sont effacés du téléphone et l'application demande au serveur de révoquer la session (sauf verrouillage par Face ID, Touch ID ou l'empreinte digitale, ci-dessous) ; sans réseau, la session expire d'elle-même au terme de ce délai.
+- **Verrouillage par Face ID, Touch ID ou l'empreinte digitale** : si vous avez activé cette option, la déconnexion ne fait que verrouiller l'application pour le même compte, afin que vous puissiez la rouvrir sans mot de passe. Restent alors sur le téléphone : vos jetons de session (dans le stockage sécurisé du téléphone), l'enregistrement de l'appareil pour les notifications (le téléphone continue de recevoir celles du compte), la copie hors ligne de votre licence et les QR d'entrée déjà obtenus (ils ne sont plus renouvelés et cessent d'être valables au bout de 12 heures). Ces données sont effacées du téléphone, qui cesse aussi de recevoir les notifications du compte, à la première de ces étapes : une déconnexion alors que l'option est désactivée, la connexion d'un autre compte sur le téléphone, ou la suppression de votre compte (sur un autre téléphone que celui de la suppression, la prochaine fois que l'application s'y connecte au serveur). L'application demande aussi au serveur de révoquer la session gardée quand un autre compte se connecte ou que vous vous reconnectez avec votre mot de passe ; la suppression du compte supprime toutes ses sessions.
 - **Logs techniques** : **12 mois**.
 - **Journal des accès aux données de santé** : **1 an**, puis suppression automatique. Il ne contient que des identifiants techniques (personne concernée, auteur de l'accès), la nature de l'accès, sa date et son point d'entrée — jamais le certificat ni les informations qui y figurent. Il subsiste après la suppression du compte jusqu'au terme de ce délai, afin qu'un accès ne puisse pas être effacé en supprimant un compte.
 - **Journal des accès support** (« se connecter en tant que ») : **1 an**, puis suppression automatique ; l'adresse IP de l'intervenant est réduite à son réseau au bout de **90 jours**. Il subsiste après la suppression du compte jusqu'au terme de ce délai (§4).

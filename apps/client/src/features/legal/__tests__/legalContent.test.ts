@@ -36,7 +36,24 @@ describe("privacy policy in the app", () => {
       "accès officiel aux données de résultats de la FFD",
     );
     expect(section?.body).toContain("sinon par votre dossard");
-    expect(LEGAL_DOCUMENTS.privacy.updatedAt).toBe("3 novembre 2026");
+    expect(LEGAL_DOCUMENTS.privacy.updatedAt).toBe("8 novembre 2026");
+  });
+
+  it("states what the Face ID / Touch ID lock keeps on the phone (#943)", () => {
+    const qr = LEGAL_DOCUMENTS.privacy.sections.find((s) =>
+      s.heading?.includes("QR d'entrée"),
+    );
+    expect(qr?.body).toContain("sauf verrouillage par Face ID");
+
+    const retention = LEGAL_DOCUMENTS.privacy.sections.find(
+      (s) => s.heading === "Durées de conservation",
+    );
+    expect(retention?.body).toContain("révoquer la session");
+    expect(retention?.body).toContain(
+      "Verrouillage par Face ID, Touch ID ou l'empreinte digitale",
+    );
+    expect(retention?.body).toContain("la connexion d'un autre compte");
+    expect(retention?.body).not.toContain("supprimé immédiatement");
   });
 
   it("explains how substantial changes are notified (#734)", () => {
