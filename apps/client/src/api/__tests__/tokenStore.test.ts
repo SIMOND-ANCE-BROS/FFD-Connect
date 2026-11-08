@@ -6,6 +6,7 @@ import {
   clearImpersonationBackupTokens,
   clearTokens,
   getAccessToken,
+  getImpersonationBackupRefreshToken,
   getSessionGeneration,
   getTokens,
   restoreFromImpersonation,
@@ -497,6 +498,30 @@ describe("impersonation backup (#591)", () => {
     await clearImpersonationBackupTokens();
 
     expect(store).toEqual({ "ffd.session.refresh": "live" });
+  });
+
+  it("getImpersonationBackupRefreshToken reads the admin's refresh token (#942)", async () => {
+    keychain({
+      "ffd.session.refresh": "target",
+      "ffd.impersonation.access": "a",
+      "ffd.impersonation.refresh": "admin-r",
+    });
+
+    await expect(getImpersonationBackupRefreshToken()).resolves.toBe("admin-r");
+  });
+
+  it("getImpersonationBackupRefreshToken is undefined without a backup", async () => {
+    keychain({ "ffd.session.refresh": "live" });
+
+    await expect(getImpersonationBackupRefreshToken()).resolves.toBeUndefined();
+  });
+
+  it("getImpersonationBackupRefreshToken throws a typed error on a locked store", async () => {
+    getItemAsync.mockRejectedValue(LOCKED);
+
+    await expect(getImpersonationBackupRefreshToken()).rejects.toBeInstanceOf(
+      TokenStoreUnavailableError,
+    );
   });
 
   it("clearTokens keeps the backup", async () => {
