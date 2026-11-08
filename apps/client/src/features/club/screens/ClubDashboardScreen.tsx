@@ -38,6 +38,7 @@ import { announce } from "../../../utils/announce";
 import { createLogger } from "../../../utils/logger";
 import { useAuthRepository } from "../../auth/context/AuthContext";
 import { useClubCompetitions } from "../hooks/useClubCompetitions";
+import { useClubPendingRegistrationsCount } from "../hooks/useClubPendingRegistrationsCount";
 import { ClubService } from "../services/ClubService";
 import { countActiveClubCompetitions } from "../utils/clubCompetitionStatus";
 // Side-effect : configure le client OpenAPI généré (baseUrl + auth + refresh).
@@ -195,8 +196,6 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
   // State for dashboard stats — fetched via useFocusEffect below
   const [stats, setStats] = React.useState({
     members: 0,
-    pendingRegistrations: 0,
-    nextEvent: null as string | null,
   });
 
   const [widgets, setWidgets] = React.useState<
@@ -211,6 +210,14 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
 
   const [registrationMode, setRegistrationMode] =
     React.useState<ClubRegistrationMode | null>(null);
+
+  // Registrations awaiting the club's validation (#944), loaded only when the
+  // club's mode has a validation step. No figure while it is unknown.
+  const hasPendingStep = registrationMode === "CLUB_AND_MEMBERS_PENDING";
+  const pendingRegistrationsQuery =
+    useClubPendingRegistrationsCount(hasPendingStep);
+  const pendingRegistrations: number | null =
+    pendingRegistrationsQuery.data ?? null;
 
   // Remboursements HelloAsso dus par le club (#516) ; null = inconnu.
   const [refundsDue, setRefundsDue] = React.useState<number | null>(null);
@@ -607,7 +614,7 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
                   : def.id === "competitions"
                     ? activeCompetitions
                     : def.id === "registrations"
-                      ? stats.pendingRegistrations
+                      ? (pendingRegistrations ?? "-")
                       : def.id === "couples"
                         ? "-"
                         : "-";
@@ -715,14 +722,18 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
           accessibilityHint="Ouvre la liste des paiements HelloAsso à rembourser"
         />
 
-        {registrationMode === "CLUB_AND_MEMBERS_PENDING" && (
+        {hasPendingStep && (
           <MenuRow
             icon={ClipboardList}
             label="Inscriptions en attente"
             subtitle={
-              stats.pendingRegistrations > 0
-                ? `${stats.pendingRegistrations} demandes à valider`
-                : "Aucune demande"
+              pendingRegistrations === null
+                ? "Demandes de vos licenciés à valider"
+                : pendingRegistrations === 0
+                  ? "Aucune demande"
+                  : pendingRegistrations === 1
+                    ? "1 demande à valider"
+                    : `${pendingRegistrations} demandes à valider`
             }
             color="#FF9800"
             onPress={() => navigateTo("ClubRegistrations")}
