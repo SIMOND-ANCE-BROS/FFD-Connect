@@ -35,6 +35,7 @@ const mockWaitForPendingRefresh = jest.fn(async () => {});
 jest.mock("../../../settings/services/pushRegistration", () => ({
   registerDeviceTokenForPush: () => mockRegisterPush() as unknown,
   unregisterDeviceTokenForPush: () => mockUnregisterPush() as unknown,
+  deleteLocalPushToken: jest.fn(),
 }));
 
 const mockRunSessionEndCleanups = jest.fn();

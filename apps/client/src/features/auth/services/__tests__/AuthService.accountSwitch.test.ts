@@ -19,6 +19,7 @@ const mockDeleteAccountImages = jest.fn();
 const mockClearCompetitionPresets = jest.fn();
 const mockClearLicenseSnapshot = jest.fn();
 const mockForgetCguAcceptance = jest.fn();
+const mockDeleteLocalPushToken = jest.fn();
 
 jest.mock("../../../legal/cguConsent", () => ({
   forgetCguAcceptance: (id: unknown) => mockForgetCguAcceptance(id) as unknown,
@@ -53,7 +54,7 @@ jest.mock("../../../../services/api", () => ({
 jest.mock("../../../settings/services/pushRegistration", () => ({
   registerDeviceTokenForPush: jest.fn(),
   unregisterDeviceTokenForPush: jest.fn(),
-  deleteLocalPushToken: jest.fn(),
+  deleteLocalPushToken: () => mockDeleteLocalPushToken() as unknown,
 }));
 
 jest.mock("../../../../services/sessionCleanup", () => ({
@@ -165,8 +166,9 @@ const expectPreviousAccountWiped = () => {
   expect(mockDeleteFavoriteDownloads).toHaveBeenCalledTimes(1);
   expect(mockClearCompetitionPresets).toHaveBeenCalledTimes(1);
   expect(mockClearLicenseSnapshot).toHaveBeenCalledTimes(1);
-  // The previous account's retained tokens and offline queue.
+  // The previous account's retained tokens, offline queue and push token.
   expect(mockClearTokens).toHaveBeenCalledTimes(1);
+  expect(mockDeleteLocalPushToken).toHaveBeenCalledTimes(1);
 };
 
 const expectNothingWiped = () => {
@@ -176,6 +178,7 @@ const expectNothingWiped = () => {
   expect(mockClearCompetitionPresets).not.toHaveBeenCalled();
   expect(mockClearLicenseSnapshot).not.toHaveBeenCalled();
   expect(mockClearTokens).not.toHaveBeenCalled();
+  expect(mockDeleteLocalPushToken).not.toHaveBeenCalled();
 };
 
 describe("AuthService — account switch on the same device (#940, #913)", () => {
@@ -339,6 +342,22 @@ describe("AuthService — account switch on the same device (#940, #913)", () =>
       expect(AsyncStorage.setItem).not.toHaveBeenCalled();
     });
 
+    it("fails the login, writing nothing, when the previous tokens and queue cannot be purged", async () => {
+      mockClearTokens.mockRejectedValueOnce(new Error("keychain locked"));
+      stored(LOGGED_OUT_A);
+      respondWith(userB);
+
+      await expect(AuthService.login("b@club.fr", "pw")).rejects.toThrow(
+        "Impossible de préparer la session sur cet appareil",
+      );
+
+      expect(mockSetTokens).not.toHaveBeenCalled();
+      expect(AsyncStorage.setItem).not.toHaveBeenCalledWith(
+        "auth_config",
+        expect.anything(),
+      );
+    });
+
     it("still logs in when a file cleanup step fails", async () => {
       mockDeleteFavoriteDownloads.mockRejectedValueOnce(new Error("io"));
       mockDeleteAccountImages.mockRejectedValueOnce(new Error("io"));
@@ -390,6 +409,46 @@ describe("AuthService — account switch on the same device (#940, #913)", () =>
         biometricsEnabled: true,
       });
       expectNothingWiped();
+    });
+  });
+
+  describe("a guest session in between", () => {
+    const afterGuest = {
+      ...LOGGED_OUT_A,
+      isLoggedIn: true,
+      isGuest: true,
+      role: "GUEST",
+    };
+
+    it("a guest logout keeps the last account's id", async () => {
+      stored(afterGuest);
+
+      await AuthService.logout();
+
+      expect(savedConfig()).toMatchObject({
+        lastUser: "a@club.fr",
+        lastUserId: "id-a",
+      });
+    });
+
+    it("the last account logging in again keeps its local settings", async () => {
+      stored({ ...afterGuest, isLoggedIn: false, isGuest: false });
+      respondWith(userA);
+
+      await AuthService.login("a@club.fr", "pw");
+
+      expect(savedConfig()).toMatchObject(A_LOCAL_SETTINGS);
+      expectNothingWiped();
+    });
+
+    it("another account logging in still drops the last account's data", async () => {
+      stored({ ...afterGuest, isLoggedIn: false, isGuest: false });
+      respondWith(userB);
+
+      await AuthService.login("b@club.fr", "pw");
+
+      expect(savedConfig().licensePhotoUri).toBeUndefined();
+      expectPreviousAccountWiped();
     });
   });
 

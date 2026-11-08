@@ -1266,7 +1266,7 @@ function previousAccountIdOf(config: AuthConfig): string | undefined {
  * club settings…). Any other account — or when the previous one is unknown —
  * starts from the device preferences only, without the biometric quick-login
  * it never turned on, and the previous account's retained tokens, offline
- * queue and device-side data go. Throws only when the token store refuses
+ * queue, push token and device-side data go. Throws only when the token store refuses
  * the purge: the login then fails rather than hand the queue to this account.
  */
 async function sessionBaseFor(
@@ -1275,7 +1275,18 @@ async function sessionBaseFor(
 ): Promise<Partial<AuthConfig>> {
   const previousId = previousAccountIdOf(config);
   if (previousId !== undefined && previousId === userId) return config;
-  await clearTokens();
+  // A biometric lock kept the previous account's push registration: a new
+  // FCM token leaves its server row dead even if this account's registration
+  // fails (no retry), so its notifications never show here. Never throws.
+  await deleteLocalPushToken();
+  try {
+    await clearTokens();
+  } catch (error) {
+    logger.error("Failed to purge the previous account's tokens", error);
+    throw new Error(
+      "Impossible de préparer la session sur cet appareil. Déverrouillez-le puis réessayez.",
+    );
+  }
   await wipeAccountDeviceData(config);
   logger.info("Another account logged in — previous local data wiped");
   return {
