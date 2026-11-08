@@ -13,6 +13,7 @@ import { useAuthRepository } from "../../../../features/auth/context/AuthContext
 import {
   clubRefundsDueControllerList,
   competitionsControllerGetClubCompetitions,
+  competitionsControllerGetClubPendingRegistrations,
 } from "../../../../api/generated/sdk.gen";
 import { ClubService } from "../../services/ClubService";
 import { ClubDashboardScreen } from "../ClubDashboardScreen";
@@ -86,10 +87,13 @@ jest.mock("../../../../api/client", () => ({}));
 jest.mock("../../../../api/generated/sdk.gen", () => ({
   clubRefundsDueControllerList: jest.fn(),
   competitionsControllerGetClubCompetitions: jest.fn(),
+  competitionsControllerGetClubPendingRegistrations: jest.fn(),
 }));
 const refundsDueMock = clubRefundsDueControllerList as jest.Mock;
 const clubCompetitionsMock =
   competitionsControllerGetClubCompetitions as jest.Mock;
+const pendingRegistrationsMock =
+  competitionsControllerGetClubPendingRegistrations as jest.Mock;
 
 // The competitions card reads the club's competitions through React Query
 // (#441): a fresh cache per render keeps the tests independent.
@@ -172,6 +176,7 @@ describe("ClubDashboardScreen", () => {
       data: { data: [], meta: { total: 0, skip: 0, take: 1, hasMore: false } },
     });
     clubCompetitionsMock.mockResolvedValue({ data: [] });
+    pendingRegistrationsMock.mockResolvedValue({ data: [] });
   });
 
   it("counts the club's upcoming competitions from the API (#441)", async () => {
@@ -372,6 +377,92 @@ describe("ClubDashboardScreen", () => {
 
     await waitFor(() => {
       expect(queryByText("Inscriptions en attente")).toBeNull();
+    });
+  });
+
+  describe("pending registrations (#944)", () => {
+    beforeEach(() => {
+      (ClubService.getMyClubRegistrationMode as jest.Mock).mockResolvedValue({
+        registrationMode: "CLUB_AND_MEMBERS_PENDING",
+      });
+    });
+
+    it("shows the real number of requests to validate", async () => {
+      pendingRegistrationsMock.mockResolvedValue({
+        data: [{ id: "r1" }, { id: "r2" }, { id: "r3" }],
+      });
+
+      const { findByRole, getByRole } = await renderDashboard();
+
+      const card = await findByRole("button", { name: "Inscriptions, 3" });
+      expect(card.props.testID).toBe("club-dashboard-registrations-card");
+      expect(
+        getByRole("button", {
+          name: "Inscriptions en attente, 3 demandes à valider",
+        }).props.testID,
+      ).toBe("club-dashboard-registrations-row");
+      expect(pendingRegistrationsMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("says when a single request is waiting", async () => {
+      pendingRegistrationsMock.mockResolvedValue({ data: [{ id: "r1" }] });
+
+      const { findByText } = await renderDashboard();
+
+      expect(await findByText("1 demande à valider")).toBeTruthy();
+    });
+
+    it("shows a real zero when nothing is waiting", async () => {
+      const { findByRole } = await renderDashboard();
+
+      expect(
+        await findByRole("button", { name: "Inscriptions, 0" }),
+      ).toBeTruthy();
+      expect(
+        await findByRole("button", {
+          name: "Inscriptions en attente, Aucune demande",
+        }),
+      ).toBeTruthy();
+    });
+
+    it("shows no figure when the count cannot be loaded", async () => {
+      pendingRegistrationsMock.mockResolvedValue({
+        error: { message: "boom" },
+      });
+
+      const { findByRole, getByRole, queryByRole, queryByText } =
+        await renderDashboard();
+
+      await waitFor(() => expect(pendingRegistrationsMock).toHaveBeenCalled());
+      await act(async () => {
+        await (
+          pendingRegistrationsMock.mock.results[0] as {
+            value: Promise<unknown>;
+          }
+        ).value;
+      });
+      expect(
+        await findByRole("button", {
+          name: "Inscriptions en attente, Demandes de vos licenciés à valider",
+        }),
+      ).toBeTruthy();
+
+      // "-" is a visual placeholder, not read aloud: never a made-up 0.
+      const card = getByRole("button", { name: "Inscriptions" });
+      expect(within(card).getByText("-")).toBeTruthy();
+      expect(queryByRole("button", { name: "Inscriptions, 0" })).toBeNull();
+      expect(queryByText("Aucune demande")).toBeNull();
+    });
+
+    it("does not load the count when the club has no validation step", async () => {
+      (ClubService.getMyClubRegistrationMode as jest.Mock).mockResolvedValue({
+        registrationMode: "MEMBERS_AUTO_CONFIRM",
+      });
+
+      const { findByRole } = await renderDashboard();
+
+      await findByRole("button", { name: "Membres, 2" });
+      expect(pendingRegistrationsMock).not.toHaveBeenCalled();
     });
   });
 
