@@ -193,6 +193,8 @@ describe("refreshSession", () => {
       isGuest: false,
       lastUser: "licensee@example.com",
       lastSpace: "CLUB",
+      // Which account those local settings belong to (#940).
+      lastUserId: "licensee-id",
     });
   });
 

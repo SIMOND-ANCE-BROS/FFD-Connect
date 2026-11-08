@@ -40,6 +40,7 @@ jest.mock("../../../../stores/auth.store", () => ({
 jest.mock("../../../settings/services/pushRegistration", () => ({
   registerDeviceTokenForPush: jest.fn(),
   unregisterDeviceTokenForPush: jest.fn(),
+  deleteLocalPushToken: jest.fn(),
 }));
 jest.mock("../../../../services/sessionCleanup", () => ({
   runSessionEndCleanups: jest.fn(),
