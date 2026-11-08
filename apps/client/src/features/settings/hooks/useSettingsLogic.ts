@@ -212,12 +212,22 @@ export const useSettingsLogic = ({
     }
   };
 
-  /** Déconnexion immédiate, sans confirmation (ex. après suppression de compte). */
+  /** Déconnexion immédiate, une fois confirmée. */
   const performLogout = () => {
     (async () => {
       await auth.logout();
       await refreshAuth();
     })().catch(() => {});
+  };
+
+  /**
+   * After a confirmed account deletion: deleteMyAccount already wiped the
+   * account's local data (#933). No logout() here: it is made for an account
+   * that still exists and would write its e-mail back as lastUser. Only the
+   * auth state is refreshed so the app returns to the login screen.
+   */
+  const handleAccountDeleted = () => {
+    refreshAuth().catch(() => {});
   };
 
   const handleLogout = () => {
@@ -416,7 +426,7 @@ export const useSettingsLogic = ({
       loadSettings,
       toggleBiometrics,
       handleLogout,
-      performLogout,
+      handleAccountDeleted,
       handleGuestSignIn,
       handleSelectPhoto,
       handleShowTechInfo,

@@ -101,7 +101,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
     loadSettings,
     toggleBiometrics,
     handleLogout,
-    performLogout,
+    handleAccountDeleted,
     handleGuestSignIn,
     handleSelectPhoto,
     handleShowTechInfo,
@@ -482,7 +482,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
               "Compte supprimé",
               "Vos données ont été supprimées. Au revoir 👋",
             );
-            performLogout();
+            handleAccountDeleted();
           }}
         />
 

@@ -1657,6 +1657,12 @@ export const privacyPolicySeenVersionSelect = {
   privacyPolicySeenVersion: true,
 } as const;
 
+/** Acceptation des CGU par le compte (#894) : version et horodatage. */
+export const cguAcceptanceSelect = {
+  cguAcceptedVersion: true,
+  cguAcceptedAt: true,
+} as const;
+
 /** Parental consent (#61): birth date only, for the health-data gate. */
 export const userBirthDateSelect = {
   birthDate: true,

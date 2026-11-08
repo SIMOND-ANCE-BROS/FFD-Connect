@@ -1,6 +1,6 @@
 # Supprimer son compte FFD Connect
 
-_Dernière mise à jour : 12 octobre 2026_
+_Dernière mise à jour : 8 novembre 2026_
 
 Cette page explique comment supprimer votre compte de l'application **FFD Connect**
 (y compris sa version de test **FFD Connect Beta**), éditée par Gabin Simond, et ce
@@ -43,7 +43,10 @@ La suppression efface votre compte et les données qui y sont rattachées :
 - vos demandes de renouvellement de licence et les documents joints, dont le
   certificat médical ;
 - vos notifications et les signalements de bug que vous avez envoyés depuis
-  l'application.
+  l'application ;
+- sur le téléphone depuis lequel vous supprimez le compte : votre adresse e-mail,
+  votre profil, vos identifiants de connexion (y compris ceux gardés pour Face ID,
+  Touch ID ou l'empreinte digitale) et la copie hors ligne de votre licence.
 
 ## Données conservées
 

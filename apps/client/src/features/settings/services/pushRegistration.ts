@@ -144,6 +144,28 @@ export const registerDeviceTokenForPush = async (): Promise<void> => {
 };
 
 /**
+ * Local half of the unregister, with no request (#933): drops the rotation
+ * listener and deletes the FCM token so this device stops receiving the
+ * account's notifications. For an account the server has deleted — its
+ * device rows went with it, and the session tokens are already gone, so an
+ * unregister request could only fail. Never throws.
+ */
+export const deleteLocalPushToken = async (): Promise<void> => {
+  try {
+    const handler = loadNotificationHandler();
+    if (!handler) {
+      return;
+    }
+    unsubscribeTokenRefresh?.();
+    unsubscribeTokenRefresh = undefined;
+    refreshSubscribed = false;
+    await handler.deleteToken();
+  } catch (error) {
+    logger.warn("Local push token deletion failed", error);
+  }
+};
+
+/**
  * Upper bound on how long a logout may wait for the unregister round-trip.
  * The backend scales to zero, so an unlucky call can sit through a 60-120s
  * cold start — unacceptable for someone who just asked to be logged out. On

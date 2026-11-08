@@ -1,16 +1,11 @@
 appId: fr.ffdanse.connect
 ---
 # Log in as admin (admin.e2e@ffd.com). Requires the seed:e2e profiles (pnpm --filter backend seed:e2e).
-# On a cleared state the app shows a splash then the CGU gate before login — wait for
-# it and accept it (id cgu-accept-button). eraseText clears any iOS-autofilled value.
-- extendedWaitUntil:
-    visible: { id: "cgu-accept-button" }
-    timeout: 60000
-    optional: true
-- tapOn: { id: "cgu-accept-button", optional: true }
+# On a cleared state the app shows a splash before login (cold boot can take a while).
+# eraseText clears any iOS-autofilled value.
 - extendedWaitUntil:
     visible: { id: "login-email-input" }
-    timeout: 30000
+    timeout: 60000
 - tapOn: { id: "login-email-input" }
 - eraseText
 - inputText: "admin.e2e@ffd.com"
@@ -27,6 +22,13 @@ appId: fr.ffdanse.connect
 - tapOn: { id: "login-submit-button", optional: true }
 # Dismiss the iOS "Enregistrer le mot de passe ?" system dialog that follows a login.
 - tapOn: { text: "Plus tard", optional: true }
+# CGU gate (#894): asked once per ACCOUNT, right after its first sign-in
+# (no longer on the login screen). Absent once this account has accepted.
+- extendedWaitUntil:
+    visible: { id: "cgu-accept-button" }
+    timeout: 15000
+    optional: true
+- tapOn: { id: "cgu-accept-button", optional: true }
 - extendedWaitUntil:
     visible: { id: "tab-library" }
     timeout: 30000

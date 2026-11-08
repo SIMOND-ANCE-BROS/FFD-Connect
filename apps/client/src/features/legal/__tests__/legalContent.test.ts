@@ -36,7 +36,7 @@ describe("privacy policy in the app", () => {
       "accès officiel aux données de résultats de la FFD",
     );
     expect(section?.body).toContain("sinon par votre dossard");
-    expect(LEGAL_DOCUMENTS.privacy.updatedAt).toBe("18 octobre 2026");
+    expect(LEGAL_DOCUMENTS.privacy.updatedAt).toBe("3 novembre 2026");
   });
 
   it("explains how substantial changes are notified (#734)", () => {
@@ -150,5 +150,24 @@ describe("privacy policy in the app", () => {
     expect(retention?.body).toContain(
       "Journal des modifications faites par l'administration : 1 an, puis suppression automatique",
     );
+  });
+});
+
+describe("CGU in the app", () => {
+  it("describes the explicit acceptance per account, never tacit acceptance (#928)", () => {
+    const cgu = LEGAL_DOCUMENTS.cgu;
+    const changes = cgu.sections.find(
+      (s) => s.heading === "9. Modification des conditions",
+    );
+    expect(changes?.body).toContain(
+      "chaque compte doit l'accepter explicitement",
+    );
+    expect(changes?.body).toContain("version et date");
+    expect(changes?.body).toContain("jamais réputée acceptée");
+    expect(cgu.sections[0].body).toContain("pour chaque compte");
+    expect(cgu.updatedAt).toBe("3 novembre 2026");
+    for (const section of cgu.sections) {
+      expect(section.body).not.toContain("vaut acceptation");
+    }
   });
 });

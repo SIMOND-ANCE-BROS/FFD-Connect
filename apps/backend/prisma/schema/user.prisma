@@ -28,6 +28,10 @@ model User {
   disabledAt           DateTime?      // Désactivé par un admin (null = actif) : connexion, refresh et requêtes refusés
   // Dernière version de la politique de confidentialité signalée et lue (#734) ; null = jamais. Information, pas consentement.
   privacyPolicySeenVersion String?
+  // Dernière version des CGU acceptée par CE compte (#894, preuve du consentement) ; null = jamais acceptées côté serveur.
+  cguAcceptedVersion   String?
+  // Horodatage de la première acceptation de `cguAcceptedVersion` (#894).
+  cguAcceptedAt        DateTime?
   isStoreReview        Boolean        @default(false) // Compte de validation App Store / Google Play : écritures simulées, ni supprimable ni désactivable
   ageGroup             String?        // 1 seule classe d'âge par licencié
   category             String?        // discipline(s) : Latin, Standard, Ten Dance
