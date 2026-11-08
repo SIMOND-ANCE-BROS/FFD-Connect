@@ -188,3 +188,12 @@ export const useCompetitionPresetsStore = create<CompetitionPresetsState>()(
     },
   ),
 );
+
+/**
+ * Account deleted (#936): the saved programmes go too — their names are free
+ * text (a competition, a couple's first names…). The persisted copy follows
+ * the emptied state.
+ */
+export function clearCompetitionPresets(): void {
+  useCompetitionPresetsStore.setState({ presets: [], activePresetId: null });
+}

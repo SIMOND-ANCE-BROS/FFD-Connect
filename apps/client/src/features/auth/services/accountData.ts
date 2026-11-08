@@ -55,3 +55,30 @@ export function devicePreferencesOf(
     defaultCompetitionStatus: config.defaultCompetitionStatus,
   };
 }
+
+/**
+ * What a session end leaves for an account that may still exist: logout()
+ * and the session ends without it (refused refresh, unreadable token store)
+ * share it, so neither keeps more of the account than the other (#935). No
+ * identity nor roles; the e-mail survives only as the space memory of the
+ * next login (`lastUser` / `lastSpace`). The account's local settings
+ * (licence photo, club settings…) stay for its next login: a deleted
+ * account's go through AuthService.endDeletedAccountSession instead.
+ */
+export function loggedOutConfigOf<T extends Partial<AuthConfig>>(config: T): T {
+  return {
+    ...config,
+    isLoggedIn: false,
+    role: "LICENSEE",
+    roles: undefined,
+    mainRole: undefined,
+    isGuest: false,
+    username: undefined,
+    userId: undefined,
+    impersonating: undefined,
+    impersonatedName: undefined,
+    // A guest session (no username) keeps the previous memory.
+    lastUser: config.username ?? config.lastUser,
+    lastSpace: config.username ? config.role : config.lastSpace,
+  };
+}

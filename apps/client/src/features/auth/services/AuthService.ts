@@ -1,7 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import api from "../../../services/api";
-import { waitForPendingRefresh } from "../../../api/sessionRefresh";
+import {
+  setDeletedAccountSessionHandler,
+  waitForPendingRefresh,
+} from "../../../api/sessionRefresh";
 import {
   clearImpersonationBackupTokens,
   clearTokens,
@@ -15,7 +18,11 @@ import {
   type Tokens,
 } from "../../../api/tokenStore";
 import { isTokenStoreUnavailable } from "../../../api/tokenStoreErrors";
-import { devicePreferencesOf, withoutAccountData } from "./accountData";
+import {
+  devicePreferencesOf,
+  loggedOutConfigOf,
+  withoutAccountData,
+} from "./accountData";
 import { clearLicenseSnapshot } from "../../license/utils/licenseSnapshot";
 import { runSessionEndCleanups } from "../../../services/sessionCleanup";
 import {
@@ -23,6 +30,11 @@ import {
   registerDeviceTokenForPush,
   unregisterDeviceTokenForPush,
 } from "../../settings/services/pushRegistration";
+import { forgetCguAcceptance } from "../../legal/cguConsent";
+import { deleteAccountImages } from "../../settings/services/accountImages";
+import { deleteFavoriteDownloads } from "../../player/services/TrackOfflineService";
+import { clearCompetitionPresets } from "../../../stores/competitionPresets.store";
+import { clearAllDeadlineReminders } from "../../../utils/scheduleDeadlineNotification";
 import { createLogger } from "../../../utils/logger";
 import { usage } from "../../../services/analytics/usage";
 import type { UsersControllerGetProfileResponse } from "../../../api/generated/types.gen";
@@ -735,22 +747,10 @@ export const AuthService = {
       const keepTokensForBiometrics =
         currentConfig.biometricsEnabled === true &&
         currentConfig.impersonating !== true;
-      const newConfig: AuthConfig = {
-        ...baseConfig,
-        isLoggedIn: false,
-        role: "LICENSEE",
-        roles: undefined,
-        mainRole: undefined,
-        isGuest: false,
-        username: undefined,
-        userId: undefined,
-        impersonating: undefined,
-        impersonatedName: undefined,
-        // Space memory: the next login of this account (password or
-        // biometrics) reopens this space. A guest logout keeps the previous.
-        lastUser: baseConfig.username ?? baseConfig.lastUser,
-        lastSpace: baseConfig.username ? baseConfig.role : baseConfig.lastSpace,
-      };
+      // Space memory: the next login of this account (password or
+      // biometrics) reopens this space. Shared with the session ends that
+      // do not go through here (refused refresh…, #935).
+      const newConfig: AuthConfig = loggedOutConfigOf(baseConfig);
       if (!keepTokensForBiometrics) {
         // Before clearTokens(): the unregister call is authenticated, so it
         // has to go out while the JWT is still valid. Only on a full logout —
@@ -807,32 +807,7 @@ export const AuthService = {
     } catch (error) {
       logger.error("Failed to clear the deleted account's tokens", error);
     }
-    const config = await AuthService.getAuthConfig();
-    // Local only: the server dropped the device rows with the account, and
-    // without tokens an unregister request could only fail. Never throws.
-    await deleteLocalPushToken();
-    // Offline licence snapshot + entry QR batch (PII, signed QR). Never throws.
-    await clearLicenseSnapshot();
-    await dropImpersonationBackup();
-    const deviceOnly: AuthConfig = {
-      ...devicePreferencesOf(config),
-      isLoggedIn: false,
-      role: "LICENSEE",
-      // The biometric quick-login unlocked this account's retained tokens:
-      // gone with it. The next account turns it back on in the settings.
-      biometricsEnabled: false,
-    };
-    try {
-      await writeAuthConfig(deviceOnly);
-    } catch (error) {
-      logger.error("Failed to rewrite the preferences — removing them", error);
-      // Never leave the deleted account's profile behind: lose the device
-      // preferences rather than keep its data.
-      await AsyncStorage.removeItem(AUTH_KEY).catch(() => undefined);
-    }
-    // Server cache, per-account stores, Sentry user, export file… Never throws.
-    await runSessionEndCleanups();
-    logger.info("Deleted account's local data wiped");
+    await wipeDeletedAccountData();
   },
 
   /** Switch the active space (display only; the server checks every role). */
@@ -1186,3 +1161,66 @@ export const AuthService = {
     }
   },
 };
+
+/**
+ * Wipes the local data of an account the server has DELETED (#933, #935,
+ * #936), once its tokens are gone. Shared by endDeletedAccountSession (the
+ * deleting device) and a refresh refused with ACCOUNT_DELETED (its other
+ * devices, or a deletion whose response was lost). Must not wait for a
+ * refresh: it runs inside one in the second case. Never throws: each step is
+ * best-effort so one failure never skips the others.
+ */
+async function wipeDeletedAccountData(): Promise<void> {
+  const config = await AuthService.getAuthConfig();
+  // Local only: the server dropped the device rows with the account, and
+  // without tokens an unregister request could only fail. Never throws.
+  await deleteLocalPushToken();
+  // Offline licence snapshot + entry QR batch (PII, signed QR). Never throws.
+  await clearLicenseSnapshot();
+  await dropImpersonationBackup();
+  // Its CGU acceptance copy (#930): the opaque account id no longer lingers
+  // in that key. Never throws.
+  if (config.userId) await forgetCguAcceptance(config.userId);
+  // Device-side leftovers a logout keeps for the same user (#936): planned
+  // deadline reminders and their keys, downloaded favourites, the licence
+  // photo / club logo files and saved programmes. Never throw.
+  await clearAllDeadlineReminders();
+  await bestEffort("offline favourites", deleteFavoriteDownloads);
+  await bestEffort("account images", () =>
+    deleteAccountImages([config.licensePhotoUri, config.clubLogoUri]),
+  );
+  await bestEffort("competition presets", clearCompetitionPresets);
+  const deviceOnly: AuthConfig = {
+    ...devicePreferencesOf(config),
+    isLoggedIn: false,
+    role: "LICENSEE",
+    // The biometric quick-login unlocked this account's retained tokens:
+    // gone with it. The next account turns it back on in the settings.
+    biometricsEnabled: false,
+  };
+  try {
+    await writeAuthConfig(deviceOnly);
+  } catch (error) {
+    logger.error("Failed to rewrite the preferences — removing them", error);
+    // Never leave the deleted account's profile behind: lose the device
+    // preferences rather than keep its data.
+    await AsyncStorage.removeItem(AUTH_KEY).catch(() => undefined);
+  }
+  // Server cache, per-account stores, Sentry user, export file… Never throws.
+  await runSessionEndCleanups();
+  logger.info("Deleted account's local data wiped");
+}
+
+/** Runs one step of a wipe, logging instead of throwing. */
+async function bestEffort(
+  label: string,
+  step: () => Promise<void> | void,
+): Promise<void> {
+  try {
+    await step();
+  } catch (error) {
+    logger.error(`Failed to wipe the deleted account's ${label}`, error);
+  }
+}
+
+setDeletedAccountSessionHandler(wipeDeletedAccountData);

@@ -13,7 +13,6 @@ import {
 } from "../../../api/generated/sdk.gen";
 import { onSessionEnd } from "../../../services/sessionCleanup";
 import { AuthService } from "../../auth/services/AuthService";
-import { forgetCguAcceptance } from "../../legal/cguConsent";
 import { createLogger } from "../../../utils/logger";
 
 /**
@@ -91,8 +90,6 @@ export async function exportAndShareMyData(): Promise<void> {
  * (#933) ; l'appelant n'a plus qu'à rafraîchir l'état d'auth (pas de logout).
  */
 export async function deleteMyAccount(password: string): Promise<void> {
-  // Read before the call: the local wipe below removes it.
-  const { userId } = await AuthService.getAuthConfig();
   const { error, response } = await usersControllerDeleteMyAccount({
     body: { password },
   });
@@ -101,10 +98,8 @@ export async function deleteMyAccount(password: string): Promise<void> {
       response?.status === 401 ? "WRONG_PASSWORD" : "DELETE_FAILED",
     );
   }
-  // The deleted account's CGU acceptance copy goes with it (#930): its
-  // opaque id no longer lingers in that key.
-  if (userId) await forgetCguAcceptance(userId);
-  // Not a logout (#933): e-mail, profile, tokens and licence snapshot of the
-  // deleted account go, biometrics or not. Device preferences only remain.
+  // Not a logout (#933): e-mail, profile, tokens, licence snapshot, CGU
+  // acceptance copy and device-side leftovers of the deleted account go,
+  // biometrics or not. Device preferences only remain.
   await AuthService.endDeletedAccountSession();
 }

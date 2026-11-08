@@ -1,9 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 
+const DEADLINE_KEY_PREFIX = "deadline_notif_";
+
 /** Clé AsyncStorage mémorisant l'id du rappel planifié pour une compétition. */
 export function deadlineStorageKey(competitionId: string): string {
-  return `deadline_notif_${competitionId}`;
+  return `${DEADLINE_KEY_PREFIX}${competitionId}`;
 }
 
 /**
@@ -128,6 +130,51 @@ export async function clearDeadlineStorage(
 ): Promise<void> {
   try {
     await AsyncStorage.removeItem(deadlineStorageKey(competitionId));
+  } catch {
+    // Best-effort
+  }
+}
+
+/**
+ * Account deleted (#936): no reminder may still show a competition name, and
+ * no key may reveal the competitions the account was registered to. Cancels
+ * the reminders the keys point at, plus any planned reminder whose key was
+ * lost (the only local notifications the app schedules carry a
+ * `competitionId`), then removes every key. Never throws.
+ */
+export async function clearAllDeadlineReminders(): Promise<void> {
+  let keys: string[] = [];
+  try {
+    keys = (await AsyncStorage.getAllKeys()).filter((key) =>
+      key.startsWith(DEADLINE_KEY_PREFIX),
+    );
+    const entries = await AsyncStorage.multiGet(keys);
+    const planned = entries
+      .map(([, value]) => value)
+      .filter(
+        (value): value is string => !!value && value !== REGISTERED_MARKER,
+      );
+    await Promise.all(planned.map((id) => cancelDeadlineNotification(id)));
+  } catch {
+    // Best-effort — the planned reminders are swept below anyway
+  }
+  try {
+    const planned = await Notifications.getAllScheduledNotificationsAsync();
+    await Promise.all(
+      planned
+        .filter(
+          (notification) =>
+            typeof notification.content.data?.competitionId === "string",
+        )
+        .map((notification) =>
+          cancelDeadlineNotification(notification.identifier),
+        ),
+    );
+  } catch {
+    // Best-effort
+  }
+  try {
+    if (keys.length > 0) await AsyncStorage.multiRemove(keys);
   } catch {
     // Best-effort
   }

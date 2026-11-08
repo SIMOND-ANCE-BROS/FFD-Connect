@@ -60,7 +60,10 @@ export const DeleteAccountModal = ({
         "Erreur",
         wrongPassword
           ? "Mot de passe incorrect."
-          : "La suppression a échoué. Réessayez plus tard.",
+          : // Unconfirmed, not failed: the server may have deleted the
+            // account and the response been lost. The next request then
+            // signs out and wipes the account's data on its own (#935).
+            "La suppression n'a pas pu être confirmée. Si elle a abouti, vous serez déconnecté automatiquement ; sinon, réessayez plus tard.",
       );
     } finally {
       setLoading(false);
