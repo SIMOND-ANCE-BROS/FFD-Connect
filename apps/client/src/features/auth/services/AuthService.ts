@@ -8,6 +8,7 @@ import {
 import {
   clearImpersonationBackupTokens,
   clearTokens,
+  getImpersonationBackupRefreshToken,
   getTokens,
   restoreFromImpersonation,
   setImpersonationBackupTokens,
@@ -25,6 +26,7 @@ import {
 } from "./accountData";
 import { clearLicenseSnapshot } from "../../license/utils/licenseSnapshot";
 import { runSessionEndCleanups } from "../../../services/sessionCleanup";
+import { revokeRefreshTokenInBackground } from "./refreshTokenRevocation";
 import {
   deleteLocalPushToken,
   registerDeviceTokenForPush,
@@ -284,6 +286,21 @@ async function migrateImpersonationBackup(): Promise<void> {
   );
 }
 
+/**
+ * The admin's refresh token set aside by an impersonation, or undefined when
+ * there is none or it is unreadable (a logout never fails on it).
+ */
+async function readImpersonationBackupRefreshToken(): Promise<
+  string | undefined
+> {
+  try {
+    return await getImpersonationBackupRefreshToken();
+  } catch (error) {
+    logger.error("Failed to read the impersonation backup token", error);
+    return undefined;
+  }
+}
+
 /** Drops both halves of the impersonation backup. */
 async function clearImpersonationBackup(): Promise<void> {
   await Promise.all([
@@ -408,6 +425,8 @@ export const AuthService = {
       // Tokens first, explicitly (saveAuthConfig writes preferences only):
       // isLoggedIn must never be persisted without the session behind it.
       await setTokens({ authToken: access_token, refreshToken: refresh_token });
+      // The refresh token a biometric lock kept is now unreachable (#942).
+      revokeReplacedRefreshToken(currentConfig, refresh_token);
       // A fresh session is never an impersonation (#598 review).
       await dropImpersonationBackup();
       const newConfig: AuthConfig = {
@@ -498,6 +517,7 @@ export const AuthService = {
       // A new account is never the previous one (#940).
       const base = await sessionBaseFor(currentConfig, user.id);
       await setTokens({ authToken: access_token, refreshToken: refresh_token });
+      revokeReplacedRefreshToken(currentConfig, refresh_token);
       // A fresh session is never an impersonation (#598 review).
       await dropImpersonationBackup();
       const newConfig: AuthConfig = {
@@ -769,6 +789,16 @@ export const AuthService = {
         // dropping the token there would kill push for Face ID users, who are
         // precisely the ones reopening the app most often.
         await unregisterDeviceTokenForPush();
+        // Revoke the session's refresh token on the server (#942), or a copy
+        // of it would stay usable for 30 days. Fire-and-forget: never waits
+        // for the (maybe sleeping) backend nor fails the logout. During a
+        // support access the live token is the target's short one (no
+        // refresh token): the admin's own session is the one to close.
+        revokeRefreshTokenInBackground(
+          impersonating
+            ? await readImpersonationBackupRefreshToken()
+            : currentConfig.refreshToken,
+        );
         // Explicit clear — setTokens never deletes on undefined.
         await clearTokens();
         // PII locale : le snapshot E-Licence hors-ligne (#416) part avec la
@@ -1294,6 +1324,22 @@ async function sessionBaseFor(
     ...devicePreferencesOf(config),
     biometricsEnabled: false,
   };
+}
+
+/**
+ * A login / register just stored a new session (#942): the refresh token the
+ * device held before — kept by a biometric lock, of this account or of the
+ * previous one — can no longer be reached and is revoked on the server.
+ * Only once the new tokens are stored: if that fails the kept ones still
+ * unlock the same account. Fire-and-forget, never throws.
+ */
+function revokeReplacedRefreshToken(
+  previous: AuthConfig,
+  issued: string,
+): void {
+  if (previous.refreshToken !== issued) {
+    revokeRefreshTokenInBackground(previous.refreshToken);
+  }
 }
 
 /** Runs one step of a wipe, logging instead of throwing. */
