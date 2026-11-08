@@ -19,8 +19,11 @@
  * TopTurnier export, uploaded or temporarily read from its public results
  * page, and linked by bib number (#786, #787). 2026-11-03: the CGU
  * acceptance (version and date) kept with the account and in the export (#894).
+ * 2026-11-08: what the Face ID / Touch ID lock keeps on the phone and until
+ * when, session revoked at logout, push token deletion no longer "immediate"
+ * (#942, #943).
  */
-export const PRIVACY_POLICY_VERSION = "2026-11-03";
+export const PRIVACY_POLICY_VERSION = "2026-11-08";
 
 /** Shape accepted for a version in an acknowledgement. */
 export const PRIVACY_POLICY_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
