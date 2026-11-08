@@ -12,6 +12,32 @@ const mockDeleteLocalPushToken = jest.fn();
 const mockClearTokens = jest.fn();
 const mockRunSessionEndCleanups = jest.fn();
 const mockWaitForPendingRefresh = jest.fn(async () => {});
+const mockClearDeadlineReminders = jest.fn();
+const mockDeleteFavoriteDownloads = jest.fn();
+const mockDeleteAccountImages = jest.fn();
+const mockClearCompetitionPresets = jest.fn();
+const mockForgetCguAcceptance = jest.fn();
+
+jest.mock("../../../legal/cguConsent", () => ({
+  forgetCguAcceptance: (id: unknown) => mockForgetCguAcceptance(id) as unknown,
+}));
+
+jest.mock("../../../../utils/scheduleDeadlineNotification", () => ({
+  clearAllDeadlineReminders: () => mockClearDeadlineReminders() as unknown,
+}));
+
+jest.mock("../../../player/services/TrackOfflineService", () => ({
+  deleteFavoriteDownloads: () => mockDeleteFavoriteDownloads() as unknown,
+}));
+
+jest.mock("../../../settings/services/accountImages", () => ({
+  deleteAccountImages: (uris: unknown) =>
+    mockDeleteAccountImages(uris) as unknown,
+}));
+
+jest.mock("../../../../stores/competitionPresets.store", () => ({
+  clearCompetitionPresets: () => mockClearCompetitionPresets() as unknown,
+}));
 
 jest.mock("../../../../services/api", () => ({
   post: jest.fn(),
@@ -41,7 +67,13 @@ jest.mock("../../../../api/tokenStore", () => ({
 
 jest.mock("../../../../api/sessionRefresh", () => ({
   waitForPendingRefresh: () => mockWaitForPendingRefresh(),
+  setDeletedAccountSessionHandler: jest.fn(),
 }));
+// Registered at import time, before any beforeEach clears the mock calls.
+const deletedAccountWipe = jest.requireMock<{
+  setDeletedAccountSessionHandler: jest.Mock;
+}>("../../../../api/sessionRefresh").setDeletedAccountSessionHandler.mock
+  .calls[0]?.[0] as ((accessToken?: string) => Promise<void>) | undefined;
 
 jest.mock("../../../../utils/logger", () => ({
   createLogger: jest.fn(() => ({
@@ -215,6 +247,96 @@ describe("AuthService.endDeletedAccountSession (#933)", () => {
     expect(mockRunSessionEndCleanups).toHaveBeenCalledTimes(1);
   });
 
+  it("wipes the deadline reminders, offline favourites, local images and presets (#936)", async () => {
+    stored(ACCOUNT);
+
+    await AuthService.endDeletedAccountSession();
+
+    expect(mockClearDeadlineReminders).toHaveBeenCalledTimes(1);
+    expect(mockDeleteFavoriteDownloads).toHaveBeenCalledTimes(1);
+    expect(mockDeleteAccountImages).toHaveBeenCalledWith([
+      "file:///photo.jpg",
+      "file:///logo.png",
+    ]);
+    expect(mockClearCompetitionPresets).toHaveBeenCalledTimes(1);
+  });
+
+  // #930: no account id left on the device once the account is gone.
+  it("forgets the account's local CGU acceptance copy", async () => {
+    stored(ACCOUNT);
+
+    await AuthService.endDeletedAccountSession();
+
+    expect(mockForgetCguAcceptance).toHaveBeenCalledWith("deleted-id");
+  });
+
+  it("forgets no CGU copy without a known account id", async () => {
+    stored({ ...ACCOUNT, userId: undefined });
+
+    await AuthService.endDeletedAccountSession();
+
+    expect(mockForgetCguAcceptance).not.toHaveBeenCalled();
+  });
+
+  it("keeps wiping when a local file cleanup fails", async () => {
+    mockDeleteAccountImages.mockRejectedValueOnce(new Error("disk"));
+    mockDeleteFavoriteDownloads.mockRejectedValueOnce(new Error("disk"));
+    stored(ACCOUNT);
+
+    await AuthService.endDeletedAccountSession();
+
+    expect(mockClearDeadlineReminders).toHaveBeenCalledTimes(1);
+    expect(savedConfig().username).toBeUndefined();
+    expect(mockRunSessionEndCleanups).toHaveBeenCalledTimes(1);
+  });
+
+  describe("account deleted from another device (#935)", () => {
+    it("registers the wipe for a refresh refused with ACCOUNT_DELETED", () => {
+      expect(deletedAccountWipe).toEqual(expect.any(Function));
+    });
+
+    it("names the CGU copy from the access token when a biometric lock dropped the id", async () => {
+      stored({ ...ACCOUNT, userId: undefined, isLoggedIn: false });
+      const payload = btoa(JSON.stringify({ sub: "deleted-id" }))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+
+      await deletedAccountWipe?.(`h.${payload}.s`);
+
+      expect(mockForgetCguAcceptance).toHaveBeenCalledWith("deleted-id");
+    });
+
+    it("forgets no CGU copy from an unreadable token", async () => {
+      stored({ ...ACCOUNT, userId: undefined });
+
+      await deletedAccountWipe?.("not-a-jwt");
+
+      expect(mockForgetCguAcceptance).not.toHaveBeenCalled();
+    });
+
+    it("wipes the account's data without waiting for the refresh it runs in", async () => {
+      stored({ ...ACCOUNT, biometricsEnabled: true });
+
+      await deletedAccountWipe?.();
+
+      // It runs inside the refresh in flight: waiting for it would deadlock.
+      expect(mockWaitForPendingRefresh).not.toHaveBeenCalled();
+      const json = JSON.stringify(savedConfig());
+      expect(json).not.toContain("minor@club.fr");
+      expect(json).not.toContain("file:///");
+      expect(savedConfig().biometricsEnabled).toBe(false);
+      expect(AsyncStorage.removeItem).toHaveBeenCalledWith(
+        "license_snapshot_v1",
+      );
+      expect(mockClearDeadlineReminders).toHaveBeenCalledTimes(1);
+      expect(mockDeleteFavoriteDownloads).toHaveBeenCalledTimes(1);
+      expect(mockDeleteAccountImages).toHaveBeenCalledTimes(1);
+      expect(mockForgetCguAcceptance).toHaveBeenCalledWith("deleted-id");
+      expect(mockRunSessionEndCleanups).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("a plain logout is unchanged", () => {
     it("keeps lastUser and the tokens for a biometric unlock", async () => {
       stored({ ...ACCOUNT, biometricsEnabled: true });
@@ -231,6 +353,12 @@ describe("AuthService.endDeletedAccountSession (#933)", () => {
         biometricsEnabled: true,
         clubName: "Club Danse",
       });
+      // Reminders, favourites, images and presets stay for the same user.
+      expect(mockClearDeadlineReminders).not.toHaveBeenCalled();
+      expect(mockDeleteFavoriteDownloads).not.toHaveBeenCalled();
+      expect(mockDeleteAccountImages).not.toHaveBeenCalled();
+      expect(mockClearCompetitionPresets).not.toHaveBeenCalled();
+      expect(mockForgetCguAcceptance).not.toHaveBeenCalled();
     });
 
     it("keeps lastUser on a full logout without biometrics", async () => {

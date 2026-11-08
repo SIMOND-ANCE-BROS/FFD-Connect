@@ -1,7 +1,11 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { refreshSession, waitForPendingRefresh } from "../sessionRefresh";
+import {
+  refreshSession,
+  setDeletedAccountSessionHandler,
+  waitForPendingRefresh,
+} from "../sessionRefresh";
 import { TokenStoreUnavailableError } from "../tokenStoreErrors";
 
 const mockRefreshAuth = jest.fn();
@@ -165,15 +169,31 @@ describe("refreshSession", () => {
     expect(saved).toEqual({ isLoggedIn: false, appTheme: "dark" });
   });
 
-  it("keeps the account's own profile when an ordinary session ends", async () => {
+  it("keeps what a logout keeps when an ordinary session ends (#935)", async () => {
     getItem.mockResolvedValue(
-      JSON.stringify({ isLoggedIn: true, ...licenseeProfile }),
+      JSON.stringify({
+        isLoggedIn: true,
+        role: "CLUB",
+        roles: ["CLUB", "LICENSEE"],
+        mainRole: "LICENSEE",
+        ...licenseeProfile,
+      }),
     );
 
     await unreadableHandler?.();
 
+    // Same shape as logout(): no identity nor roles left, only the space
+    // memory of the account, its local settings and the device preferences.
+    const { username: _u, userId: _id, ...kept } = licenseeProfile;
     const saved = JSON.parse(setItem.mock.calls[0][1] as string);
-    expect(saved).toEqual({ isLoggedIn: false, ...licenseeProfile });
+    expect(saved).toEqual({
+      ...kept,
+      isLoggedIn: false,
+      role: "LICENSEE",
+      isGuest: false,
+      lastUser: "licensee@example.com",
+      lastSpace: "CLUB",
+    });
   });
 
   it("refreshes and persists the new access + rotated refresh token", async () => {
@@ -266,6 +286,131 @@ describe("refreshSession", () => {
     expect(AsyncStorage.removeItem).toHaveBeenCalledWith(
       "impersonation_backup",
     );
+  });
+
+  it("sends the last access token along so the server can flag a deleted account (#935)", async () => {
+    mockGetTokens.mockResolvedValue({ authToken: "a1", refreshToken: "r1" });
+    post.mockResolvedValue({
+      data: { access_token: "a2", refresh_token: "r2" },
+    });
+
+    await refreshSession();
+
+    expect(post).toHaveBeenCalledWith(
+      "http://test/api/v1/auth/refresh",
+      { refresh_token: "r1" },
+      { timeout: 1000, headers: { Authorization: "Bearer a1" } },
+    );
+  });
+
+  it("sends no Authorization header without an access token", async () => {
+    mockGetTokens.mockResolvedValue({ refreshToken: "r1" });
+    post.mockResolvedValue({
+      data: { access_token: "a2", refresh_token: "r2" },
+    });
+
+    await refreshSession();
+
+    expect(post).toHaveBeenCalledWith(
+      "http://test/api/v1/auth/refresh",
+      { refresh_token: "r1" },
+      { timeout: 1000 },
+    );
+  });
+
+  describe("refresh refused for a deleted account (#935)", () => {
+    const deletedRefusal = {
+      response: { status: 401, data: { code: "ACCOUNT_DELETED" } },
+    };
+    const wipe = jest.fn();
+
+    beforeEach(() => {
+      wipe.mockResolvedValue(undefined);
+      setDeletedAccountSessionHandler(wipe);
+      mockGetTokens.mockResolvedValue({ authToken: "a1", refreshToken: "r1" });
+    });
+
+    afterEach(() => {
+      setDeletedAccountSessionHandler(null);
+    });
+
+    it("wipes the account's local data instead of a plain session end", async () => {
+      post.mockRejectedValue(deletedRefusal);
+
+      await expect(refreshSession()).resolves.toBeNull();
+
+      expect(mockClearTokens).toHaveBeenCalledWith("r1");
+      expect(wipe).toHaveBeenCalledTimes(1);
+      // Its id may be gone from auth_config (biometric lock): the token
+      // still names the account.
+      expect(wipe).toHaveBeenCalledWith("a1");
+      // The wipe owns auth_config: the plain session end never rewrites it
+      // from the profile it read.
+      expect(setItem).not.toHaveBeenCalled();
+      expect(mockRefreshAuth).toHaveBeenCalledTimes(1);
+    });
+
+    it("clears the tokens before the wipe", async () => {
+      const order: string[] = [];
+      mockClearTokens.mockImplementation(async () => {
+        order.push("clearTokens");
+        return true;
+      });
+      wipe.mockImplementation(async () => {
+        order.push("wipe");
+      });
+      post.mockRejectedValue(deletedRefusal);
+
+      await refreshSession();
+
+      expect(order).toEqual(["clearTokens", "wipe"]);
+    });
+
+    it("wipes nothing for a refusal aimed at a previous session", async () => {
+      post.mockRejectedValue(deletedRefusal);
+      mockClearTokens.mockResolvedValue(false);
+
+      await refreshSession();
+
+      expect(wipe).not.toHaveBeenCalled();
+      expect(mockRefreshAuth).not.toHaveBeenCalled();
+    });
+
+    it("ends the session as usual for any other refusal", async () => {
+      post.mockRejectedValue({ response: { status: 401, data: {} } });
+
+      await refreshSession();
+
+      expect(wipe).not.toHaveBeenCalled();
+      expect(mockClearLicenseSnapshot).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(setItem.mock.calls[0][1] as string).isLoggedIn).toBe(
+        false,
+      );
+    });
+
+    it("falls back to the plain session end when no wipe is registered", async () => {
+      setDeletedAccountSessionHandler(null);
+      post.mockRejectedValue(deletedRefusal);
+
+      await refreshSession();
+
+      expect(mockClearLicenseSnapshot).toHaveBeenCalledTimes(1);
+      expect(mockRunSessionEndCleanups).toHaveBeenCalledTimes(1);
+      expect(mockRefreshAuth).toHaveBeenCalledTimes(1);
+    });
+
+    it("falls back to the plain session end when the wipe fails", async () => {
+      wipe.mockRejectedValue(new Error("boom"));
+      post.mockRejectedValue(deletedRefusal);
+
+      await expect(refreshSession()).resolves.toBeNull();
+
+      expect(mockClearLicenseSnapshot).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(setItem.mock.calls[0][1] as string).isLoggedIn).toBe(
+        false,
+      );
+      expect(mockRefreshAuth).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("also ends the session (and purges the snapshot) on a 403", async () => {

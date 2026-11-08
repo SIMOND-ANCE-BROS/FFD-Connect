@@ -60,6 +60,7 @@ jest.mock("../../../../api/tokenStore", () => ({
 
 jest.mock("../../../../api/sessionRefresh", () => ({
   waitForPendingRefresh: () => mockWaitForPendingRefresh(),
+  setDeletedAccountSessionHandler: jest.fn(),
 }));
 
 jest.mock("../../../../utils/logger", () => ({
