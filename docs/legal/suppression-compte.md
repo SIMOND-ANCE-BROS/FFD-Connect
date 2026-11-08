@@ -46,8 +46,7 @@ La suppression efface votre compte et les données qui y sont rattachées :
   l'application ;
 - sur le téléphone depuis lequel vous supprimez le compte : votre adresse e-mail,
   votre profil, vos identifiants de connexion (y compris ceux gardés pour Face ID,
-  Touch ID ou l'empreinte digitale) et la copie hors ligne de votre licence. Seuls
-  les réglages du téléphone (thème, animations, filtres par défaut) sont conservés.
+  Touch ID ou l'empreinte digitale) et la copie hors ligne de votre licence.
 
 ## Données conservées
 

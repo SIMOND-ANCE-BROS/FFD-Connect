@@ -8,6 +8,7 @@ import { clearImpersonationBackupTokens } from "../../../../api/tokenStore";
 import { AuthService, DEFAULT_CONFIG } from "../AuthService";
 
 const mockUnregisterPush = jest.fn();
+const mockDeleteLocalPushToken = jest.fn();
 const mockClearTokens = jest.fn();
 const mockRunSessionEndCleanups = jest.fn();
 const mockWaitForPendingRefresh = jest.fn(async () => {});
@@ -20,6 +21,7 @@ jest.mock("../../../../services/api", () => ({
 jest.mock("../../../settings/services/pushRegistration", () => ({
   registerDeviceTokenForPush: jest.fn(),
   unregisterDeviceTokenForPush: () => mockUnregisterPush() as unknown,
+  deleteLocalPushToken: () => mockDeleteLocalPushToken() as unknown,
 }));
 
 jest.mock("../../../../services/sessionCleanup", () => ({
@@ -169,14 +171,27 @@ describe("AuthService.endDeletedAccountSession (#933)", () => {
     mockClearTokens.mockImplementationOnce(() => {
       order.push("clearTokens");
     });
-    mockUnregisterPush.mockImplementationOnce(() => {
-      order.push("unregisterPush");
+    mockDeleteLocalPushToken.mockImplementationOnce(() => {
+      order.push("deleteLocalPushToken");
     });
     stored(ACCOUNT);
 
     await AuthService.endDeletedAccountSession();
 
-    expect(order).toEqual(["waitRefresh", "clearTokens", "unregisterPush"]);
+    expect(order).toEqual([
+      "waitRefresh",
+      "clearTokens",
+      "deleteLocalPushToken",
+    ]);
+  });
+
+  it("sends no push unregister request: the server dropped the device with the account", async () => {
+    stored(ACCOUNT);
+
+    await AuthService.endDeletedAccountSession();
+
+    expect(mockUnregisterPush).not.toHaveBeenCalled();
+    expect(mockDeleteLocalPushToken).toHaveBeenCalledTimes(1);
   });
 
   it("still wipes everything else when the token store fails", async () => {

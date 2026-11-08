@@ -218,6 +218,39 @@ describe("unregisterDeviceTokenForPush", () => {
   });
 });
 
+// #933: after an account deletion the server already dropped the device row
+// and the session tokens are gone — no request, only the local cleanup.
+describe("deleteLocalPushToken", () => {
+  it("deletes the FCM token and drops the rotation listener without calling the API", async () => {
+    const unsubscribe = jest.fn();
+    mockHandler.onTokenRefresh.mockReturnValue(unsubscribe);
+
+    await pushRegistration.registerDeviceTokenForPush();
+    await pushRegistration.deleteLocalPushToken();
+
+    expect(mockUnregister).not.toHaveBeenCalled();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(mockHandler.deleteToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("never throws, even when deleting the token fails", async () => {
+    mockHandler.deleteToken.mockRejectedValue(new Error("fcm down"));
+
+    await expect(
+      pushRegistration.deleteLocalPushToken(),
+    ).resolves.toBeUndefined();
+  });
+
+  it("stays silent on a build without Firebase", async () => {
+    mockHandlerUnavailable = true;
+
+    await expect(
+      pushRegistration.deleteLocalPushToken(),
+    ).resolves.toBeUndefined();
+    expect(mockHandler.deleteToken).not.toHaveBeenCalled();
+  });
+});
+
 describe("setupPushListeners", () => {
   it("wires the message listeners once", () => {
     pushRegistration.setupPushListeners();

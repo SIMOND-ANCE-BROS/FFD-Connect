@@ -19,6 +19,7 @@ import { devicePreferencesOf, withoutAccountData } from "./accountData";
 import { clearLicenseSnapshot } from "../../license/utils/licenseSnapshot";
 import { runSessionEndCleanups } from "../../../services/sessionCleanup";
 import {
+  deleteLocalPushToken,
   registerDeviceTokenForPush,
   unregisterDeviceTokenForPush,
 } from "../../settings/services/pushRegistration";
@@ -794,11 +795,11 @@ export const AuthService = {
    * each step is best-effort so one failure never skips the others.
    */
   endDeletedAccountSession: async (): Promise<void> => {
-    const config = await AuthService.getAuthConfig();
     // A refresh in flight could end the session on its own once the server
     // rejects the deleted account (endSessionState rewrites auth_config from
     // what it read): let it settle first, then pull the tokens at once so a
-    // later request or refresh can neither use them nor revive the profile.
+    // later request or refresh can neither use them nor revive the profile
+    // (its compare-and-set finds the refresh token gone).
     await waitForPendingRefresh();
     try {
       // Explicit, biometrics or not: there is no account left to unlock.
@@ -806,11 +807,10 @@ export const AuthService = {
     } catch (error) {
       logger.error("Failed to clear the deleted account's tokens", error);
     }
-    // After clearTokens(): no request may carry the deleted account's JWT
-    // (its 401 would start a refresh racing this wipe). The server already
-    // dropped the device token with the account; this mainly deletes the
-    // local FCM token. Never throws.
-    await unregisterDeviceTokenForPush();
+    const config = await AuthService.getAuthConfig();
+    // Local only: the server dropped the device rows with the account, and
+    // without tokens an unregister request could only fail. Never throws.
+    await deleteLocalPushToken();
     // Offline licence snapshot + entry QR batch (PII, signed QR). Never throws.
     await clearLicenseSnapshot();
     await dropImpersonationBackup();
@@ -819,7 +819,7 @@ export const AuthService = {
       isLoggedIn: false,
       role: "LICENSEE",
       // The biometric quick-login unlocked this account's retained tokens:
-      // gone with it. The next account opts in again.
+      // gone with it. The next account turns it back on in the settings.
       biometricsEnabled: false,
     };
     try {
