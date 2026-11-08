@@ -30,7 +30,10 @@ jest.mock("expo-file-system/legacy", () => ({
 }));
 
 jest.mock("../../../auth/services/AuthService", () => ({
-  AuthService: { getAuthConfig: jest.fn() },
+  AuthService: {
+    getAuthConfig: jest.fn(),
+    endDeletedAccountSession: jest.fn().mockResolvedValue(undefined),
+  },
 }));
 
 jest.mock("../../../legal/cguConsent", () => ({
@@ -226,6 +229,39 @@ describe("deleteMyAccount", () => {
     await deleteMyAccount("s3cret");
 
     expect(forgetCguMock).not.toHaveBeenCalled();
+  });
+
+  // #933: a confirmed deletion wipes the account's local data, not a plain
+  // logout that keeps lastUser, the profile and (biometrics) the tokens.
+  it("efface les données locales du compte une fois la suppression confirmée", async () => {
+    deleteMock.mockResolvedValue({ data: { message: "ok" }, response: {} });
+
+    await deleteMyAccount("s3cret");
+
+    expect(AuthService.endDeletedAccountSession).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([401, 500])(
+    "n'efface rien quand la suppression échoue (%s)",
+    async (status) => {
+      deleteMock.mockResolvedValue({
+        error: { statusCode: status },
+        response: { status },
+      });
+
+      await expect(deleteMyAccount("s3cret")).rejects.toThrow();
+
+      expect(AuthService.endDeletedAccountSession).not.toHaveBeenCalled();
+      expect(forgetCguMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("n'efface rien quand la requête de suppression lève (réseau)", async () => {
+    deleteMock.mockRejectedValue(new Error("Network Error"));
+
+    await expect(deleteMyAccount("s3cret")).rejects.toThrow();
+
+    expect(AuthService.endDeletedAccountSession).not.toHaveBeenCalled();
   });
 
   it("envoie le mot de passe au backend", async () => {

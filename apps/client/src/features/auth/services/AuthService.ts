@@ -19,6 +19,7 @@ import { devicePreferencesOf, withoutAccountData } from "./accountData";
 import { clearLicenseSnapshot } from "../../license/utils/licenseSnapshot";
 import { runSessionEndCleanups } from "../../../services/sessionCleanup";
 import {
+  deleteLocalPushToken,
   registerDeviceTokenForPush,
   unregisterDeviceTokenForPush,
 } from "../../settings/services/pushRegistration";
@@ -782,6 +783,56 @@ export const AuthService = {
     } catch (error) {
       logger.error("Failed to logout", error);
     }
+  },
+
+  /**
+   * Ends the session of an account the server has just DELETED (#933). Not a
+   * logout: logout() is made for an account that still exists and keeps its
+   * e-mail (lastUser), its profile and — with biometrics — its tokens and
+   * offline licence snapshot. Here nothing of that account stays on the
+   * device: only the device preferences (devicePreferencesOf) survive.
+   * Call it only once the deletion is confirmed by the server. Never throws:
+   * each step is best-effort so one failure never skips the others.
+   */
+  endDeletedAccountSession: async (): Promise<void> => {
+    // A refresh in flight could end the session on its own once the server
+    // rejects the deleted account (endSessionState rewrites auth_config from
+    // what it read): let it settle first, then pull the tokens at once so a
+    // later request or refresh can neither use them nor revive the profile
+    // (its compare-and-set finds the refresh token gone).
+    await waitForPendingRefresh();
+    try {
+      // Explicit, biometrics or not: there is no account left to unlock.
+      await clearTokens();
+    } catch (error) {
+      logger.error("Failed to clear the deleted account's tokens", error);
+    }
+    const config = await AuthService.getAuthConfig();
+    // Local only: the server dropped the device rows with the account, and
+    // without tokens an unregister request could only fail. Never throws.
+    await deleteLocalPushToken();
+    // Offline licence snapshot + entry QR batch (PII, signed QR). Never throws.
+    await clearLicenseSnapshot();
+    await dropImpersonationBackup();
+    const deviceOnly: AuthConfig = {
+      ...devicePreferencesOf(config),
+      isLoggedIn: false,
+      role: "LICENSEE",
+      // The biometric quick-login unlocked this account's retained tokens:
+      // gone with it. The next account turns it back on in the settings.
+      biometricsEnabled: false,
+    };
+    try {
+      await writeAuthConfig(deviceOnly);
+    } catch (error) {
+      logger.error("Failed to rewrite the preferences — removing them", error);
+      // Never leave the deleted account's profile behind: lose the device
+      // preferences rather than keep its data.
+      await AsyncStorage.removeItem(AUTH_KEY).catch(() => undefined);
+    }
+    // Server cache, per-account stores, Sentry user, export file… Never throws.
+    await runSessionEndCleanups();
+    logger.info("Deleted account's local data wiped");
   },
 
   /** Switch the active space (display only; the server checks every role). */

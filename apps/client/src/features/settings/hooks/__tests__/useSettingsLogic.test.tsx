@@ -444,6 +444,22 @@ describe("useSettingsLogic", () => {
       expect(mockRefreshAuth).toHaveBeenCalled();
     });
 
+    // #933: deleteMyAccount already wiped the account's local data. A
+    // logout() here would write the deleted account's e-mail back as lastUser.
+    it("after an account deletion, refreshes the auth state without logging out", async () => {
+      const { result } = await renderHook(() =>
+        useSettingsLogic({ navigation: mockNavigation }),
+      );
+
+      await act(async () => {
+        result.current.actions.handleAccountDeleted();
+        await Promise.resolve();
+      });
+
+      expect(mockAuth.logout).not.toHaveBeenCalled();
+      expect(mockRefreshAuth).toHaveBeenCalledTimes(1);
+    });
+
     it("tech info: shows real device/env/bundle info (not web-mock values)", async () => {
       mockBackendHealth.checkHealth.mockResolvedValue(true);
       const { result } = await renderHook(() =>

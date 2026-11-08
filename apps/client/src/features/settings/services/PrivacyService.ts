@@ -86,10 +86,12 @@ export async function exportAndShareMyData(): Promise<void> {
 /**
  * Droit à l'oubli (art. 17) : suppression définitive du compte.
  * Le backend exige le mot de passe courant — un token volé ne suffit pas.
- * Lève "WRONG_PASSWORD" (401) ou "DELETE_FAILED" ; l'appelant gère le logout.
+ * Lève "WRONG_PASSWORD" (401) ou "DELETE_FAILED" sans rien effacer. Une fois
+ * la suppression confirmée, efface toutes les données locales du compte
+ * (#933) ; l'appelant n'a plus qu'à rafraîchir l'état d'auth (pas de logout).
  */
 export async function deleteMyAccount(password: string): Promise<void> {
-  // Read before the call: the caller logs out right after a deletion.
+  // Read before the call: the local wipe below removes it.
   const { userId } = await AuthService.getAuthConfig();
   const { error, response } = await usersControllerDeleteMyAccount({
     body: { password },
@@ -102,4 +104,7 @@ export async function deleteMyAccount(password: string): Promise<void> {
   // The deleted account's CGU acceptance copy goes with it (#930): its
   // opaque id no longer lingers in that key.
   if (userId) await forgetCguAcceptance(userId);
+  // Not a logout (#933): e-mail, profile, tokens and licence snapshot of the
+  // deleted account go, biometrics or not. Device preferences only remain.
+  await AuthService.endDeletedAccountSession();
 }
