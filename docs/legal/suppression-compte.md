@@ -55,7 +55,8 @@ La suppression efface votre compte et les données qui y sont rattachées :
   sont effacées la prochaine fois que l'application s'y connecte au serveur avec
   cette session. Une version ancienne de
   l'application vous y déconnecte seulement. Sur un téléphone où vous vous étiez
-  déjà déconnecté·e, ou avec une version ancienne, désinstallez l'application
+  déjà déconnecté·e, ces données sont effacées dès qu'un autre compte s'y
+  connecte ; d'ici là, ou avec une version ancienne, désinstallez l'application
   pour tout effacer.
 
 ## Données conservées

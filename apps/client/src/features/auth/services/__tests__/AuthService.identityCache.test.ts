@@ -46,6 +46,7 @@ jest.mock("../../../../api/sessionRefresh", () => ({
 jest.mock("../../../settings/services/pushRegistration", () => ({
   registerDeviceTokenForPush: jest.fn(),
   unregisterDeviceTokenForPush: jest.fn(),
+  deleteLocalPushToken: jest.fn(),
 }));
 
 const post = api.post as jest.Mock;
