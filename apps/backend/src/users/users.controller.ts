@@ -30,7 +30,10 @@ import {
   StoreReviewOwnData,
   StoreReviewRead,
 } from "../auth/store-review/store-review.decorator";
-import { simulatedEmptyList } from "../auth/store-review/store-review-responses";
+import {
+  simulatedEmptyList,
+  simulatedEmptyPage,
+} from "../auth/store-review/store-review-responses";
 
 @ApiTags("users")
 @ApiCommonErrorResponses()
@@ -38,7 +41,8 @@ import { simulatedEmptyList } from "../auth/store-review/store-review-responses"
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @StoreReviewRead(simulatedEmptyList)
+  // Paginated answer ({ data, meta }): the demo account gets an empty page.
+  @StoreReviewRead(simulatedEmptyPage)
   @Get("members")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
