@@ -16,6 +16,23 @@ import { LoginResponse } from "./auth.service";
 const INVALID_REFRESH_TOKEN = "Invalid or expired refresh token";
 
 /**
+ * `code` of a refresh refused because the account no longer exists (#935):
+ * the app then wipes that account's local data, as on the device the
+ * deletion was made from. The message stays the generic one, so an app that
+ * does not know the code ends the session as for any rejected refresh.
+ */
+export const ACCOUNT_DELETED_CODE = "ACCOUNT_DELETED";
+
+function deletedAccountRefusal(): UnauthorizedException {
+  return new UnauthorizedException({
+    statusCode: 401,
+    error: "Unauthorized",
+    message: INVALID_REFRESH_TOKEN,
+    code: ACCOUNT_DELETED_CODE,
+  });
+}
+
+/**
  * How long after its rotation an already-rotated refresh token may come back
  * without being treated as stolen (#687). It absorbs a legitimate race: two
  * app instances or back-office tabs sending the same token a few seconds
@@ -74,7 +91,16 @@ export class AuthTokenService {
     return { ...record, token: plainToken };
   }
 
-  async refreshAccessToken(refreshToken: string): Promise<LoginResponse> {
+  /**
+   * @param accessToken the app's last access token, expired or not (sent by
+   *   apps from #935 on). Only read when the refresh token is unknown, to
+   *   tell a deleted account (its refresh tokens went with it) from an
+   *   ordinary expiry. It never authenticates anything.
+   */
+  async refreshAccessToken(
+    refreshToken: string,
+    accessToken?: string,
+  ): Promise<LoginResponse> {
     const tokenHash = hashToken(refreshToken);
     const tokenRecord = await this.prisma.refreshToken.findUnique({
       where: { token: tokenHash },
@@ -82,6 +108,9 @@ export class AuthTokenService {
     });
 
     if (!tokenRecord) {
+      if (await this.namesDeletedAccount(accessToken)) {
+        throw deletedAccountRefusal();
+      }
       throw new UnauthorizedException(INVALID_REFRESH_TOKEN);
     }
     // A token issued before #687 has no familyId: its family is its own id.
@@ -129,7 +158,10 @@ export class AuthTokenService {
         where: { id: user.id },
         select: accountStatusSelect,
       });
-      if (!status || accountBlockReason(status)) {
+      if (!status) {
+        return "deleted";
+      }
+      if (accountBlockReason(status)) {
         return "blocked";
       }
       const consumed = await tx.refreshToken.updateMany({
@@ -155,6 +187,9 @@ export class AuthTokenService {
       return "rotated";
     });
 
+    if (rotated === "deleted") {
+      throw deletedAccountRefusal();
+    }
     if (rotated === "blocked") {
       throw new UnauthorizedException(ACCOUNT_DISABLED_MESSAGE);
     }
@@ -191,6 +226,36 @@ export class AuthTokenService {
         passportLevelStandard: user.passportLevelStandard ?? null,
       },
     };
+  }
+
+  /**
+   * Whether a validly signed access token (expiry ignored: the app refreshes
+   * once it has expired) names an account that no longer exists. Account ids
+   * are never reused, so a signed token of a missing account means a deleted
+   * one. Only the holder of that account's token learns it. Any doubt (no
+   * token, bad signature, no subject, lookup failure) answers false: the
+   * caller then sends the generic refusal.
+   */
+  private async namesDeletedAccount(
+    accessToken: string | undefined,
+  ): Promise<boolean> {
+    if (!accessToken) return false;
+    try {
+      const { sub } = this.jwtService.verify<{ sub?: unknown }>(accessToken, {
+        ignoreExpiration: true,
+        // A legitimate app always holds a token younger than its refresh
+        // token: an older one (a leaked backup) answers nothing more.
+        maxAge: `${this.REFRESH_TOKEN_EXPIRY_DAYS + 1}d`,
+      });
+      if (typeof sub !== "string" || sub.length === 0) return false;
+      const user = await this.prisma.user.findUnique({
+        where: { id: sub },
+        select: idOnlySelect,
+      });
+      return user === null;
+    } catch {
+      return false;
+    }
   }
 
   async revokeRefreshToken(refreshToken: string): Promise<boolean> {

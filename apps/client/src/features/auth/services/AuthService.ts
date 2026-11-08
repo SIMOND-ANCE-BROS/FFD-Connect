@@ -1,10 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import api from "../../../services/api";
-import { waitForPendingRefresh } from "../../../api/sessionRefresh";
+import {
+  setDeletedAccountSessionHandler,
+  waitForPendingRefresh,
+} from "../../../api/sessionRefresh";
 import {
   clearImpersonationBackupTokens,
   clearTokens,
+  getImpersonationBackupRefreshToken,
   getTokens,
   restoreFromImpersonation,
   setImpersonationBackupTokens,
@@ -15,14 +19,24 @@ import {
   type Tokens,
 } from "../../../api/tokenStore";
 import { isTokenStoreUnavailable } from "../../../api/tokenStoreErrors";
-import { devicePreferencesOf, withoutAccountData } from "./accountData";
+import {
+  devicePreferencesOf,
+  loggedOutConfigOf,
+  withoutAccountData,
+} from "./accountData";
 import { clearLicenseSnapshot } from "../../license/utils/licenseSnapshot";
 import { runSessionEndCleanups } from "../../../services/sessionCleanup";
+import { revokeRefreshTokenInBackground } from "./refreshTokenRevocation";
 import {
   deleteLocalPushToken,
   registerDeviceTokenForPush,
   unregisterDeviceTokenForPush,
 } from "../../settings/services/pushRegistration";
+import { forgetCguAcceptance } from "../../legal/cguConsent";
+import { deleteAccountImages } from "../../settings/services/accountImages";
+import { deleteFavoriteDownloads } from "../../player/services/TrackOfflineService";
+import { clearCompetitionPresets } from "../../../stores/competitionPresets.store";
+import { clearAllDeadlineReminders } from "../../../utils/scheduleDeadlineNotification";
 import { createLogger } from "../../../utils/logger";
 import { usage } from "../../../services/analytics/usage";
 import type { UsersControllerGetProfileResponse } from "../../../api/generated/types.gen";
@@ -66,6 +80,12 @@ export interface AuthConfig {
   lastUser?: string;
   /** Space of the last session, reopened at the next login of `lastUser`. */
   lastSpace?: UserRole;
+  /**
+   * Opaque id of the account of the last session, kept across logout: the
+   * next login compares it with its own to keep or drop the local profile
+   * (#940). Missing on configs written before #940.
+   */
+  lastUserId?: string;
   isGuest?: boolean;
   /** Account handed to the store reviewers (#212): no usage measurement (lot 5). */
   isStoreReview?: boolean;
@@ -266,6 +286,43 @@ async function migrateImpersonationBackup(): Promise<void> {
   );
 }
 
+/**
+ * The admin's refresh token set aside by an impersonation, or undefined when
+ * there is none or it is unreadable (a logout never fails on it).
+ */
+async function readImpersonationBackupRefreshToken(): Promise<
+  string | undefined
+> {
+  try {
+    return await getImpersonationBackupRefreshToken();
+  } catch (error) {
+    logger.error("Failed to read the impersonation backup token", error);
+    return undefined;
+  }
+}
+
+/**
+ * The live session's refresh token, read from the token store at the moment
+ * it is needed (a refresh may have rotated it); `fallback` when unreadable.
+ */
+async function liveRefreshToken(
+  fallback: string | undefined,
+): Promise<string | undefined> {
+  try {
+    return (await getTokens()).refreshToken;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Revokes on the server the admin's refresh token an impersonation set aside
+ * (#942), before a new session drops it. Never throws.
+ */
+async function revokeImpersonationBackup(): Promise<void> {
+  revokeRefreshTokenInBackground(await readImpersonationBackupRefreshToken());
+}
+
 /** Drops both halves of the impersonation backup. */
 async function clearImpersonationBackup(): Promise<void> {
   await Promise.all([
@@ -384,13 +441,22 @@ export const AuthService = {
       // — a failed attempt changes nothing — and before the new tokens, so
       // nothing refetched in between can be this account's. Never throws.
       await runSessionEndCleanups();
+      // Another account than the previous one (#940): none of its local
+      // profile nor device-side data crosses over. Before the new tokens.
+      const base = await sessionBaseFor(currentConfig, user.id);
       // Tokens first, explicitly (saveAuthConfig writes preferences only):
       // isLoggedIn must never be persisted without the session behind it.
       await setTokens({ authToken: access_token, refreshToken: refresh_token });
+      // The refresh token a biometric lock kept for this same account is now
+      // unreachable (#942); another account's went in sessionBaseFor.
+      if (isSameAccount(currentConfig, user.id)) {
+        revokeReplacedRefreshToken(currentConfig, refresh_token);
+      }
       // A fresh session is never an impersonation (#598 review).
+      await revokeImpersonationBackup();
       await dropImpersonationBackup();
       const newConfig: AuthConfig = {
-        ...currentConfig,
+        ...base,
         isLoggedIn: true,
         impersonating: undefined,
         impersonatedName: undefined,
@@ -474,11 +540,17 @@ export const AuthService = {
 
       // Same as login (#892): a new account starts from an empty cache.
       await runSessionEndCleanups();
+      // A new account is never the previous one (#940).
+      const base = await sessionBaseFor(currentConfig, user.id);
       await setTokens({ authToken: access_token, refreshToken: refresh_token });
+      if (isSameAccount(currentConfig, user.id)) {
+        revokeReplacedRefreshToken(currentConfig, refresh_token);
+      }
       // A fresh session is never an impersonation (#598 review).
+      await revokeImpersonationBackup();
       await dropImpersonationBackup();
       const newConfig: AuthConfig = {
-        ...currentConfig,
+        ...base,
         isLoggedIn: true,
         impersonating: undefined,
         impersonatedName: undefined,
@@ -735,22 +807,10 @@ export const AuthService = {
       const keepTokensForBiometrics =
         currentConfig.biometricsEnabled === true &&
         currentConfig.impersonating !== true;
-      const newConfig: AuthConfig = {
-        ...baseConfig,
-        isLoggedIn: false,
-        role: "LICENSEE",
-        roles: undefined,
-        mainRole: undefined,
-        isGuest: false,
-        username: undefined,
-        userId: undefined,
-        impersonating: undefined,
-        impersonatedName: undefined,
-        // Space memory: the next login of this account (password or
-        // biometrics) reopens this space. A guest logout keeps the previous.
-        lastUser: baseConfig.username ?? baseConfig.lastUser,
-        lastSpace: baseConfig.username ? baseConfig.role : baseConfig.lastSpace,
-      };
+      // Space memory: the next login of this account (password or
+      // biometrics) reopens this space. Shared with the session ends that
+      // do not go through here (refused refresh…, #935).
+      const newConfig: AuthConfig = loggedOutConfigOf(baseConfig);
       if (!keepTokensForBiometrics) {
         // Before clearTokens(): the unregister call is authenticated, so it
         // has to go out while the JWT is still valid. Only on a full logout —
@@ -758,6 +818,18 @@ export const AuthService = {
         // dropping the token there would kill push for Face ID users, who are
         // precisely the ones reopening the app most often.
         await unregisterDeviceTokenForPush();
+        // Revoke the session's refresh token on the server (#942), or a copy
+        // of it would stay usable for 30 days. Fire-and-forget: never waits
+        // for the (maybe sleeping) backend nor fails the logout. During a
+        // support access the live token is the target's short one (no
+        // refresh token): the admin's own session is the one to close.
+        // Read now, not from currentConfig: the unregister above may have
+        // hit an expired access token and rotated the refresh token.
+        revokeRefreshTokenInBackground(
+          impersonating
+            ? await readImpersonationBackupRefreshToken()
+            : await liveRefreshToken(currentConfig.refreshToken),
+        );
         // Explicit clear — setTokens never deletes on undefined.
         await clearTokens();
         // PII locale : le snapshot E-Licence hors-ligne (#416) part avec la
@@ -807,32 +879,7 @@ export const AuthService = {
     } catch (error) {
       logger.error("Failed to clear the deleted account's tokens", error);
     }
-    const config = await AuthService.getAuthConfig();
-    // Local only: the server dropped the device rows with the account, and
-    // without tokens an unregister request could only fail. Never throws.
-    await deleteLocalPushToken();
-    // Offline licence snapshot + entry QR batch (PII, signed QR). Never throws.
-    await clearLicenseSnapshot();
-    await dropImpersonationBackup();
-    const deviceOnly: AuthConfig = {
-      ...devicePreferencesOf(config),
-      isLoggedIn: false,
-      role: "LICENSEE",
-      // The biometric quick-login unlocked this account's retained tokens:
-      // gone with it. The next account turns it back on in the settings.
-      biometricsEnabled: false,
-    };
-    try {
-      await writeAuthConfig(deviceOnly);
-    } catch (error) {
-      logger.error("Failed to rewrite the preferences — removing them", error);
-      // Never leave the deleted account's profile behind: lose the device
-      // preferences rather than keep its data.
-      await AsyncStorage.removeItem(AUTH_KEY).catch(() => undefined);
-    }
-    // Server cache, per-account stores, Sentry user, export file… Never throws.
-    await runSessionEndCleanups();
-    logger.info("Deleted account's local data wiped");
+    await wipeDeletedAccountData();
   },
 
   /** Switch the active space (display only; the server checks every role). */
@@ -1186,3 +1233,163 @@ export const AuthService = {
     }
   },
 };
+
+/**
+ * Wipes the local data of an account the server has DELETED (#933, #935,
+ * #936), once its tokens are gone. Shared by endDeletedAccountSession (the
+ * deleting device) and a refresh refused with ACCOUNT_DELETED (its other
+ * devices, or a deletion whose response was lost). Must not wait for a
+ * refresh: it runs inside one in the second case. Never throws: each step is
+ * best-effort so one failure never skips the others. No compare-and-set on
+ * auth_config: the UI stays on the deleted session until the wipe ends, so
+ * no login can interleave; a favourites sync already downloading may still
+ * leave a file behind.
+ */
+async function wipeDeletedAccountData(accessToken?: string): Promise<void> {
+  const config = await AuthService.getAuthConfig();
+  // A biometric lock (logout) already dropped userId: the last access token
+  // still names the account.
+  const accountId = config.userId ?? subjectOf(accessToken);
+  // Local only: the server dropped the device rows with the account, and
+  // without tokens an unregister request could only fail. Never throws.
+  await deleteLocalPushToken();
+  await dropImpersonationBackup();
+  // Its CGU acceptance copy (#930): the opaque account id no longer lingers
+  // in that key. Never throws.
+  if (accountId) await forgetCguAcceptance(accountId);
+  await wipeAccountDeviceData(config);
+  const deviceOnly: AuthConfig = {
+    ...devicePreferencesOf(config),
+    isLoggedIn: false,
+    role: "LICENSEE",
+    // The biometric quick-login unlocked this account's retained tokens:
+    // gone with it. The next account turns it back on in the settings.
+    biometricsEnabled: false,
+  };
+  try {
+    await writeAuthConfig(deviceOnly);
+  } catch (error) {
+    logger.error("Failed to rewrite the preferences — removing them", error);
+    // Never leave the deleted account's profile behind: lose the device
+    // preferences rather than keep its data.
+    await AsyncStorage.removeItem(AUTH_KEY).catch(() => undefined);
+  }
+  // Server cache, per-account stores, Sentry user, export file… Never throws.
+  await runSessionEndCleanups();
+  logger.info("Deleted account's local data wiped");
+}
+
+/**
+ * `sub` of a JWT, read WITHOUT verifying it: only to name a local key to
+ * delete, never to trust anything. Undefined when unreadable.
+ */
+function subjectOf(token: string | undefined): string | undefined {
+  try {
+    const payload = token?.split(".")[1];
+    if (!payload) return undefined;
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const { sub } = JSON.parse(atob(base64)) as { sub?: unknown };
+    return typeof sub === "string" && sub.length > 0 ? sub : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Device-side leftovers a logout keeps for the same user (#936), wiped when
+ * the account is deleted or another one logs in (#940): offline licence
+ * snapshot + entry QR batch, planned deadline reminders and their keys,
+ * downloaded favourites, the licence photo / club logo files and saved
+ * programmes. Never throws.
+ */
+async function wipeAccountDeviceData(config: AuthConfig): Promise<void> {
+  await bestEffort("licence snapshot", clearLicenseSnapshot);
+  await bestEffort("deadline reminders", clearAllDeadlineReminders);
+  await bestEffort("offline favourites", deleteFavoriteDownloads);
+  await bestEffort("account images", () =>
+    deleteAccountImages([config.licensePhotoUri, config.clubLogoUri]),
+  );
+  await bestEffort("competition presets", clearCompetitionPresets);
+}
+
+/**
+ * Id of the account the local profile in `config` belongs to: the logged-in
+ * one, the one the last logout remembered, else the one a biometric lock's
+ * retained token names. Undefined when unknown.
+ */
+function previousAccountIdOf(config: AuthConfig): string | undefined {
+  return config.userId ?? config.lastUserId ?? subjectOf(config.authToken);
+}
+
+/**
+ * What a login / register of `userId` starts from (#940, #913). The same
+ * account logging in again keeps its local profile (licence photo, level,
+ * club settings…). Any other account — or when the previous one is unknown —
+ * starts from the device preferences only, without the biometric quick-login
+ * it never turned on, and the previous account's retained tokens, offline
+ * queue, push token and device-side data go. Throws only when the token store refuses
+ * the purge: the login then fails rather than hand the queue to this account.
+ */
+async function sessionBaseFor(
+  config: AuthConfig,
+  userId: string,
+): Promise<Partial<AuthConfig>> {
+  if (isSameAccount(config, userId)) return config;
+  // A biometric lock kept the previous account's push registration: a new
+  // FCM token leaves its server row dead even if this account's registration
+  // fails (no retry), so its notifications never show here. Never throws.
+  await deleteLocalPushToken();
+  try {
+    await clearTokens();
+  } catch (error) {
+    logger.error("Failed to purge the previous account's tokens", error);
+    throw new Error(
+      "Impossible de préparer la session sur cet appareil. Déverrouillez-le puis réessayez.",
+    );
+  }
+  // Gone from the device: revoke the token a biometric lock kept on the
+  // server too (#942), whatever happens to this login next. Never throws.
+  revokeRefreshTokenInBackground(config.refreshToken);
+  await wipeAccountDeviceData(config);
+  logger.info("Another account logged in — previous local data wiped");
+  return {
+    ...DEFAULT_CONFIG,
+    ...devicePreferencesOf(config),
+    biometricsEnabled: false,
+  };
+}
+
+/** Whether `userId` is the account the local profile in `config` belongs to. */
+function isSameAccount(config: AuthConfig, userId: string): boolean {
+  const previousId = previousAccountIdOf(config);
+  return previousId !== undefined && previousId === userId;
+}
+
+/**
+ * A login / register of the SAME account just stored a new session (#942):
+ * the refresh token a biometric lock kept can no longer be reached and is
+ * revoked on the server. Only once the new tokens are stored: if that fails
+ * the kept ones still unlock the account. Fire-and-forget, never throws.
+ */
+function revokeReplacedRefreshToken(
+  previous: AuthConfig,
+  issued: string,
+): void {
+  if (previous.refreshToken !== issued) {
+    revokeRefreshTokenInBackground(previous.refreshToken);
+  }
+}
+
+/** Runs one step of a wipe, logging instead of throwing. */
+async function bestEffort(
+  label: string,
+  step: () => Promise<void> | void,
+): Promise<void> {
+  try {
+    await step();
+  } catch (error) {
+    logger.error(`Failed to wipe the account's ${label}`, error);
+  }
+}
+
+setDeletedAccountSessionHandler(wipeDeletedAccountData);

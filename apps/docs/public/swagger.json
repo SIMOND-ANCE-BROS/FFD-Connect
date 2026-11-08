@@ -393,7 +393,17 @@
       "post": {
         "description": "Utilise un refresh token valide pour obtenir un nouveau access token et un nouveau refresh token. Implémente la rotation des tokens pour la sécurité.",
         "operationId": "AuthController_refresh",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "authorization",
+            "required": false,
+            "in": "header",
+            "description": "Facultatif : `Bearer <dernier access token>`, même expiré. Permet de signaler un compte supprimé (code `ACCOUNT_DELETED`) plutôt qu'une simple expiration. N'authentifie rien.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -481,7 +491,7 @@
             }
           },
           "401": {
-            "description": "Refresh token invalide, expiré ou révoqué",
+            "description": "Refresh token invalide, expiré ou révoqué. `code: ACCOUNT_DELETED` quand l'access token fourni désigne un compte supprimé.",
             "content": {
               "application/json": {
                 "schema": {
@@ -498,6 +508,11 @@
                     "error": {
                       "type": "string",
                       "example": "Unauthorized"
+                    },
+                    "code": {
+                      "type": "string",
+                      "example": "ACCOUNT_DELETED",
+                      "description": "Présent seulement pour un compte supprimé"
                     }
                   }
                 }

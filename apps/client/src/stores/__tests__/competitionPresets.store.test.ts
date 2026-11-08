@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   COMPETITION_PRESETS_STORAGE_KEY,
   MAX_PRESETS,
+  clearCompetitionPresets,
   PRESET_NAME_MAX_LENGTH,
   findPresetByName,
   resolvePresets,
@@ -250,5 +251,18 @@ describe("resolvePresets", () => {
     const kept = resolvePresets(many);
     expect(kept).toHaveLength(MAX_PRESETS);
     expect(kept[0].id).toBe("p0");
+  });
+});
+
+describe("clearCompetitionPresets (#936)", () => {
+  it("forgets every preset, in memory and on the device", async () => {
+    store().save("Open de Lyon — Julie & Marc", config());
+
+    clearCompetitionPresets();
+    await Promise.resolve();
+
+    expect(store().presets).toEqual([]);
+    expect(store().activePresetId).toBeNull();
+    expect(await saved()).toBeNull();
   });
 });
