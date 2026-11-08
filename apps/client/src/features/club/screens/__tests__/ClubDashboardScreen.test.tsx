@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import {
+  act,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react-native";
 import React, { PropsWithChildren } from "react";
 import { mockNavigation } from "../../../../__tests__/mocks/mockNavigation";
 import { useTheme } from "../../../../context/ThemeContext";
@@ -188,11 +194,20 @@ describe("ClubDashboardScreen", () => {
   it("shows no competition figure while the count is unknown", async () => {
     clubCompetitionsMock.mockResolvedValue({ error: { message: "boom" } });
 
-    const { findByRole, queryByRole } = await renderDashboard();
+    const { findByRole, getByRole, queryByRole } = await renderDashboard();
 
     await waitFor(() => expect(clubCompetitionsMock).toHaveBeenCalled());
+    // Let the failed response settle so the query is in its error state.
+    await act(async () => {
+      await (
+        clubCompetitionsMock.mock.results[0] as { value: Promise<unknown> }
+      ).value;
+    });
+    await findByRole("button", { name: "Membres, 2" });
+
     // "-" is a visual placeholder, not read aloud: never a made-up 0.
-    expect(await findByRole("button", { name: "Compétitions" })).toBeTruthy();
+    const card = getByRole("button", { name: "Compétitions" });
+    expect(within(card).getByText("-")).toBeTruthy();
     expect(queryByRole("button", { name: "Compétitions, 0" })).toBeNull();
   });
 
