@@ -347,18 +347,14 @@ describe("LibraryContext", () => {
         total,
       });
 
-    it("re-fetches every loaded track (chunked by the backend take cap) instead of collapsing to page 0", async () => {
-      (mockRepo.getTracksPage as jest.Mock).mockImplementation(pageImpl(500));
+    it("re-fetches the whole catalogue (chunked by the backend take cap) instead of collapsing to page 0", async () => {
+      (mockRepo.getTracksPage as jest.Mock).mockImplementation(pageImpl(250));
       const { result } = await renderHook(() => useLibrary(), { wrapper });
       await act(async () => {
         await result.current.reloadLibrary();
       });
-      for (let i = 0; i < 3; i++) {
-        await act(async () => {
-          await result.current.loadMore();
-        });
-      }
-      await waitFor(() => expect(result.current.allTracks).toHaveLength(120));
+      await waitFor(() => expect(result.current.allTracks).toHaveLength(250));
+      await waitFor(() => expect(result.current.isLoadingMore).toBe(false));
 
       (mockRepo.getTracksPage as jest.Mock).mockClear();
       await act(() => {
@@ -366,29 +362,30 @@ describe("LibraryContext", () => {
       });
 
       await waitFor(() =>
-        expect(mockRepo.getTracksPage).toHaveBeenCalledTimes(2),
+        expect(mockRepo.getTracksPage).toHaveBeenCalledTimes(3),
       );
       expect(mockRepo.getTracksPage).toHaveBeenNthCalledWith(1, 0, 100);
-      expect(mockRepo.getTracksPage).toHaveBeenNthCalledWith(2, 100, 20);
-      await waitFor(() => expect(result.current.allTracks).toHaveLength(120));
-      expect(result.current.hasMore).toBe(true);
-
-      // Pagination resumes right after the reloaded tracks.
-      (mockRepo.getTracksPage as jest.Mock).mockClear();
-      await act(async () => {
-        await result.current.loadMore();
-      });
-      expect(mockRepo.getTracksPage).toHaveBeenCalledWith(120, 30);
-      expect(result.current.allTracks).toHaveLength(150);
+      expect(mockRepo.getTracksPage).toHaveBeenNthCalledWith(2, 100, 100);
+      expect(mockRepo.getTracksPage).toHaveBeenNthCalledWith(3, 200, 100);
+      await waitFor(() =>
+        expect(useLibrarySyncStore.getState().loadedVersion).toBe(1),
+      );
+      expect(result.current.allTracks).toHaveLength(250);
+      expect(result.current.hasMore).toBe(false);
     });
 
     it("drops a loadMore page that resolves after a reload", async () => {
-      (mockRepo.getTracksPage as jest.Mock).mockImplementation(pageImpl(100));
+      // The background fill fails: 30 tracks shown, scrolling can resume.
+      (mockRepo.getTracksPage as jest.Mock)
+        .mockImplementation(pageImpl(100))
+        .mockImplementationOnce(pageImpl(100))
+        .mockRejectedValueOnce(new Error("réseau"));
       const { result } = await renderHook(() => useLibrary(), { wrapper });
       await act(async () => {
         await result.current.reloadLibrary();
       });
-      await waitFor(() => expect(result.current.allTracks).toHaveLength(30));
+      await waitFor(() => expect(result.current.isLoadingMore).toBe(false));
+      expect(result.current.allTracks).toHaveLength(30);
 
       let resolveLate: (v: unknown) => void = () => {};
       (mockRepo.getTracksPage as jest.Mock).mockImplementationOnce(
@@ -405,8 +402,8 @@ describe("LibraryContext", () => {
       // Reload with a renamed catalogue while the loadMore is in flight.
       (mockRepo.getTracksPage as jest.Mock).mockResolvedValueOnce({
         tracks: makeTracks(30, 1000),
-        hasMore: true,
-        total: 100,
+        hasMore: false,
+        total: 30,
       });
       await act(async () => {
         await result.current.reloadLibrary();
@@ -423,6 +420,189 @@ describe("LibraryContext", () => {
         true,
       );
       expect(result.current.isLoadingMore).toBe(false);
+    });
+  });
+
+  // #967: the « Danses » grid, search, filters, favourites and competition
+  // mode derive from the loaded tracks, so the whole catalogue is loaded in
+  // the background right after the first page.
+  describe("chargement complet en arrière-plan (#967)", () => {
+    const makeTracks = (count: number, from = 0) =>
+      Array.from({ length: count }, (_, i) => ({
+        id: String(from + i + 1),
+        title: `Track ${from + i + 1}`,
+        artist: "Artist",
+        filename: `t${from + i + 1}.mp3`,
+        bpm: 100,
+        style: i % 2 === 0 ? "Latin" : "Standard",
+      }));
+    const page = (total: number, skip: number, take: number) => ({
+      tracks: makeTracks(Math.max(0, Math.min(take, total - skip)), skip),
+      hasMore: skip + take < total,
+      total,
+    });
+    const pageImpl = (total: number) => (skip: number, take: number) =>
+      Promise.resolve(page(total, skip, take));
+    /** Next getTracksPage call stays pending until the returned fn runs. */
+    const holdNextPage = () => {
+      let release: (v: unknown) => void = () => {};
+      (mockRepo.getTracksPage as jest.Mock).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      );
+      return (v: unknown) => release(v);
+    };
+
+    it("loads every page after the first one, in chunks of 100", async () => {
+      (mockRepo.getTracksPage as jest.Mock).mockImplementation(pageImpl(250));
+      const { result } = await renderHook(() => useLibrary(), { wrapper });
+
+      await act(async () => {
+        await result.current.reloadLibrary();
+      });
+      // First paint is the small page; the rest follows without scrolling.
+      expect(result.current.isInitialLoading).toBe(false);
+
+      await waitFor(() => expect(result.current.allTracks).toHaveLength(250));
+      await waitFor(() => expect(result.current.isLoadingMore).toBe(false));
+      expect(mockRepo.getTracksPage).toHaveBeenNthCalledWith(1, 0, 30);
+      expect(mockRepo.getTracksPage).toHaveBeenNthCalledWith(2, 30, 100);
+      expect(mockRepo.getTracksPage).toHaveBeenNthCalledWith(3, 130, 100);
+      expect(mockRepo.getTracksPage).toHaveBeenNthCalledWith(4, 230, 100);
+      expect(mockRepo.getTracksPage).toHaveBeenCalledTimes(4);
+      expect(result.current.hasMore).toBe(false);
+      expect(new Set(result.current.allTracks.map((t) => t.id)).size).toBe(250);
+
+      // The « Danses » grouping sees the whole catalogue.
+      await act(() => {
+        result.current.setGroupBy("style");
+      });
+      await waitFor(() =>
+        expect(
+          result.current.sections.map((s) => [s.title, s.data.length]),
+        ).toEqual([
+          ["LATIN", 125],
+          ["STANDARD", 125],
+        ]),
+      );
+    });
+
+    it("does not let loadMore fetch a page while the fill runs", async () => {
+      (mockRepo.getTracksPage as jest.Mock).mockImplementation(pageImpl(130));
+      const { result } = await renderHook(() => useLibrary(), { wrapper });
+      (mockRepo.getTracksPage as jest.Mock).mockImplementationOnce(
+        pageImpl(130),
+      );
+      const release = holdNextPage();
+
+      await act(async () => {
+        await result.current.reloadLibrary();
+      });
+      await waitFor(() => expect(result.current.isLoadingMore).toBe(true));
+      expect(mockRepo.getTracksPage).toHaveBeenCalledTimes(2);
+
+      // onEndReached during the fill: no extra request.
+      await act(async () => {
+        await result.current.loadMore();
+      });
+      expect(mockRepo.getTracksPage).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        release(page(130, 30, 100));
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(result.current.allTracks).toHaveLength(130));
+      expect(result.current.isLoadingMore).toBe(false);
+      expect(result.current.hasMore).toBe(false);
+      expect(mockRepo.getTracksPage).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps the loaded tracks when a background page fails, and lets loadMore resume", async () => {
+      (mockRepo.getTracksPage as jest.Mock)
+        .mockImplementation(pageImpl(300))
+        .mockImplementationOnce(pageImpl(300))
+        .mockImplementationOnce(pageImpl(300))
+        .mockRejectedValueOnce(new Error("Network Error"));
+      const { result } = await renderHook(() => useLibrary(), { wrapper });
+
+      await act(async () => {
+        await result.current.reloadLibrary();
+      });
+      await waitFor(() => expect(result.current.allTracks).toHaveLength(130));
+      await waitFor(() => expect(result.current.isLoadingMore).toBe(false));
+      expect(mockRepo.getTracksPage).toHaveBeenCalledTimes(3);
+      expect(result.current.hasMore).toBe(true);
+
+      (mockRepo.getTracksPage as jest.Mock).mockClear();
+      await act(async () => {
+        await result.current.loadMore();
+      });
+      expect(mockRepo.getTracksPage).toHaveBeenCalledWith(130, 30);
+      expect(result.current.allTracks).toHaveLength(160);
+    });
+
+    it("drops a background page that lands after a reload", async () => {
+      (mockRepo.getTracksPage as jest.Mock).mockImplementation(pageImpl(130));
+      const { result } = await renderHook(() => useLibrary(), { wrapper });
+      (mockRepo.getTracksPage as jest.Mock).mockImplementationOnce(
+        pageImpl(130),
+      );
+      const release = holdNextPage();
+      await act(async () => {
+        await result.current.reloadLibrary();
+      });
+      await waitFor(() => expect(result.current.isLoadingMore).toBe(true));
+
+      // Reload with a renamed catalogue while the fill page is in flight.
+      (mockRepo.getTracksPage as jest.Mock).mockResolvedValueOnce({
+        tracks: makeTracks(40, 1000),
+        hasMore: false,
+        total: 40,
+      });
+      await act(async () => {
+        await result.current.reloadLibrary();
+      });
+      await waitFor(() => expect(result.current.allTracks[0]?.id).toBe("1001"));
+
+      await act(async () => {
+        release(page(130, 30, 100));
+        await Promise.resolve();
+      });
+
+      expect(result.current.allTracks).toHaveLength(40);
+      expect(result.current.allTracks.every((t) => Number(t.id) > 1000)).toBe(
+        true,
+      );
+      expect(result.current.hasMore).toBe(false);
+      expect(result.current.isLoadingMore).toBe(false);
+    });
+
+    it("drops a background page that lands after the session ended", async () => {
+      (mockRepo.getTracksPage as jest.Mock).mockImplementation(pageImpl(130));
+      const { result } = await renderHook(() => useLibrary(), { wrapper });
+      (mockRepo.getTracksPage as jest.Mock).mockImplementationOnce(
+        pageImpl(130),
+      );
+      const release = holdNextPage();
+      await act(async () => {
+        await result.current.reloadLibrary();
+      });
+      await waitFor(() => expect(result.current.isLoadingMore).toBe(true));
+
+      await act(async () => {
+        await runSessionEndCleanups();
+      });
+      expect(result.current.isLoadingMore).toBe(false);
+
+      await act(async () => {
+        release(page(130, 30, 100));
+        await Promise.resolve();
+      });
+      expect(result.current.allTracks).toHaveLength(0);
+      expect(result.current.isInitialLoading).toBe(true);
+      expect(mockRepo.getTracksPage).toHaveBeenCalledTimes(2);
     });
   });
 

@@ -14,6 +14,7 @@ import {
   clubRefundsDueControllerList,
   competitionsControllerGetClubCompetitions,
   competitionsControllerGetClubPendingRegistrations,
+  usersControllerGetMembers,
 } from "../../../../api/generated/sdk.gen";
 import { ClubService } from "../../services/ClubService";
 import { ClubDashboardScreen } from "../ClubDashboardScreen";
@@ -88,12 +89,18 @@ jest.mock("../../../../api/generated/sdk.gen", () => ({
   clubRefundsDueControllerList: jest.fn(),
   competitionsControllerGetClubCompetitions: jest.fn(),
   competitionsControllerGetClubPendingRegistrations: jest.fn(),
+  usersControllerGetMembers: jest.fn(),
 }));
 const refundsDueMock = clubRefundsDueControllerList as jest.Mock;
 const clubCompetitionsMock =
   competitionsControllerGetClubCompetitions as jest.Mock;
 const pendingRegistrationsMock =
   competitionsControllerGetClubPendingRegistrations as jest.Mock;
+const membersMock = usersControllerGetMembers as jest.Mock;
+// One-row page of GET /users/members: the card reads `meta.total` (#946).
+const membersPage = (total: number) => ({
+  data: { data: [], meta: { total, skip: 0, take: 1, hasMore: total > 1 } },
+});
 
 // The competitions card reads the club's competitions through React Query
 // (#441): a fresh cache per render keeps the tests independent.
@@ -131,7 +138,7 @@ describe("ClubDashboardScreen", () => {
       getClubDashboardConfig: jest.fn().mockResolvedValue(null),
       setClubDashboardConfig: jest.fn().mockResolvedValue(undefined),
     });
-    (ClubService.getMembers as jest.Mock).mockResolvedValue([]);
+    membersMock.mockResolvedValue(membersPage(0));
     clubCompetitionsMock.mockResolvedValue({ data: [] });
     const { findByText, unmount } = await render(
       <ClubDashboardScreen
@@ -168,10 +175,7 @@ describe("ClubDashboardScreen", () => {
       getClubDashboardConfig: jest.fn().mockResolvedValue(null),
       setClubDashboardConfig: jest.fn().mockResolvedValue(undefined),
     });
-    (ClubService.getMembers as jest.Mock).mockResolvedValue([
-      { id: "m1" },
-      { id: "m2" },
-    ]);
+    membersMock.mockResolvedValue(membersPage(2));
     refundsDueMock.mockResolvedValue({
       data: { data: [], meta: { total: 0, skip: 0, take: 1, hasMore: false } },
     });
@@ -318,7 +322,7 @@ describe("ClubDashboardScreen", () => {
   });
 
   it("shows registrations widgets only when registration mode is CLUB_AND_MEMBERS_PENDING", async () => {
-    (ClubService.getMembers as jest.Mock).mockResolvedValue([]);
+    membersMock.mockResolvedValue(membersPage(0));
     (ClubService.getMyClubRegistrationMode as jest.Mock).mockResolvedValue({
       registrationMode: "CLUB_AND_MEMBERS_PENDING",
     });
@@ -350,7 +354,7 @@ describe("ClubDashboardScreen", () => {
   });
 
   it("does not show registrations widgets when mode is MEMBERS_AUTO_CONFIRM", async () => {
-    (ClubService.getMembers as jest.Mock).mockResolvedValue([]);
+    membersMock.mockResolvedValue(membersPage(0));
     (ClubService.getMyClubRegistrationMode as jest.Mock).mockResolvedValue({
       registrationMode: "MEMBERS_AUTO_CONFIRM",
     });
@@ -377,6 +381,55 @@ describe("ClubDashboardScreen", () => {
 
     await waitFor(() => {
       expect(queryByText("Inscriptions en attente")).toBeNull();
+    });
+  });
+
+  describe("members card (#946)", () => {
+    it("shows the club's real total, not the length of a page", async () => {
+      membersMock.mockResolvedValue(membersPage(37));
+
+      const { findByRole } = await renderDashboard();
+
+      const card = await findByRole("button", { name: "Membres, 37" });
+      expect(card.props.testID).toBe("club-dashboard-members-card");
+      expect(membersMock).toHaveBeenCalledWith({ query: { take: 1 } });
+      expect(membersMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows a real zero when the club has no member", async () => {
+      membersMock.mockResolvedValue(membersPage(0));
+
+      const { findByRole } = await renderDashboard();
+
+      expect(await findByRole("button", { name: "Membres, 0" })).toBeTruthy();
+    });
+
+    it("shows no figure while the count is loading", async () => {
+      membersMock.mockReturnValue(new Promise(() => {}));
+
+      const { findByText, getByRole, queryByRole } = await renderDashboard();
+
+      await findByText("Mon Club");
+      // "-" is a visual placeholder, not read aloud: never a made-up 0.
+      const card = getByRole("button", { name: "Membres" });
+      expect(within(card).getByText("-")).toBeTruthy();
+      expect(queryByRole("button", { name: "Membres, 0" })).toBeNull();
+    });
+
+    it("shows no figure when the count cannot be loaded", async () => {
+      membersMock.mockResolvedValue({ error: { message: "boom" } });
+
+      const { getByRole, queryByRole } = await renderDashboard();
+
+      await waitFor(() => expect(membersMock).toHaveBeenCalled());
+      await act(async () => {
+        await (membersMock.mock.results[0] as { value: Promise<unknown> })
+          .value;
+      });
+
+      const card = getByRole("button", { name: "Membres" });
+      expect(within(card).getByText("-")).toBeTruthy();
+      expect(queryByRole("button", { name: "Membres, 0" })).toBeNull();
     });
   });
 

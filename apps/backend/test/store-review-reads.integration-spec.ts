@@ -274,8 +274,17 @@ describe("Store-review read allowlist (integration, real DB)", () => {
     },
   );
 
+  it("non-allowlisted paginated /users/members is an empty page", async () => {
+    const res = await request(app.getHttpServer())
+      .get("/api/v1/users/members")
+      .set("Authorization", auth)
+      .expect(200);
+    expect(res.headers["x-demo-mode"]).toBe("simulated");
+    // Same shape as the real paginated answer: the client reads meta.total.
+    expect(res.body).toMatchObject({ data: [], meta: { total: 0 } });
+  });
+
   it.each([
-    "/users/members",
     "/users/search?q=Victime",
     "/career/search-members?q=Vic",
     "/clubs/me/partnerships/members",
