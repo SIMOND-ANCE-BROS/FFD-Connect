@@ -26,18 +26,9 @@ export function clubMembersCountQueryKey(
 /** Root shared by every scope of {@link clubMembersCountQueryKey}. */
 export const CLUB_MEMBERS_COUNT_QUERY_ROOT = ["club-members-count"] as const;
 
-/** `meta.total` of a paginated payload, or null when it is not one. */
-function readPageTotal(payload: unknown): number | null {
-  if (typeof payload !== "object" || payload === null) return null;
-  if (!("meta" in payload)) return null;
-  const { meta } = payload;
-  if (typeof meta !== "object" || meta === null || !("total" in meta)) {
-    return null;
-  }
-  const { total } = meta;
-  return typeof total === "number" && Number.isInteger(total) && total >= 0
-    ? total
-    : null;
+/** A usable member count: a non-negative integer. */
+function isCount(total: number | undefined): total is number {
+  return typeof total === "number" && Number.isInteger(total) && total >= 0;
 }
 
 export async function fetchClubMembersCount(): Promise<number> {
@@ -46,11 +37,10 @@ export async function fetchClubMembersCount(): Promise<number> {
   const { data, error } = await usersControllerGetMembers({
     query: { take: 1 },
   });
-  // The endpoint answers a paginated `{ data, meta }` payload while its
-  // Swagger schema documents a bare list: read it as `unknown` and accept
-  // only a real total — anything else is an unknown count, never a made-up 0.
-  const total = error ? null : readPageTotal(data);
-  if (total === null) {
+  // Accept only a real total: anything else is an unknown count, never a
+  // made-up 0.
+  const total = error ? undefined : data.meta.total;
+  if (!isCount(total)) {
     throw new Error("Impossible de charger le nombre de membres du club");
   }
   return total;

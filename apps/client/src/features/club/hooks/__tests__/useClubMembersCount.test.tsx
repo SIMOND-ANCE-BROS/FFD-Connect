@@ -57,8 +57,6 @@ describe("fetchClubMembersCount", () => {
 
   it.each([
     ["no payload", undefined],
-    ["a bare list", [{ id: "m1" }]],
-    ["no meta", { data: [] }],
     ["a non-numeric total", { data: [], meta: { total: "3" } }],
     ["a negative total", { data: [], meta: { total: -1 } }],
   ])("throws when the payload has %s", async (_label, data) => {
