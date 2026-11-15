@@ -6657,7 +6657,7 @@
     },
     "/users/members": {
       "get": {
-        "description": "Retourne la liste des membres du club associé à l'utilisateur organisateur authentifié. Nécessite le rôle ORGANIZER.",
+        "description": "Retourne une page ({ data, meta }) des danseurs du club du compte CLUB authentifié ; `meta.total` donne l'effectif complet.",
         "operationId": "UsersController_getMembers",
         "parameters": [
           {
@@ -6686,44 +6686,11 @@
         ],
         "responses": {
           "200": {
-            "description": "Liste des membres du club récupérée avec succès",
+            "description": "Page des membres du club récupérée avec succès",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "email": {
-                        "type": "string"
-                      },
-                      "firstName": {
-                        "type": "string"
-                      },
-                      "lastName": {
-                        "type": "string"
-                      },
-                      "licenseNumber": {
-                        "type": "string",
-                        "nullable": true
-                      },
-                      "role": {
-                        "type": "string",
-                        "enum": ["LICENSEE", "CLUB", "STAFF", "ADMIN"]
-                      },
-                      "roles": {
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "enum": ["LICENSEE", "CLUB", "STAFF", "ADMIN"]
-                        },
-                        "description": "Rôle principal + rôles supplémentaires (multi-profil)"
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/ClubMembersPageDto"
                 }
               }
             }
@@ -30917,6 +30884,182 @@
           "competitions",
           "content"
         ]
+      },
+      "ClubMemberLicenseDto": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "string",
+            "example": "123456"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["number", "validUntil"]
+      },
+      "ClubMemberWdsfDto": {
+        "type": "object",
+        "properties": {
+          "min": {
+            "type": "string",
+            "description": "Numéro MIN WDSF",
+            "example": "10117265"
+          },
+          "nationality": {
+            "type": "string",
+            "nullable": true
+          },
+          "licenseType": {
+            "type": "string",
+            "nullable": true
+          },
+          "ageGroup": {
+            "type": "string",
+            "nullable": true
+          },
+          "expiresOn": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "federation": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": ["min", "federation"]
+      },
+      "ClubMemberDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserRole"
+              }
+            ]
+          },
+          "category": {
+            "type": "string",
+            "nullable": true,
+            "description": "Discipline(s) : Latin, Standard, Ten Dance"
+          },
+          "ageGroup": {
+            "type": "string",
+            "nullable": true
+          },
+          "competitionLevel": {
+            "type": "string",
+            "nullable": true,
+            "description": "Déprécié : niveau unique dérivé des niveaux par discipline"
+          },
+          "competitionLevelLatin": {
+            "type": "string",
+            "nullable": true
+          },
+          "competitionLevelStandard": {
+            "type": "string",
+            "nullable": true
+          },
+          "clubName": {
+            "type": "string",
+            "nullable": true
+          },
+          "passportLevelLatin": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PassportLevel"
+              }
+            ]
+          },
+          "passportLevelStandard": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PassportLevel"
+              }
+            ]
+          },
+          "license": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClubMemberLicenseDto"
+              }
+            ]
+          },
+          "partnerName": {
+            "type": "string",
+            "description": "Partenaire le plus fréquent sur les inscriptions en cours (PENDING, CONFIRMED)"
+          },
+          "wdsf": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClubMemberWdsfDto"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "firstName",
+          "lastName",
+          "role",
+          "category",
+          "ageGroup",
+          "competitionLevel",
+          "competitionLevelLatin",
+          "competitionLevelStandard",
+          "clubName",
+          "passportLevelLatin",
+          "passportLevelStandard",
+          "license",
+          "wdsf",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ClubMembersPageDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClubMemberDto"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/AdminPageMetaDto"
+          }
+        },
+        "required": ["data", "meta"]
       },
       "WdsfDataDto": {
         "type": "object",

@@ -23,6 +23,7 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { NoImpersonationGuard } from "../auth/no-impersonation.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
+import { ClubMembersPageDto } from "./dto/club-members-page.dto";
 import { DeleteAccountDto } from "./dto/delete-account.dto";
 import { UpdateWdsfDto } from "./dto/update-wdsf.dto";
 import { UsersService } from "./users.service";
@@ -49,37 +50,12 @@ export class UsersController {
   @ApiOperation({
     summary: "Récupère les membres du club de l'organisateur",
     description:
-      "Retourne la liste des membres du club associé à l'utilisateur organisateur authentifié. Nécessite le rôle ORGANIZER.",
+      "Retourne une page ({ data, meta }) des danseurs du club du compte CLUB authentifié ; `meta.total` donne l'effectif complet.",
   })
   @ApiResponse({
     status: 200,
-    description: "Liste des membres du club récupérée avec succès",
-    schema: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          id: { type: "string" },
-          email: { type: "string" },
-          firstName: { type: "string" },
-          lastName: { type: "string" },
-          licenseNumber: { type: "string", nullable: true },
-          role: {
-            type: "string",
-            enum: ["LICENSEE", "CLUB", "STAFF", "ADMIN"],
-          },
-          roles: {
-            type: "array",
-            items: {
-              type: "string",
-              enum: ["LICENSEE", "CLUB", "STAFF", "ADMIN"],
-            },
-            description:
-              "Rôle principal + rôles supplémentaires (multi-profil)",
-          },
-        },
-      },
-    },
+    description: "Page des membres du club récupérée avec succès",
+    type: ClubMembersPageDto,
   })
   @ApiResponse({
     status: 401,
@@ -117,7 +93,7 @@ export class UsersController {
   getMembers(
     @Request() req: RequestWithUser,
     @Query() pagination: PaginationParamsDto,
-  ) {
+  ): Promise<ClubMembersPageDto> {
     // req.user is populated by JwtStrategy -> { userId, email, role }
     return this.usersService.findClubMembers(req.user.userId, pagination);
   }
