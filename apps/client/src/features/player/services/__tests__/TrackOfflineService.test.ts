@@ -10,6 +10,7 @@ import {
   moveAsync,
 } from "expo-file-system/legacy";
 import {
+  deleteFavoriteDownloads,
   downloadToFile,
   getDownloadedSet,
   localTrackUri,
@@ -150,5 +151,43 @@ describe("getDownloadedSet", () => {
 
     expect(set.has("samba.mp3")).toBe(true);
     expect(set.has("rumba.mp3")).toBe(false);
+  });
+});
+
+describe("deleteFavoriteDownloads (#936)", () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    await AsyncStorage.clear();
+  });
+
+  it("deletes every downloaded favourite and its registry, never an import", async () => {
+    await AsyncStorage.setItem(
+      REGISTRY_KEY,
+      JSON.stringify(["a.mp3", "b.mp3"]),
+    );
+
+    await deleteFavoriteDownloads();
+
+    expect(del).toHaveBeenCalledWith("file:///docs/a.mp3", {
+      idempotent: true,
+    });
+    expect(del).toHaveBeenCalledWith("file:///docs/b.mp3", {
+      idempotent: true,
+    });
+    expect(del).toHaveBeenCalledTimes(2);
+    expect(await AsyncStorage.getItem(REGISTRY_KEY)).toBeNull();
+  });
+
+  it("keeps going when a file cannot be deleted", async () => {
+    await AsyncStorage.setItem(
+      REGISTRY_KEY,
+      JSON.stringify(["a.mp3", "b.mp3"]),
+    );
+    del.mockRejectedValueOnce(new Error("busy"));
+
+    await expect(deleteFavoriteDownloads()).resolves.toBeUndefined();
+
+    expect(del).toHaveBeenCalledTimes(2);
+    expect(await AsyncStorage.getItem(REGISTRY_KEY)).toBeNull();
   });
 });

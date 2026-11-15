@@ -1,9 +1,20 @@
-import { fireEvent, render, waitFor } from "@testing-library/react-native";
-import React from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  act,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react-native";
+import React, { PropsWithChildren } from "react";
 import { mockNavigation } from "../../../../__tests__/mocks/mockNavigation";
 import { useTheme } from "../../../../context/ThemeContext";
 import { useAuthRepository } from "../../../../features/auth/context/AuthContext";
-import { clubRefundsDueControllerList } from "../../../../api/generated/sdk.gen";
+import {
+  clubRefundsDueControllerList,
+  competitionsControllerGetClubCompetitions,
+  competitionsControllerGetClubPendingRegistrations,
+} from "../../../../api/generated/sdk.gen";
 import { ClubService } from "../../services/ClubService";
 import { ClubDashboardScreen } from "../ClubDashboardScreen";
 
@@ -75,8 +86,23 @@ jest.mock("react-native-draggable-flatlist", () => {
 jest.mock("../../../../api/client", () => ({}));
 jest.mock("../../../../api/generated/sdk.gen", () => ({
   clubRefundsDueControllerList: jest.fn(),
+  competitionsControllerGetClubCompetitions: jest.fn(),
+  competitionsControllerGetClubPendingRegistrations: jest.fn(),
 }));
 const refundsDueMock = clubRefundsDueControllerList as jest.Mock;
+const clubCompetitionsMock =
+  competitionsControllerGetClubCompetitions as jest.Mock;
+const pendingRegistrationsMock =
+  competitionsControllerGetClubPendingRegistrations as jest.Mock;
+
+// The competitions card reads the club's competitions through React Query
+// (#441): a fresh cache per render keeps the tests independent.
+const QueryWrapper = ({ children }: PropsWithChildren) => {
+  const [client] = React.useState(
+    () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  );
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+};
 
 describe("ClubDashboardScreen", () => {
   const mockTheme = {
@@ -106,6 +132,7 @@ describe("ClubDashboardScreen", () => {
       setClubDashboardConfig: jest.fn().mockResolvedValue(undefined),
     });
     (ClubService.getMembers as jest.Mock).mockResolvedValue([]);
+    clubCompetitionsMock.mockResolvedValue({ data: [] });
     const { findByText, unmount } = await render(
       <ClubDashboardScreen
         navigation={
@@ -123,6 +150,7 @@ describe("ClubDashboardScreen", () => {
           >["route"]
         }
       />,
+      { wrapper: QueryWrapper },
     );
     // Let the focus loads settle before unmounting.
     await findByText("Mon Club");
@@ -147,6 +175,58 @@ describe("ClubDashboardScreen", () => {
     refundsDueMock.mockResolvedValue({
       data: { data: [], meta: { total: 0, skip: 0, take: 1, hasMore: false } },
     });
+    clubCompetitionsMock.mockResolvedValue({ data: [] });
+    pendingRegistrationsMock.mockResolvedValue({ data: [] });
+  });
+
+  it("counts the club's upcoming competitions from the API (#441)", async () => {
+    clubCompetitionsMock.mockResolvedValue({
+      data: [
+        { id: "c1", status: "UPCOMING", date: "2099-03-12T09:00:00.000Z" },
+        { id: "c2", status: "LIVE", date: "2099-04-01T09:00:00.000Z" },
+        { id: "c3", status: "UPCOMING", date: "2000-01-01T09:00:00.000Z" },
+        { id: "c4", status: "CANCELLED", date: "2099-05-01T09:00:00.000Z" },
+      ],
+    });
+
+    const { findByRole } = await renderDashboard();
+
+    const card = await findByRole("button", { name: "Compétitions, 2" });
+    expect(card.props.testID).toBe("club-dashboard-competitions-card");
+    expect(clubCompetitionsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows no competition figure while the count is unknown", async () => {
+    clubCompetitionsMock.mockResolvedValue({ error: { message: "boom" } });
+
+    const { findByRole, getByRole, queryByRole } = await renderDashboard();
+
+    await waitFor(() => expect(clubCompetitionsMock).toHaveBeenCalled());
+    // Let the failed response settle so the query is in its error state.
+    await act(async () => {
+      await (
+        clubCompetitionsMock.mock.results[0] as { value: Promise<unknown> }
+      ).value;
+    });
+    await findByRole("button", { name: "Membres, 2" });
+
+    // "-" is a visual placeholder, not read aloud: never a made-up 0.
+    const card = getByRole("button", { name: "Compétitions" });
+    expect(within(card).getByText("-")).toBeTruthy();
+    expect(queryByRole("button", { name: "Compétitions, 0" })).toBeNull();
+  });
+
+  it("does not show a made-up club name when the session has none", async () => {
+    (useAuthRepository as jest.Mock).mockReturnValue({
+      getAuthConfig: jest.fn().mockResolvedValue({}),
+      getClubDashboardConfig: jest.fn().mockResolvedValue(null),
+      setClubDashboardConfig: jest.fn().mockResolvedValue(undefined),
+    });
+
+    const { findByText, queryByText } = await renderDashboard();
+
+    expect(await findByText("Mon club")).toBeTruthy();
+    expect(queryByText("Danse Club Paris")).toBeNull();
   });
 
   const renderDashboard = () =>
@@ -167,6 +247,7 @@ describe("ClubDashboardScreen", () => {
           >["route"]
         }
       />,
+      { wrapper: QueryWrapper },
     );
 
   it("shows the number of refunds due and opens their list (#516)", async () => {
@@ -225,6 +306,7 @@ describe("ClubDashboardScreen", () => {
           >["route"]
         }
       />,
+      { wrapper: QueryWrapper },
     );
 
     await waitFor(() => {
@@ -258,6 +340,7 @@ describe("ClubDashboardScreen", () => {
           >["route"]
         }
       />,
+      { wrapper: QueryWrapper },
     );
 
     await waitFor(() => {
@@ -289,10 +372,97 @@ describe("ClubDashboardScreen", () => {
           >["route"]
         }
       />,
+      { wrapper: QueryWrapper },
     );
 
     await waitFor(() => {
       expect(queryByText("Inscriptions en attente")).toBeNull();
+    });
+  });
+
+  describe("pending registrations (#944)", () => {
+    beforeEach(() => {
+      (ClubService.getMyClubRegistrationMode as jest.Mock).mockResolvedValue({
+        registrationMode: "CLUB_AND_MEMBERS_PENDING",
+      });
+    });
+
+    it("shows the real number of requests to validate", async () => {
+      pendingRegistrationsMock.mockResolvedValue({
+        data: [{ id: "r1" }, { id: "r2" }, { id: "r3" }],
+      });
+
+      const { findByRole, getByRole } = await renderDashboard();
+
+      const card = await findByRole("button", { name: "Inscriptions, 3" });
+      expect(card.props.testID).toBe("club-dashboard-registrations-card");
+      expect(
+        getByRole("button", {
+          name: "Inscriptions en attente, 3 demandes à valider",
+        }).props.testID,
+      ).toBe("club-dashboard-registrations-row");
+      expect(pendingRegistrationsMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("says when a single request is waiting", async () => {
+      pendingRegistrationsMock.mockResolvedValue({ data: [{ id: "r1" }] });
+
+      const { findByText } = await renderDashboard();
+
+      expect(await findByText("1 demande à valider")).toBeTruthy();
+    });
+
+    it("shows a real zero when nothing is waiting", async () => {
+      const { findByRole } = await renderDashboard();
+
+      expect(
+        await findByRole("button", { name: "Inscriptions, 0" }),
+      ).toBeTruthy();
+      expect(
+        await findByRole("button", {
+          name: "Inscriptions en attente, Aucune demande",
+        }),
+      ).toBeTruthy();
+    });
+
+    it("shows no figure when the count cannot be loaded", async () => {
+      pendingRegistrationsMock.mockResolvedValue({
+        error: { message: "boom" },
+      });
+
+      const { findByRole, getByRole, queryByRole, queryByText } =
+        await renderDashboard();
+
+      await waitFor(() => expect(pendingRegistrationsMock).toHaveBeenCalled());
+      await act(async () => {
+        await (
+          pendingRegistrationsMock.mock.results[0] as {
+            value: Promise<unknown>;
+          }
+        ).value;
+      });
+      expect(
+        await findByRole("button", {
+          name: "Inscriptions en attente, Demandes de vos licenciés à valider",
+        }),
+      ).toBeTruthy();
+
+      // "-" is a visual placeholder, not read aloud: never a made-up 0.
+      const card = getByRole("button", { name: "Inscriptions" });
+      expect(within(card).getByText("-")).toBeTruthy();
+      expect(queryByRole("button", { name: "Inscriptions, 0" })).toBeNull();
+      expect(queryByText("Aucune demande")).toBeNull();
+    });
+
+    it("does not load the count when the club has no validation step", async () => {
+      (ClubService.getMyClubRegistrationMode as jest.Mock).mockResolvedValue({
+        registrationMode: "MEMBERS_AUTO_CONFIRM",
+      });
+
+      const { findByRole } = await renderDashboard();
+
+      await findByRole("button", { name: "Membres, 2" });
+      expect(pendingRegistrationsMock).not.toHaveBeenCalled();
     });
   });
 

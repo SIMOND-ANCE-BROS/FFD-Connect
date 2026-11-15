@@ -156,3 +156,26 @@ export async function syncFavoriteDownloads(
   await saveRegistry([...registry]);
   return getDownloadedSet(tracks.map((t) => t.filename));
 }
+
+/**
+ * Account deleted (#936): every favourite this service downloaded goes, with
+ * its registry. Imported tracks are never touched (same rule as the sync).
+ * Never throws.
+ */
+export async function deleteFavoriteDownloads(): Promise<void> {
+  const registry = await loadRegistry();
+  await Promise.all(
+    registry.map((filename) =>
+      deleteAsync(localTrackUri(filename), { idempotent: true }).catch(
+        (error: unknown) => {
+          logger.warn("Favorite file deletion failed", { filename, error });
+        },
+      ),
+    ),
+  );
+  try {
+    await AsyncStorage.removeItem(REGISTRY_KEY);
+  } catch {
+    // Best-effort
+  }
+}

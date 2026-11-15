@@ -11,9 +11,9 @@ import {
   usersControllerDeleteMyAccount,
   usersControllerExportMyData,
 } from "../../../api/generated/sdk.gen";
+import { getTokens } from "../../../api/tokenStore";
 import { onSessionEnd } from "../../../services/sessionCleanup";
 import { AuthService } from "../../auth/services/AuthService";
-import { forgetCguAcceptance } from "../../legal/cguConsent";
 import { createLogger } from "../../../utils/logger";
 
 /**
@@ -86,25 +86,36 @@ export async function exportAndShareMyData(): Promise<void> {
 /**
  * Droit à l'oubli (art. 17) : suppression définitive du compte.
  * Le backend exige le mot de passe courant — un token volé ne suffit pas.
- * Lève "WRONG_PASSWORD" (401) ou "DELETE_FAILED" sans rien effacer. Une fois
+ * Lève "WRONG_PASSWORD" (401), "SESSION_ENDED" (401 qui a mis fin à la
+ * session : compte déjà supprimé) ou "DELETE_FAILED" sans rien effacer. Une fois
  * la suppression confirmée, efface toutes les données locales du compte
  * (#933) ; l'appelant n'a plus qu'à rafraîchir l'état d'auth (pas de logout).
  */
 export async function deleteMyAccount(password: string): Promise<void> {
-  // Read before the call: the local wipe below removes it.
-  const { userId } = await AuthService.getAuthConfig();
   const { error, response } = await usersControllerDeleteMyAccount({
     body: { password },
   });
   if (error) {
+    if (response?.status !== 401) throw new Error("DELETE_FAILED");
+    // A wrong password keeps the session. A 401 that ended it means the
+    // account is already gone (a retry after a lost deletion response): the
+    // refresh was refused with ACCOUNT_DELETED and wiped this device (#935).
     throw new Error(
-      response?.status === 401 ? "WRONG_PASSWORD" : "DELETE_FAILED",
+      (await sessionEnded()) ? "SESSION_ENDED" : "WRONG_PASSWORD",
     );
   }
-  // The deleted account's CGU acceptance copy goes with it (#930): its
-  // opaque id no longer lingers in that key.
-  if (userId) await forgetCguAcceptance(userId);
-  // Not a logout (#933): e-mail, profile, tokens and licence snapshot of the
-  // deleted account go, biometrics or not. Device preferences only remain.
+  // Not a logout (#933): e-mail, profile, tokens, licence snapshot, CGU
+  // acceptance copy and device-side leftovers of the deleted account go,
+  // biometrics or not. Device preferences only remain.
   await AuthService.endDeletedAccountSession();
+}
+
+/** Whether the session's refresh token is gone (unreadable store: kept). */
+async function sessionEnded(): Promise<boolean> {
+  try {
+    const { refreshToken } = await getTokens();
+    return !refreshToken;
+  } catch {
+    return false;
+  }
 }

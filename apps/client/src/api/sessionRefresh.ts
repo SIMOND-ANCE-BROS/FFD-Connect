@@ -16,7 +16,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 
 import { API_TIMEOUT_MS, API_URL } from "../config";
-import { devicePreferencesOf } from "../features/auth/services/accountData";
+import {
+  devicePreferencesOf,
+  loggedOutConfigOf,
+} from "../features/auth/services/accountData";
 import type { AuthConfig } from "../features/auth/services/AuthService";
 import { clearLicenseSnapshot } from "../features/license/utils/licenseSnapshot";
 import { runSessionEndCleanups } from "../services/sessionCleanup";
@@ -58,6 +61,10 @@ async function setLoggedInFlag(value: boolean): Promise<void> {
     // device preferences stay (#910): nothing of a third party, maybe a
     // minor, remains on the admin's device (#599).
     prefs = devicePreferencesOf(prefs);
+  } else if (!value) {
+    // The account may still exist (ordinary expiry, revoked session): keep
+    // exactly what a logout keeps, never its identity nor roles (#935).
+    prefs = loggedOutConfigOf(prefs);
   }
   prefs.isLoggedIn = value;
   if (!value) {
@@ -66,6 +73,15 @@ async function setLoggedInFlag(value: boolean): Promise<void> {
     delete prefs.impersonatedName;
   }
   await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(prefs));
+}
+
+/** Lets the UI reflect a session end. Best-effort. */
+async function refreshAuthState(): Promise<void> {
+  try {
+    await useAuthStore.getState().refreshAuth();
+  } catch {
+    // best-effort
+  }
 }
 
 /**
@@ -87,6 +103,35 @@ async function endSessionState(): Promise<void> {
   }
 }
 
+/** `code` of a refresh refused because the account was deleted (#935). */
+const ACCOUNT_DELETED_CODE = "ACCOUNT_DELETED";
+
+function isDeletedAccountRefusal(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  const data: unknown = error.response?.data;
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    (data as { code?: unknown }).code === ACCOUNT_DELETED_CODE
+  );
+}
+
+/** Receives the deleted account's last access token, if any. */
+type DeletedAccountSessionHandler = (accessToken?: string) => Promise<void>;
+let deletedAccountSessionHandler: DeletedAccountSessionHandler | null = null;
+
+/**
+ * Registered by AuthService (no runtime import of it here: import cycle).
+ * Wipes a deleted account's local data once its tokens are gone: the same
+ * wipe as on the device the deletion was made from (#933, #935). It must not
+ * wait for the refresh in flight: it runs inside it.
+ */
+export function setDeletedAccountSessionHandler(
+  handler: DeletedAccountSessionHandler | null,
+): void {
+  deletedAccountSessionHandler = handler;
+}
+
 // Le backend ROTE le refresh token à chaque appel (révoque l'ancien, en émet un
 // nouveau). Deux refresh en parallèle se révoqueraient mutuellement → on
 // sérialise via une seule promesse en vol partagée par tous les appelants.
@@ -94,8 +139,9 @@ let inFlight: Promise<string | null> | null = null;
 
 async function performRefresh(): Promise<string | null> {
   let refreshToken: string | undefined;
+  let authToken: string | undefined;
   try {
-    ({ refreshToken } = await getTokens());
+    ({ authToken, refreshToken } = await getTokens());
   } catch (error) {
     // Token store unreadable (locked iPhone, #582): the refresh token is still
     // there — keep the session, just give up this refresh.
@@ -112,7 +158,15 @@ async function performRefresh(): Promise<string | null> {
     const res = await axios.post<RefreshResponse>(
       `${API_URL}/auth/refresh`,
       { refresh_token: refreshToken },
-      { timeout: API_TIMEOUT_MS },
+      {
+        timeout: API_TIMEOUT_MS,
+        // The last access token, expired or not: if the account was deleted,
+        // the server says so (ACCOUNT_DELETED) instead of a generic 401
+        // (#935). It authenticates nothing there.
+        ...(authToken
+          ? { headers: { Authorization: `Bearer ${authToken}` } }
+          : {}),
+      },
     );
     const { access_token, refresh_token } = res.data;
     // Compare-and-set: the session may have changed while the request was in
@@ -145,6 +199,24 @@ async function performRefresh(): Promise<string | null> {
         logger.info("Rejected refresh of a previous session — current kept");
         return null;
       }
+      const handler = isDeletedAccountRefusal(error)
+        ? deletedAccountSessionHandler
+        : null;
+      if (handler) {
+        // Account deleted (from another device, or a deletion whose response
+        // was lost): none of its data stays here, biometrics or not (#935).
+        logger.warn("Account deleted — local data wiped");
+        try {
+          await handler(authToken);
+        } catch (wipeError) {
+          logger.error("Deleted account wipe failed", wipeError);
+          // Never leave a "logged in" profile without tokens behind.
+          await clearLicenseSnapshot();
+          await endSessionState();
+        }
+        await refreshAuthState();
+        return null;
+      }
       logger.warn("Refresh token invalide/expiré — déconnexion");
       // Session over: the offline license snapshot (PII + signed QR) goes with
       // it, like on an explicit logout. Cleared explicitly here, then the
@@ -156,11 +228,7 @@ async function performRefresh(): Promise<string | null> {
       await endSessionState();
       // Notifie le store pour que l'UI reflète la déconnexion (au lieu de rester
       // "connectée" avec un token mort).
-      try {
-        await useAuthStore.getState().refreshAuth();
-      } catch {
-        // best-effort
-      }
+      await refreshAuthState();
       return null;
     }
 
@@ -182,11 +250,7 @@ async function endUnreadableSession(): Promise<void> {
   logger.warn("Token store unreadable — session ended");
   await clearLicenseSnapshot();
   await endSessionState();
-  try {
-    await useAuthStore.getState().refreshAuth();
-  } catch {
-    // best-effort
-  }
+  await refreshAuthState();
 }
 setUnreadableSessionHandler(endUnreadableSession);
 

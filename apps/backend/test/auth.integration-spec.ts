@@ -246,6 +246,49 @@ describe("AuthController (integration with real DB)", () => {
         .expect(401);
     });
 
+    // #935: a deleted account's other devices learn it at their next refresh
+    // and wipe its local data; any other rejected refresh stays generic.
+    it("flags a deleted account when the app sends its last access token", async () => {
+      const { user, email, password } = await makeUser();
+      const server = app.getHttpServer() as Parameters<typeof request>[0];
+      const loginRes = await request(server)
+        .post("/api/v1/auth/login")
+        .send({ username: email, password })
+        .expect(201);
+      const { access_token, refresh_token } = loginRes.body as {
+        access_token: string;
+        refresh_token: string;
+      };
+
+      // Still there: a bad refresh token alone says nothing more.
+      const alive = await request(server)
+        .post("/api/v1/auth/refresh")
+        .set("Authorization", `Bearer ${access_token}`)
+        .send({ refresh_token: "totally-invalid-token-abc123xyz" })
+        .expect(401);
+      expect((alive.body as { code?: string }).code).toBeUndefined();
+
+      await prisma.refreshToken.deleteMany({ where: { userId: user.id } });
+      await prisma.user.delete({ where: { id: user.id } });
+
+      const deleted = await request(server)
+        .post("/api/v1/auth/refresh")
+        .set("Authorization", `Bearer ${access_token}`)
+        .send({ refresh_token })
+        .expect(401);
+      expect(deleted.body).toMatchObject({
+        code: "ACCOUNT_DELETED",
+        message: "Invalid or expired refresh token",
+      });
+
+      // Without the access token (older apps): the generic refusal.
+      const legacy = await request(server)
+        .post("/api/v1/auth/refresh")
+        .send({ refresh_token })
+        .expect(401);
+      expect((legacy.body as { code?: string }).code).toBeUndefined();
+    });
+
     it("returns 401 when refresh token has been revoked after logout", async () => {
       const { email, password } = await makeUser();
 

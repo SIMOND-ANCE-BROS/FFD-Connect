@@ -21,30 +21,12 @@ import {
   type CompetitionFilter,
   toCompetitionFilter,
 } from "../../../utils/typeGuards";
-import {
-  formatParisDate,
-  getEffectiveCompetitionStatus,
-} from "../../competitions/utils/competitionCard";
+import { formatParisDate } from "../../competitions/utils/competitionCard";
 import { useClubCompetitions } from "../hooks/useClubCompetitions";
-
-type DisplayStatus = "UPCOMING" | "LIVE" | "PAST" | "CANCELLED";
-
-/**
- * Status shown on the card: CANCELLED as stored, otherwise derived from the
- * date (a stored UPCOMING can be stale), like the public competition list.
- */
-export function displayStatus(
-  competition: Pick<ApiCompetition, "status" | "date">,
-  now: Date = new Date(),
-): DisplayStatus {
-  if (competition.status === "CANCELLED") return "CANCELLED";
-  const effective = getEffectiveCompetitionStatus(
-    competition.status,
-    competition.date,
-    now,
-  );
-  return effective === "LIVE" || effective === "PAST" ? effective : "UPCOMING";
-}
+import {
+  type ClubCompetitionDisplayStatus as DisplayStatus,
+  displayStatus,
+} from "../utils/clubCompetitionStatus";
 
 const matchesFilter = (status: DisplayStatus, filter: CompetitionFilter) => {
   if (filter === "UPCOMING") return status === "UPCOMING" || status === "LIVE";

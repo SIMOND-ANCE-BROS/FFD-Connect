@@ -7,6 +7,7 @@ import * as Notifications from "expo-notifications";
 import {
   cancelDeadlineNotification,
   cancelDeadlineNotificationForCompetition,
+  clearAllDeadlineReminders,
   clearDeadlineMarker,
   clearDeadlineStorage,
   deadlineStorageKey,
@@ -21,6 +22,7 @@ jest.mock("expo-notifications", () => ({
   requestPermissionsAsync: jest.fn(),
   scheduleNotificationAsync: jest.fn(),
   cancelScheduledNotificationAsync: jest.fn(),
+  getAllScheduledNotificationsAsync: jest.fn(),
   PermissionStatus: {
     GRANTED: "granted",
     DENIED: "denied",
@@ -33,6 +35,8 @@ const getPermissions = Notifications.getPermissionsAsync as jest.Mock;
 const requestPermissions = Notifications.requestPermissionsAsync as jest.Mock;
 const schedule = Notifications.scheduleNotificationAsync as jest.Mock;
 const cancel = Notifications.cancelScheduledNotificationAsync as jest.Mock;
+const allScheduled =
+  Notifications.getAllScheduledNotificationsAsync as jest.Mock;
 
 const COMP_ID = "comp-1";
 const KEY = deadlineStorageKey(COMP_ID);
@@ -49,6 +53,7 @@ beforeEach(async () => {
   requestPermissions.mockResolvedValue({ status: "granted" });
   schedule.mockResolvedValue("notif-42");
   cancel.mockResolvedValue(undefined);
+  allScheduled.mockResolvedValue([]);
 });
 
 describe("scheduleDeadlineNotification", () => {
@@ -155,5 +160,44 @@ describe("cancelDeadlineNotification", () => {
     await expect(
       cancelDeadlineNotification("notif-42"),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("clearAllDeadlineReminders (#936)", () => {
+  it("cancels every planned reminder and removes every reminder key", async () => {
+    await AsyncStorage.setItem(deadlineStorageKey("a"), "notif-a");
+    await AsyncStorage.setItem(deadlineStorageKey("b"), REGISTERED_MARKER);
+    await AsyncStorage.setItem("unrelated", "kept");
+
+    await clearAllDeadlineReminders();
+
+    expect(cancel).toHaveBeenCalledWith("notif-a");
+    expect(cancel).not.toHaveBeenCalledWith(REGISTERED_MARKER);
+    // The keys reveal the competitions the account was registered to.
+    expect(await AsyncStorage.getItem(deadlineStorageKey("a"))).toBeNull();
+    expect(await AsyncStorage.getItem(deadlineStorageKey("b"))).toBeNull();
+    expect(await AsyncStorage.getItem("unrelated")).toBe("kept");
+  });
+
+  it("also cancels a planned reminder whose key was lost", async () => {
+    allScheduled.mockResolvedValue([
+      { identifier: "orphan", content: { data: { competitionId: "c" } } },
+      { identifier: "other", content: { data: {} } },
+    ]);
+
+    await clearAllDeadlineReminders();
+
+    expect(cancel).toHaveBeenCalledWith("orphan");
+    expect(cancel).not.toHaveBeenCalledWith("other");
+  });
+
+  it("still removes the keys when the notification API fails", async () => {
+    await AsyncStorage.setItem(deadlineStorageKey("a"), "notif-a");
+    allScheduled.mockRejectedValue(new Error("native"));
+    cancel.mockRejectedValue(new Error("native"));
+
+    await expect(clearAllDeadlineReminders()).resolves.toBeUndefined();
+
+    expect(await AsyncStorage.getItem(deadlineStorageKey("a"))).toBeNull();
   });
 });

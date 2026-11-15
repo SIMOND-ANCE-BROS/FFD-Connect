@@ -156,8 +156,37 @@ describe("AuthController", () => {
       expect(result).toBe(mockResult);
       expect(authTokenService.refreshAccessToken).toHaveBeenCalledWith(
         "old-token",
+        undefined,
       );
     });
+
+    it("passes the bearer access token along to spot a deleted account (#935)", async () => {
+      mockAuthTokenService.refreshAccessToken.mockResolvedValue({});
+
+      await controller.refresh(
+        { refresh_token: "old-token" },
+        "Bearer expired.jwt",
+      );
+
+      expect(authTokenService.refreshAccessToken).toHaveBeenCalledWith(
+        "old-token",
+        "expired.jwt",
+      );
+    });
+
+    it.each(["", "Basic abc", "Bearer", "Bearer  "])(
+      "ignores an Authorization header that carries no bearer token (%p)",
+      async (header) => {
+        mockAuthTokenService.refreshAccessToken.mockResolvedValue({});
+
+        await controller.refresh({ refresh_token: "old-token" }, header);
+
+        expect(authTokenService.refreshAccessToken).toHaveBeenCalledWith(
+          "old-token",
+          undefined,
+        );
+      },
+    );
   });
 
   describe("logout", () => {

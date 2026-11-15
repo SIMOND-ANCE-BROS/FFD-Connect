@@ -11,7 +11,6 @@ import {
 } from "../../../../api/generated/sdk.gen";
 import { runSessionEndCleanups } from "../../../../services/sessionCleanup";
 import { AuthService } from "../../../auth/services/AuthService";
-import { forgetCguAcceptance } from "../../../legal/cguConsent";
 import {
   deleteExportFile,
   deleteMyAccount,
@@ -36,8 +35,10 @@ jest.mock("../../../auth/services/AuthService", () => ({
   },
 }));
 
-jest.mock("../../../legal/cguConsent", () => ({
-  forgetCguAcceptance: jest.fn().mockResolvedValue(undefined),
+const mockGetTokens = jest.fn();
+jest.mock("../../../../api/tokenStore", () => ({
+  ...jest.requireActual<object>("../../../../api/tokenStore"),
+  getTokens: () => mockGetTokens() as unknown,
 }));
 
 jest.mock("expo-sharing", () => ({
@@ -195,40 +196,8 @@ describe("deleteExportFile", () => {
 });
 
 describe("deleteMyAccount", () => {
-  const getAuthConfigMock = AuthService.getAuthConfig as jest.Mock;
-  const forgetCguMock = forgetCguAcceptance as jest.Mock;
-
   beforeEach(() => {
-    getAuthConfigMock.mockResolvedValue({ isLoggedIn: true, userId: "u-1" });
-  });
-
-  // #930: no account id left on the device once the account is gone.
-  it("retire la copie locale de l'acceptation des CGU du compte supprimé", async () => {
-    deleteMock.mockResolvedValue({ data: { message: "ok" }, response: {} });
-
-    await deleteMyAccount("s3cret");
-
-    expect(forgetCguMock).toHaveBeenCalledWith("u-1");
-  });
-
-  it("garde la copie des CGU si la suppression échoue", async () => {
-    deleteMock.mockResolvedValue({
-      error: { statusCode: 401 },
-      response: { status: 401 },
-    });
-
-    await expect(deleteMyAccount("bad")).rejects.toThrow("WRONG_PASSWORD");
-
-    expect(forgetCguMock).not.toHaveBeenCalled();
-  });
-
-  it("sans identifiant de compte connu, n'oublie rien", async () => {
-    getAuthConfigMock.mockResolvedValue({ isLoggedIn: true });
-    deleteMock.mockResolvedValue({ data: { message: "ok" }, response: {} });
-
-    await deleteMyAccount("s3cret");
-
-    expect(forgetCguMock).not.toHaveBeenCalled();
+    mockGetTokens.mockResolvedValue({ authToken: "a", refreshToken: "r" });
   });
 
   // #933: a confirmed deletion wipes the account's local data, not a plain
@@ -252,7 +221,6 @@ describe("deleteMyAccount", () => {
       await expect(deleteMyAccount("s3cret")).rejects.toThrow();
 
       expect(AuthService.endDeletedAccountSession).not.toHaveBeenCalled();
-      expect(forgetCguMock).not.toHaveBeenCalled();
     },
   );
 
@@ -270,6 +238,29 @@ describe("deleteMyAccount", () => {
     await deleteMyAccount("s3cret");
 
     expect(deleteMock).toHaveBeenCalledWith({ body: { password: "s3cret" } });
+  });
+
+  // #935: a retry after a lost deletion response gets a 401 whose refresh
+  // was refused with ACCOUNT_DELETED: not a wrong password.
+  it("signale la fin de session quand le 401 a supprimé les jetons", async () => {
+    mockGetTokens.mockResolvedValue({});
+    deleteMock.mockResolvedValue({
+      error: { statusCode: 401 },
+      response: { status: 401 },
+    });
+
+    await expect(deleteMyAccount("s3cret")).rejects.toThrow("SESSION_ENDED");
+    expect(AuthService.endDeletedAccountSession).not.toHaveBeenCalled();
+  });
+
+  it("garde « mot de passe incorrect » si le magasin de jetons est illisible", async () => {
+    mockGetTokens.mockRejectedValue(new Error("locked"));
+    deleteMock.mockResolvedValue({
+      error: { statusCode: 401 },
+      response: { status: 401 },
+    });
+
+    await expect(deleteMyAccount("s3cret")).rejects.toThrow("WRONG_PASSWORD");
   });
 
   it("distingue le mauvais mot de passe (401) des autres erreurs", async () => {

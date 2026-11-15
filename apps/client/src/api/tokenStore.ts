@@ -618,6 +618,18 @@ async function readImpersonationBackup(): Promise<Tokens> {
   }
 }
 
+/**
+ * The admin's refresh token set aside by an impersonation, for its server-side
+ * revocation at a logout (#942). Lock-free like readImpersonationBackup.
+ *
+ * @throws {TokenStoreUnavailableError} when the store refuses the read.
+ */
+export async function getImpersonationBackupRefreshToken(): Promise<
+  string | undefined
+> {
+  return (await readImpersonationBackup()).refreshToken;
+}
+
 /** Drops the impersonation backup (switch back, logout). */
 export function clearImpersonationBackupTokens(): Promise<void> {
   return withLock(async () => {

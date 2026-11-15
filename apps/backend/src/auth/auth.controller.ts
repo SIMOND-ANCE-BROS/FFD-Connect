@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   ForbiddenException,
+  Headers,
   Post,
   Request,
   UnauthorizedException,
@@ -14,6 +15,7 @@ import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiHeader,
   ApiOperation,
   ApiResponse,
   ApiTags,
@@ -38,6 +40,15 @@ import { JwtAuthGuard } from "./jwt-auth.guard";
 import { NoImpersonationGuard } from "./no-impersonation.guard";
 import { STORE_REVIEW_IMPERSONATION_MESSAGE } from "./store-review/store-review-protection";
 import { StoreReviewPassthrough } from "./store-review/store-review.decorator";
+
+/**
+ * The token of an `Authorization: Bearer <token>` header, if any. Lenient on
+ * purpose: on the refresh route the header is an optional hint (#935).
+ */
+function bearerTokenOf(authorization: string | undefined): string | undefined {
+  const match = /^Bearer\s+(\S+)\s*$/i.exec(authorization ?? "");
+  return match?.[1];
+}
 
 @ApiTags("auth")
 @Controller("auth")
@@ -236,9 +247,17 @@ export class AuthController {
       },
     },
   })
+  @ApiHeader({
+    // Same spelling as @Headers() below, so this one documents that parameter.
+    name: "authorization",
+    required: false,
+    description:
+      "Facultatif : `Bearer <dernier access token>`, même expiré. Permet de signaler un compte supprimé (code `ACCOUNT_DELETED`) plutôt qu'une simple expiration. N'authentifie rien.",
+  })
   @ApiResponse({
     status: 401,
-    description: "Refresh token invalide, expiré ou révoqué",
+    description:
+      "Refresh token invalide, expiré ou révoqué. `code: ACCOUNT_DELETED` quand l'access token fourni désigne un compte supprimé.",
     schema: {
       type: "object",
       properties: {
@@ -248,13 +267,22 @@ export class AuthController {
           example: "Invalid or expired refresh token",
         },
         error: { type: "string", example: "Unauthorized" },
+        code: {
+          type: "string",
+          example: "ACCOUNT_DELETED",
+          description: "Présent seulement pour un compte supprimé",
+        },
       },
     },
   })
   async refresh(
     @Body() body: RefreshTokenDto,
+    @Headers("authorization") authorization?: string,
   ): Promise<import("./auth.service").LoginResponse> {
-    return this.authTokenService.refreshAccessToken(body.refresh_token);
+    return this.authTokenService.refreshAccessToken(
+      body.refresh_token,
+      bearerTokenOf(authorization),
+    );
   }
 
   @Post("logout")

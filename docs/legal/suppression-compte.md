@@ -46,7 +46,18 @@ La suppression efface votre compte et les données qui y sont rattachées :
   l'application ;
 - sur le téléphone depuis lequel vous supprimez le compte : votre adresse e-mail,
   votre profil, vos identifiants de connexion (y compris ceux gardés pour Face ID,
-  Touch ID ou l'empreinte digitale) et la copie hors ligne de votre licence.
+  Touch ID ou l'empreinte digitale), la copie hors ligne de votre licence, les
+  rappels de date limite d'inscription programmés, les musiques favorites
+  téléchargées pour l'écoute hors ligne, les photos choisies dans l'application
+  (photo de licence, logo du club…) et les programmes de compétition enregistrés ;
+- sur vos autres téléphones où votre session est encore ouverte (y compris
+  verrouillée par Face ID, Touch ID ou l'empreinte digitale) : les mêmes données
+  sont effacées la prochaine fois que l'application s'y connecte au serveur avec
+  cette session. Une version ancienne de
+  l'application vous y déconnecte seulement. Sur un téléphone où vous vous étiez
+  déjà déconnecté·e, ces données sont effacées dès qu'un autre compte s'y
+  connecte ; d'ici là, ou avec une version ancienne, désinstallez l'application
+  pour tout effacer.
 
 ## Données conservées
 
