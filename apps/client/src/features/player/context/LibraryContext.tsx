@@ -163,6 +163,88 @@ export const LibraryProvider = ({
     [groupBy, searchQuery],
   );
 
+  // Background fill in progress (#967): holds the generation it belongs to,
+  // null when idle. A ref (not state) so loadMore sees it synchronously and
+  // never requests a page the fill is already fetching.
+  const fillingRef = useRef<number | null>(null);
+  // Read through a function so TypeScript does not narrow the ref across an
+  // await (the fill can start while a loadMore is in flight).
+  const isFilling = useCallback(() => fillingRef.current !== null, []);
+
+  /**
+   * Fetches pages of up to MAX_TRACKS_TAKE from `skip` until the backend says
+   * there is no more. `onPage` receives each page's new tracks (deduplicated
+   * against `seen`) and returns false to stop (superseded). Resolves with the
+   * last `hasMore` seen.
+   */
+  const fetchRemaining = useCallback(
+    async (
+      skip: number,
+      seen: Set<Track["id"]>,
+      onPage: (fresh: Track[]) => boolean,
+    ): Promise<boolean> => {
+      let offset = skip;
+      let more = true;
+      while (more) {
+        const page = await trackRepo.getTracksPage(offset, MAX_TRACKS_TAKE);
+        more = page.hasMore;
+        offset += page.tracks.length;
+        const fresh = page.tracks.filter((t) => !seen.has(t.id));
+        fresh.forEach((t) => seen.add(t.id));
+        if (!onPage(fresh)) return more;
+        // Guard against a backend that keeps answering hasMore with nothing
+        // new: stop instead of looping forever.
+        if (fresh.length === 0) break;
+      }
+      return more;
+    },
+    [trackRepo],
+  );
+
+  /**
+   * Loads the rest of the library in the background after the first page
+   * (#967): the « Danses » grid, search, filters, favourites and competition
+   * mode all derive from the loaded tracks, so they need the whole catalogue,
+   * not just what the user scrolled through. Stops as soon as a reload or a
+   * session end bumps the generation (its pages are dropped). On a network
+   * failure it keeps what is shown and leaves `hasMore` true, so scrolling
+   * (loadMore) can resume later.
+   */
+  const fillLibrary = useCallback(
+    async (generation: number, loaded: Track[]) => {
+      fillingRef.current = generation;
+      setIsLoadingMore(true);
+      try {
+        const more = await fetchRemaining(
+          loaded.length,
+          new Set(loaded.map((t) => t.id)),
+          (fresh) => {
+            if (generation !== generationRef.current) return false;
+            if (fresh.length > 0) {
+              setRawTracks((prev) => {
+                const ids = new Set(prev.map((t) => t.id));
+                const added = fresh.filter((t) => !ids.has(t.id));
+                return added.length > 0 ? [...prev, ...added] : prev;
+              });
+            }
+            return true;
+          },
+        );
+        if (generation === generationRef.current) setHasMore(more);
+      } catch (e) {
+        // Transient by nature (cold start, flaky network): a breadcrumb, not
+        // a Sentry event. What is shown stays, hasMore stays true.
+        logger.warn("Background library fill stopped", e);
+      } finally {
+        if (fillingRef.current === generation) {
+          fillingRef.current = null;
+          setIsLoadingMore(false);
+        }
+      }
+    },
+    [fetchRemaining],
+  );
+
   const loadLibrary = useCallback(async () => {
     // Version du signal de fraîcheur AVANT la requête : une piste modifiée
     // pendant le chargement laisse la bibliothèque périmée (rechargée ensuite).
@@ -175,23 +257,26 @@ export const LibraryProvider = ({
         message: "Loading library",
         data: { backendUrl: BACKEND_URL ? "set" : "(vide)" },
       });
-      // Background refresh of an already scrolled list: re-fetch everything
-      // already shown (not just page 0) so the list doesn't collapse under the
-      // user. The backend caps `take`, so fetch successive chunks.
-      const target = Math.max(LIBRARY_PAGE_SIZE, rawTracksRef.current.length);
       const tracks: Track[] = [];
       const seen = new Set<Track["id"]>();
-      let more = true;
-      while (more && tracks.length < target) {
-        const page = await trackRepo.getTracksPage(
-          tracks.length,
-          Math.min(MAX_TRACKS_TAKE, target - tracks.length),
-        );
+      let more: boolean;
+      if (rawTracksRef.current.length > 0) {
+        // Background refresh of a library already shown: fetch the whole
+        // catalogue (successive chunks, the backend caps `take`) before
+        // swapping it in, so the list never collapses under the user (#967).
+        more = await fetchRemaining(0, seen, (fresh) => {
+          tracks.push(...fresh);
+          return true;
+        });
+      } else {
+        // First paint: one small page; the rest is filled in the background.
+        const page = await trackRepo.getTracksPage(0, LIBRARY_PAGE_SIZE);
         more = page.hasMore;
-        const fresh = page.tracks.filter((t) => !seen.has(t.id));
-        if (fresh.length === 0) break;
-        fresh.forEach((t) => seen.add(t.id));
-        tracks.push(...fresh);
+        page.tracks.forEach((t) => {
+          if (seen.has(t.id)) return;
+          seen.add(t.id);
+          tracks.push(t);
+        });
       }
       // A newer reload superseded this one: let it win (its results are the
       // ones shown), but the server WAS reached with fresh data, so still mark
@@ -203,6 +288,7 @@ export const LibraryProvider = ({
         return;
       }
       generationRef.current += 1;
+      const committed = generationRef.current;
       setRawTracks(tracks);
       setHasMore(more);
       setHasLoadedOnce(true);
@@ -215,6 +301,10 @@ export const LibraryProvider = ({
       });
       if (tracks.length === 0) {
         Sentry.captureMessage("Library empty (0 tracks from API)", "info");
+      }
+      // Not awaited: the first page is already on screen.
+      if (more && tracks.length > 0) {
+        fillLibrary(committed, tracks).catch(() => {});
       }
     } catch (e) {
       logger.error("Failed to load library from backend", e);
@@ -236,13 +326,14 @@ export const LibraryProvider = ({
       setSections([]);
       setHasMore(false);
     }
-  }, [trackRepo]);
+  }, [trackRepo, fetchRemaining, fillLibrary]);
 
   const loadMore = useCallback(async () => {
     // No "load more" before the first page landed: on an empty list
     // onEndReached fires on layout, which used to show the "Chargement…"
-    // footer on top of the empty state during the first load.
-    if (!hasLoadedOnce || !hasMore || isLoadingMore) return;
+    // footer on top of the empty state during the first load. Nor while the
+    // background fill runs: it is already fetching the next pages (#967).
+    if (!hasLoadedOnce || !hasMore || isLoadingMore || isFilling()) return;
     setIsLoadingMore(true);
     const generation = generationRef.current;
     try {
@@ -268,9 +359,17 @@ export const LibraryProvider = ({
       logger.error("Failed to load more tracks", e);
       if (generation === generationRef.current) setHasMore(false);
     } finally {
-      setIsLoadingMore(false);
+      // A background fill started by a reload meanwhile keeps the flag on.
+      setIsLoadingMore(isFilling());
     }
-  }, [trackRepo, rawTracks.length, hasMore, isLoadingMore, hasLoadedOnce]);
+  }, [
+    trackRepo,
+    rawTracks.length,
+    hasMore,
+    isLoadingMore,
+    hasLoadedOnce,
+    isFilling,
+  ]);
 
   // Session over (logout, or the refresh token expired): forget the library
   // and its "already loaded" flag, so the next user gets the initial loader
@@ -278,6 +377,8 @@ export const LibraryProvider = ({
   // generation drops any load still in flight for the previous session.
   const resetLibrary = useCallback(() => {
     generationRef.current += 1;
+    fillingRef.current = null;
+    setIsLoadingMore(false);
     setRawTracks([]);
     setHasMore(true);
     setHasLoadedOnce(false);

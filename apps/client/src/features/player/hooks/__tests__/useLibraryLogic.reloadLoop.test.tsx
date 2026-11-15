@@ -107,6 +107,11 @@ describe("useLibraryLogic — stale library + scrolling (#584)", () => {
   });
 
   it("reloads a stale library exactly once while the user keeps scrolling", async () => {
+    // The background fill (#967) fails on its first page, so the library
+    // stays at its first 30 tracks and scrolling (loadMore) pages it.
+    (mockRepo.getTracksPage as jest.Mock)
+      .mockImplementationOnce(servePage)
+      .mockRejectedValueOnce(new Error("Network Error"));
     const navigation = createMockNavigation();
     const { result } = await renderHook(() => useLibraryLogic({ navigation }), {
       wrapper,
@@ -115,6 +120,7 @@ describe("useLibraryLogic — stale library + scrolling (#584)", () => {
     await waitFor(() =>
       expect(result.current.state.allTracks).toHaveLength(30),
     );
+    await waitFor(() => expect(result.current.state.isLoadingMore).toBe(false));
     await act(() => {
       result.current.actions.setActiveTab("style");
     });
