@@ -38,6 +38,7 @@ import { announce } from "../../../utils/announce";
 import { createLogger } from "../../../utils/logger";
 import { useAuthRepository } from "../../auth/context/AuthContext";
 import { useClubCompetitions } from "../hooks/useClubCompetitions";
+import { useClubMembersCount } from "../hooks/useClubMembersCount";
 import { useClubPendingRegistrationsCount } from "../hooks/useClubPendingRegistrationsCount";
 import { ClubService } from "../services/ClubService";
 import { countActiveClubCompetitions } from "../utils/clubCompetitionStatus";
@@ -193,10 +194,10 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
     ? countActiveClubCompetitions(clubCompetitions.data)
     : "-";
 
-  // State for dashboard stats — fetched via useFocusEffect below
-  const [stats, setStats] = React.useState({
-    members: 0,
-  });
+  // The club's real member count (#946), reloaded on refocus. No figure
+  // while it is unknown (loading or failure).
+  const membersCount = useClubMembersCount();
+  const members: number | "-" = membersCount.data ?? "-";
 
   const [widgets, setWidgets] = React.useState<
     { id: ClubDashboardWidgetId; visible: boolean }[]
@@ -247,15 +248,7 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
       setClubName(config.clubName);
     }
 
-    // 2. Member Count
-    try {
-      const members = await ClubService.getMembers();
-      setStats((prev) => ({ ...prev, members: members.length }));
-    } catch (error) {
-      logger.error("Failed to load dashboard stats", error);
-    }
-
-    // 3. Registration mode (to show/hide pending registrations entry points)
+    // 2. Registration mode (to show/hide pending registrations entry points)
     try {
       const { registrationMode: fetchedRegistrationMode } =
         await ClubService.getMyClubRegistrationMode();
@@ -610,7 +603,7 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
 
               const value =
                 def.id === "members"
-                  ? stats.members
+                  ? members
                   : def.id === "competitions"
                     ? activeCompetitions
                     : def.id === "registrations"
