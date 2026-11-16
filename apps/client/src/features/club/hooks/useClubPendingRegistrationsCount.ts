@@ -3,12 +3,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useRef } from "react";
 // Side-effect: configures the generated OpenAPI client (baseUrl + auth + refresh).
 import "../../../api/client";
-import { competitionsControllerGetClubPendingRegistrations } from "../../../api/generated/sdk.gen";
+import { competitionsControllerCountClubPendingRegistrations } from "../../../api/generated/sdk.gen";
 import { useAuthStore } from "../../../stores/auth.store";
 
 /**
  * Number of registrations awaiting the signed-in club's validation (#944),
- * from GET /competitions/club/pending-registrations (bounded server side).
+ * from GET /competitions/club/pending-registrations/count (#948): the
+ * server's exact count, same scope as the list, without its cap.
  *
  * Scoped to the account the session acts as: an impersonation keeps the
  * session alive, so the admin's own count must not stand for the
@@ -29,15 +30,23 @@ export const CLUB_PENDING_REGISTRATIONS_COUNT_QUERY_ROOT = [
   "club-pending-registrations-count",
 ] as const;
 
+/** A usable count: a non-negative integer. */
+function isCount(count: number | undefined): count is number {
+  return typeof count === "number" && Number.isInteger(count) && count >= 0;
+}
+
 export async function fetchClubPendingRegistrationsCount(): Promise<number> {
+  // The server counts (#948): exact beyond the list's cap, and the dashboard
+  // no longer downloads the whole list for a number.
   const { data, error } =
-    await competitionsControllerGetClubPendingRegistrations();
-  // The generated client types the payload as `unknown` (free-form backend
-  // schema): anything but a list is an unknown count, never a made-up 0.
-  if (error || !Array.isArray(data)) {
+    await competitionsControllerCountClubPendingRegistrations();
+  // Accept only a real count: anything else is an unknown count, never a
+  // made-up 0.
+  const count = error ? undefined : data.count;
+  if (!isCount(count)) {
     throw new Error("Impossible de charger les inscriptions en attente");
   }
-  return data.length;
+  return count;
 }
 
 /**

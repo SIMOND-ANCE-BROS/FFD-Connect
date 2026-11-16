@@ -155,6 +155,15 @@ export const simulatedEmptyPage: SimulatedResponseBuilder = () => ({
 /** List read the store-review account may not do: empty. */
 export const simulatedEmptyList: SimulatedResponseBuilder = () => [];
 
+/**
+ * Count read the store-review account may not do: 0, coherent with the empty
+ * list it gets for the same data (the client reads `count`).
+ */
+export const simulatedZeroCount: SimulatedResponseBuilder = () => ({
+  count: 0,
+  simulated: true,
+});
+
 /** Someone else's career: nothing. */
 export const simulatedEmptyCareer: SimulatedResponseBuilder = () => ({
   partnerships: [],

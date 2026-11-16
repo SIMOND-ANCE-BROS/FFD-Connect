@@ -42,6 +42,7 @@ export type MockPrismaService = Partial<
     updateMany: jest.Mock;
     delete: jest.Mock;
     aggregate: jest.Mock;
+    count: jest.Mock;
   };
   user: {
     findUnique: jest.Mock;
@@ -107,6 +108,7 @@ export function createMockPrismaService(): MockPrismaService {
       updateMany: jest.fn(),
       delete: jest.fn(),
       aggregate: jest.fn(),
+      count: jest.fn(),
     },
     user: {
       findUnique: jest.fn(),

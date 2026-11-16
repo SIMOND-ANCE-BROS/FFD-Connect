@@ -175,4 +175,18 @@ describe("Club member lists by club id (#749, integration, real DB)", () => {
       ).resolves.toEqual([]);
     });
   });
+
+  describe("CompetitionQueryService.countPendingRegistrationsForClub (#948)", () => {
+    it("counts the resolved club's members' pending registrations only", async () => {
+      await expect(
+        query.countPendingRegistrationsForClub(ids.legacyOrganizer),
+      ).resolves.toEqual({ count: 1 });
+    });
+
+    it("counts nothing when the name designates homonym clubs", async () => {
+      await expect(
+        query.countPendingRegistrationsForClub(ids.homonymOrganizer),
+      ).resolves.toEqual({ count: 0 });
+    });
+  });
 });

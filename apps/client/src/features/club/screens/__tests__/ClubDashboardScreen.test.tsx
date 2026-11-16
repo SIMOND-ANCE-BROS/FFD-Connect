@@ -13,7 +13,7 @@ import { useAuthRepository } from "../../../../features/auth/context/AuthContext
 import {
   clubRefundsDueControllerList,
   competitionsControllerGetClubCompetitions,
-  competitionsControllerGetClubPendingRegistrations,
+  competitionsControllerCountClubPendingRegistrations,
   usersControllerGetMembers,
 } from "../../../../api/generated/sdk.gen";
 import { ClubService } from "../../services/ClubService";
@@ -88,14 +88,14 @@ jest.mock("../../../../api/client", () => ({}));
 jest.mock("../../../../api/generated/sdk.gen", () => ({
   clubRefundsDueControllerList: jest.fn(),
   competitionsControllerGetClubCompetitions: jest.fn(),
-  competitionsControllerGetClubPendingRegistrations: jest.fn(),
+  competitionsControllerCountClubPendingRegistrations: jest.fn(),
   usersControllerGetMembers: jest.fn(),
 }));
 const refundsDueMock = clubRefundsDueControllerList as jest.Mock;
 const clubCompetitionsMock =
   competitionsControllerGetClubCompetitions as jest.Mock;
 const pendingRegistrationsMock =
-  competitionsControllerGetClubPendingRegistrations as jest.Mock;
+  competitionsControllerCountClubPendingRegistrations as jest.Mock;
 const membersMock = usersControllerGetMembers as jest.Mock;
 // One-row page of GET /users/members: the card reads `meta.total` (#946).
 const membersPage = (total: number) => ({
@@ -180,7 +180,7 @@ describe("ClubDashboardScreen", () => {
       data: { data: [], meta: { total: 0, skip: 0, take: 1, hasMore: false } },
     });
     clubCompetitionsMock.mockResolvedValue({ data: [] });
-    pendingRegistrationsMock.mockResolvedValue({ data: [] });
+    pendingRegistrationsMock.mockResolvedValue({ data: { count: 0 } });
   });
 
   it("counts the club's upcoming competitions from the API (#441)", async () => {
@@ -441,9 +441,7 @@ describe("ClubDashboardScreen", () => {
     });
 
     it("shows the real number of requests to validate", async () => {
-      pendingRegistrationsMock.mockResolvedValue({
-        data: [{ id: "r1" }, { id: "r2" }, { id: "r3" }],
-      });
+      pendingRegistrationsMock.mockResolvedValue({ data: { count: 3 } });
 
       const { findByRole, getByRole } = await renderDashboard();
 
@@ -457,8 +455,18 @@ describe("ClubDashboardScreen", () => {
       expect(pendingRegistrationsMock).toHaveBeenCalledTimes(1);
     });
 
+    it("stays exact beyond the list's 500 cap (#948)", async () => {
+      pendingRegistrationsMock.mockResolvedValue({ data: { count: 742 } });
+
+      const { findByRole } = await renderDashboard();
+
+      expect(
+        await findByRole("button", { name: "Inscriptions, 742" }),
+      ).toBeTruthy();
+    });
+
     it("says when a single request is waiting", async () => {
-      pendingRegistrationsMock.mockResolvedValue({ data: [{ id: "r1" }] });
+      pendingRegistrationsMock.mockResolvedValue({ data: { count: 1 } });
 
       const { findByText } = await renderDashboard();
 

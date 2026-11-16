@@ -364,20 +364,47 @@ export class CompetitionQueryService {
     }));
   }
 
-  async getPendingRegistrationsForClub(organizerUserId: string) {
+  /**
+   * Filter of the registrations awaiting the club's validation: PENDING ones
+   * of the members of the caller's club. `null` (nothing to see) for an
+   * account without an active CLUB role, or whose club cannot be resolved —
+   * a legacy account resolving to no single active club (homonyms…, #749).
+   * Shared by the list and its count (#948) so both always agree.
+   */
+  private async clubPendingRegistrationsWhere(
+    organizerUserId: string,
+  ): Promise<Prisma.RegistrationWhereInput | null> {
     const organizer = await this.prisma.user.findUnique({
       where: { id: organizerUserId },
       select: userRolesClubSelect,
     });
-    if (!organizer || !hasRole(organizer, UserRole.CLUB)) return [];
+    if (!organizer || !hasRole(organizer, UserRole.CLUB)) return null;
 
-    // Members of the account's club, by id (#749): a legacy account
-    // resolving to no single active club (homonyms…) sees nothing.
     const scope = await clubMembersScopeOf(this.prisma, organizer);
-    if (!scope) return [];
+    if (!scope) return null;
+    return { status: RegistrationStatus.PENDING, user: scope.members };
+  }
+
+  /**
+   * Exact number of registrations awaiting the club's validation (#948), with
+   * the same scope as {@link getPendingRegistrationsForClub} but no upper
+   * bound: the club dashboard counter stays right beyond
+   * CLUB_PENDING_REGISTRATIONS_LIMIT without downloading the list.
+   */
+  async countPendingRegistrationsForClub(
+    organizerUserId: string,
+  ): Promise<{ count: number }> {
+    const where = await this.clubPendingRegistrationsWhere(organizerUserId);
+    if (!where) return { count: 0 };
+    return { count: await this.prisma.registration.count({ where }) };
+  }
+
+  async getPendingRegistrationsForClub(organizerUserId: string) {
+    const where = await this.clubPendingRegistrationsWhere(organizerUserId);
+    if (!where) return [];
 
     const pending = await this.prisma.registration.findMany({
-      where: { status: RegistrationStatus.PENDING, user: scope.members },
+      where,
       select: clubPendingRegistrationSelect,
       orderBy: { createdAt: "desc" },
       take: CLUB_PENDING_REGISTRATIONS_LIMIT,
