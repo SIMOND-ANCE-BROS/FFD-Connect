@@ -289,12 +289,14 @@ export class AuthController {
   @ApiOperation({
     summary: "Déconnexion",
     description:
-      "Révoque un refresh token pour déconnecter l'utilisateur de manière sécurisée.",
+      "Révoque toute la famille du refresh token reçu : ce jeton et ceux qui l'ont remplacé par rotation, même s'il est déjà remplacé ou expiré. Les autres sessions de l'utilisateur ne sont pas touchées. Idempotent pour un jeton connu ; 401 seulement pour un jeton inconnu.",
   })
-  @ApiBearerAuth("JWT-auth")
+  // No @ApiBearerAuth: no JwtAuthGuard here, holding the refresh token is the
+  // proof (#980). Nest answers 201 to a POST; documented as such rather than
+  // changed, the clients being fire-and-forget.
   @ApiBody({ type: RefreshTokenDto })
   @ApiResponse({
-    status: 200,
+    status: 201,
     description: "Déconnexion réussie",
     schema: {
       type: "object",
@@ -306,7 +308,7 @@ export class AuthController {
   })
   @ApiResponse({
     status: 401,
-    description: "Refresh token invalide",
+    description: "Refresh token inconnu (rien n'est révoqué)",
   })
   async logout(
     @Body() body: RefreshTokenDto,

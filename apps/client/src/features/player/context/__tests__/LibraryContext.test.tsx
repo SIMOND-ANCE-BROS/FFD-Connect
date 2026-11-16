@@ -676,8 +676,12 @@ describe("LibraryContext", () => {
       return hook;
     };
 
-    afterEach(() => {
-      useAuthStore.setState({ isLoggedIn: null });
+    // The provider is still mounted here (RNTL unmounts after this hook), and
+    // it subscribes to the auth store: reset inside act to flush its update.
+    afterEach(async () => {
+      await act(() => {
+        useAuthStore.setState({ isLoggedIn: null });
+      });
     });
 
     it("is initially loading again after a logout (session-end cleanups)", async () => {

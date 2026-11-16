@@ -143,7 +143,7 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
         !(track.style && styleFilter.has(track.style))
       )
         return false;
-      const bpm = track.baseBpm ?? 0;
+      const bpm = track.baseBpm;
       const min = parseInt(mpmMin, 10);
       if (mpmMin && Number.isFinite(min) && bpm < min) return false;
       const max = parseInt(mpmMax, 10);

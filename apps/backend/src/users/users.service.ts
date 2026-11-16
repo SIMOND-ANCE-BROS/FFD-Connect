@@ -128,6 +128,34 @@ function buildWdsfFromUser(user: {
   };
 }
 
+/** Raw WDSF columns of USER_BASE_SELECT, as read from the database. */
+type RawWdsfColumns = {
+  wdsfMin: string | null;
+  wdsfNationality: string | null;
+  wdsfLicenseType: string | null;
+  wdsfAgeGroup: string | null;
+  wdsfExpiresOn: Date | null;
+  wdsfFederation: string | null;
+};
+
+/**
+ * Replaces the raw `wdsf*` columns by the built `wdsf` object (#972): the API
+ * documents only the object, the columns would duplicate it outside the
+ * contract. The RGPD export keeps them on purpose (raw stored data).
+ */
+function withWdsfObject<T extends RawWdsfColumns>(user: T) {
+  const {
+    wdsfMin: _min,
+    wdsfNationality: _nationality,
+    wdsfLicenseType: _licenseType,
+    wdsfAgeGroup: _ageGroup,
+    wdsfExpiresOn: _expiresOn,
+    wdsfFederation: _federation,
+    ...rest
+  } = user;
+  return { ...rest, wdsf: buildWdsfFromUser(user) };
+}
+
 /** Nombre de participants lu dans `Result.details` (JSON libre d'import). */
 function totalParticipantsOf(details: Prisma.JsonValue): number | null {
   if (details && typeof details === "object" && !Array.isArray(details)) {
@@ -248,9 +276,8 @@ export class UsersService {
       const { registrations: _, ...rest } = member;
       return {
         // Deprecated single level derived for older app versions (#239).
-        ...withDerivedCompetitionLevel(rest),
+        ...withDerivedCompetitionLevel(withWdsfObject(rest)),
         partnerName,
-        wdsf: buildWdsfFromUser(member),
       };
     });
 
@@ -306,7 +333,6 @@ export class UsersService {
 
     // The club status only feeds rolesOf; it must not leak into the payload.
     const { club, ...profile } = user;
-    const wdsf = buildWdsfFromUser(profile);
     // Signed QR content of the license (#168) — null when signing is off,
     // and during a support access (#759): the static QR stays valid until the
     // licence expires, so it would let the intervening admin in instead of
@@ -324,10 +350,9 @@ export class UsersService {
       : null;
     return {
       // Deprecated single level derived for older app versions (#239).
-      ...withDerivedCompetitionLevel(profile),
+      ...withDerivedCompetitionLevel(withWdsfObject(profile)),
       license,
       roles: rolesOf({ ...profile, club }),
-      wdsf,
     };
   }
 
