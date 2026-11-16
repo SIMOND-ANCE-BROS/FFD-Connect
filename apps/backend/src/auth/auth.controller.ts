@@ -72,7 +72,7 @@ export class AuthController {
   @ApiOperation({
     summary: "Inscription avec vérification de licence FFD",
     description:
-      "Crée un compte utilisateur en vérifiant que le numéro de licence FFD existe, est valide, et n'est pas déjà associé à un compte.",
+      "Crée un compte utilisateur en vérifiant que le numéro de licence FFD existe, est valide, n'est pas déjà associé à un compte et n'a pas été libérée par la suppression d'un compte (#897).",
   })
   @ApiBody({ type: RegisterDto })
   @ApiResponse({
@@ -82,6 +82,11 @@ export class AuthController {
   @ApiResponse({
     status: 400,
     description: "Mot de passe invalide ou licence expirée",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Licence libérée par la suppression d'un compte : à vérifier par le support avant tout rattachement (#897)",
   })
   @ApiResponse({
     status: 404,

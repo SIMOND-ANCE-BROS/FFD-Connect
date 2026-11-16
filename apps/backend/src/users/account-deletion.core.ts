@@ -88,6 +88,7 @@ export type AccountDeletionPrisma = Pick<
   | "bugReport"
   | "adminAuditLog"
   | "erasedResultIdentity"
+  | "license"
   | "user"
 >;
 
@@ -284,6 +285,14 @@ export function buildAccountDeletionOperations(
           }),
         ]
       : []),
+    // The licence outlives the account (`ON DELETE SET NULL`) but is marked
+    // released: registration no longer links it on the sole knowledge of its
+    // number (#897). Same transaction, before the user row goes (after it,
+    // `userId` is already null and the licence can no longer be found).
+    prisma.license.updateMany({
+      where: { userId },
+      data: { releasedAt: new Date() },
+    }),
     // Le SetNull de proposedById laisserait le commentaire libre, qui peut
     // identifier son auteur : il est effacé avant la suppression du compte.
     prisma.trackCorrection.updateMany({

@@ -18,13 +18,20 @@ import {
   BETA_LICENSE_PLACEHOLDER_CATEGORY,
 } from "../licenses/beta-license-placeholder";
 import { isLicenseExpired } from "../licenses/license-expiry";
+import { normalizeLicenseNumber } from "../licenses/license-number.util";
 import { linkUnclaimedLicence } from "../licenses/license-relink";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   accountStatusSelect,
+  erasedResultIdentitySelect,
   idOnlySelect,
+  licenseClaimSelect,
   licenseIdSelect,
 } from "../utils/prisma-selects";
+import {
+  erasedLicenceFingerprint,
+  resultsPseudonymisationKey,
+} from "../utils/results-pseudonym";
 import {
   ACCOUNT_DISABLED_MESSAGE,
   AccountStatusFields,
@@ -51,6 +58,14 @@ const BCRYPT_ROUNDS = 12;
  * an unknown discipline — never "Ten Dance" (#555) — and a visible fake club.
  */
 const BETA_AUTO_LICENSE_VALIDITY_MS = 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * Registration with the number of a licence released by a deleted account
+ * (#897): refused, the number alone proves nothing about who registers.
+ * Step 2 (#987) adds a verified recourse; until then, support.
+ */
+export const RELEASED_LICENCE_MESSAGE =
+  "Cette licence doit être vérifiée avant d'être rattachée à un nouveau compte. Contactez le support.";
 
 export interface LoginResponse {
   access_token: string;
@@ -83,6 +98,28 @@ export class AuthService {
     private authTokenService: AuthTokenService,
     private configService: ConfigService,
   ) {}
+
+  /**
+   * A licence was held by an account since deleted (#897): marked at the
+   * deletion (`releasedAt`, since #897), or — for deletions before it — its
+   * number's keyed fingerprint is in `ErasedResultIdentity` (#652, written
+   * only when the pseudonymisation key is configured). Never true for a
+   * licence no account ever held (federation import, staging seeds).
+   */
+  private async isReleasedLicence(licence: {
+    number: string;
+    releasedAt: Date | null;
+  }): Promise<boolean> {
+    if (licence.releasedAt) return true;
+    const key = resultsPseudonymisationKey(this.configService);
+    const number = normalizeLicenseNumber(licence.number);
+    if (!key || !number) return false;
+    const erased = await this.prisma.erasedResultIdentity.findUnique({
+      where: { fingerprint: erasedLicenceFingerprint(key, number) },
+      select: erasedResultIdentitySelect,
+    });
+    return erased !== null;
+  }
 
   /** Staging-only escape hatch: strictly "true" enables it, anything else off. */
   private isBetaAutoLicenseEnabled(): boolean {
@@ -226,14 +263,7 @@ export class AuthService {
     const trimmedLicenseNumber = licenseNumber.trim();
     const existingLicense = await this.prisma.license.findUnique({
       where: { number: trimmedLicenseNumber },
-      select: {
-        id: true,
-        number: true,
-        validUntil: true,
-        category: true,
-        clubName: true,
-        userId: true,
-      },
+      select: licenseClaimSelect,
     });
 
     // Staging only (BETA_AUTO_LICENSE=true): an unknown number is auto-created
@@ -260,6 +290,7 @@ export class AuthService {
       category: BETA_LICENSE_PLACEHOLDER_CATEGORY,
       clubName: BETA_AUTO_LICENSE_CLUB_NAME,
       userId: null,
+      releasedAt: null,
     };
 
     // 5. Check license not already linked to an account
@@ -274,6 +305,15 @@ export class AuthService {
       throw new BadRequestException(
         "Cette licence a expiré. Contactez votre club pour le renouvellement.",
       );
+    }
+
+    // 6b. Released licence (#897): held by an account since deleted, so its
+    // number alone no longer links it. 403, not 409: the licence is free,
+    // but this registrant is not allowed to claim it without a verification
+    // (support today, #987 tomorrow) — retrying never succeeds. A licence to
+    // auto-create (id === null) was never held: unchanged.
+    if (license.id !== null && (await this.isReleasedLicence(license))) {
+      throw new ForbiddenException(RELEASED_LICENCE_MESSAGE);
     }
 
     // 7. Hash password

@@ -196,6 +196,20 @@ export const licenseIdSelect = {
 } as const;
 
 /**
+ * Licence lue à l'inscription (#881, #897) : de quoi créer le compte, vérifier
+ * qu'elle est libre, valide et jamais libérée par la suppression d'un compte.
+ */
+export const licenseClaimSelect = {
+  id: true,
+  number: true,
+  validUntil: true,
+  category: true,
+  clubName: true,
+  userId: true,
+  releasedAt: true,
+} as const;
+
+/**
  * Licence et compte rattaché : réparation des licences bêta « placeholder »
  * (#555), qui remet aussi à null la discipline recopiée dans le profil.
  */

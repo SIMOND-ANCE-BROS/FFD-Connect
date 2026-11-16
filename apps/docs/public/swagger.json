@@ -15,7 +15,7 @@
     },
     "/auth/register": {
       "post": {
-        "description": "Crée un compte utilisateur en vérifiant que le numéro de licence FFD existe, est valide, et n'est pas déjà associé à un compte.",
+        "description": "Crée un compte utilisateur en vérifiant que le numéro de licence FFD existe, est valide, n'est pas déjà associé à un compte et n'a pas été libérée par la suppression d'un compte (#897).",
         "operationId": "AuthController_register",
         "parameters": [],
         "requestBody": {
@@ -60,28 +60,7 @@
             }
           },
           "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Licence libérée par la suppression d'un compte : à vérifier par le support avant tout rattachement (#897)"
           },
           "404": {
             "description": "Numéro de licence introuvable"

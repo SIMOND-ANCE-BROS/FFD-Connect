@@ -235,6 +235,15 @@ describe("buildPurgeUserOperations (#412)", () => {
    * Prisma stand-in recording each operation as "<delegate>.<method>" + args,
    * so the purge transaction can be compared with the account deletion core.
    */
+  // Two builds are compared with toEqual: the operations carry dates
+  // (licence release, #897), frozen so both builds read the same instant.
+  beforeEach(() => {
+    jest.useFakeTimers({ now: new Date("2026-11-16T12:00:00Z") });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   const recordingPrisma = () =>
     new Proxy(
       {},
