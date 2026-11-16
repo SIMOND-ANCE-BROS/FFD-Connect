@@ -978,12 +978,23 @@ describe("AuthTokenService", () => {
       },
       data: { revoked: true, revokedAt: expect.any(Date) as unknown },
     });
-    const knownToken = (familyId: string | null, id = "rt-1") =>
+    const knownToken = (
+      familyId: string | null,
+      id = "rt-1",
+      revokedAt: Date | null = null,
+    ) =>
       mockPrismaService.refreshToken.findUnique.mockResolvedValue({
         id,
         userId: "u1",
         familyId,
+        revokedAt,
       });
+
+    afterEach(() => {
+      // Logger.prototype.debug spies must not leak into other tests.
+      jest.restoreAllMocks();
+      jest.useRealTimers();
+    });
 
     it("looks the token up by its SHA-256 hash, never in plain text", async () => {
       knownToken("rt-1");
@@ -992,7 +1003,7 @@ describe("AuthTokenService", () => {
 
       expect(mockPrismaService.refreshToken.findUnique).toHaveBeenCalledWith({
         where: { token: hashToken("plain-token") },
-        select: { id: true, userId: true, familyId: true },
+        select: { id: true, userId: true, familyId: true, revokedAt: true },
       });
     });
 
@@ -1046,6 +1057,65 @@ describe("AuthTokenService", () => {
       expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
       expect(mockPrismaService.$queryRaw).not.toHaveBeenCalled();
       expect(mockPrismaService.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    describe("logout with an already-revoked token (#980)", () => {
+      const NOW = new Date("2026-11-16T12:00:00Z");
+
+      beforeEach(() => {
+        jest.useFakeTimers({ now: NOW });
+      });
+
+      it("logs a debug line, ids only, when the token was revoked beyond the grace window", async () => {
+        const debug = jest
+          .spyOn(Logger.prototype, "debug")
+          .mockImplementation(() => undefined);
+        const warn = jest.spyOn(Logger.prototype, "warn");
+        knownToken(
+          "fam-1",
+          "rt-old",
+          new Date(NOW.getTime() - REFRESH_REUSE_GRACE_MS),
+        );
+        mockPrismaService.refreshToken.updateMany.mockResolvedValue({
+          count: 1,
+        });
+
+        await expect(service.revokeRefreshToken("stale-plain")).resolves.toBe(
+          true,
+        );
+
+        expect(debug).toHaveBeenCalledTimes(1);
+        const message = String(debug.mock.calls[0][0]);
+        expect(message).toContain("user u1");
+        expect(message).toContain("family fam-1");
+        expect(message).toContain("1 live token(s) revoked");
+        expect(message).not.toContain("stale-plain");
+        expect(message).not.toContain(hashToken("stale-plain"));
+        // Distinct from the reuse warning of /auth/refresh.
+        expect(warn).not.toHaveBeenCalled();
+      });
+
+      it("stays silent for a token revoked within the grace window", async () => {
+        const debug = jest.spyOn(Logger.prototype, "debug");
+        knownToken(
+          "fam-1",
+          "rt-old",
+          new Date(NOW.getTime() - REFRESH_REUSE_GRACE_MS + 1),
+        );
+
+        await service.revokeRefreshToken("token");
+
+        expect(debug).not.toHaveBeenCalled();
+      });
+
+      it("stays silent for a live token", async () => {
+        const debug = jest.spyOn(Logger.prototype, "debug");
+        knownToken("fam-1");
+
+        await service.revokeRefreshToken("token");
+
+        expect(debug).not.toHaveBeenCalled();
+      });
     });
 
     it("is idempotent: a known token whose family is already dead answers true", async () => {

@@ -283,7 +283,19 @@ export class AuthTokenService {
       return false;
     }
     // A token issued before #687 has no familyId: its family is its own id.
-    await this.revokeFamily(token.userId, token.familyId ?? token.id);
+    const familyId = token.familyId ?? token.id;
+    const count = await this.revokeFamily(token.userId, familyId);
+    // Diagnostic only (#980): the same token at /auth/refresh would raise the
+    // reuse warning; at logout it is legitimate (a device logging out late),
+    // so debug level. Ids only: never the token.
+    if (
+      token.revokedAt &&
+      Date.now() - token.revokedAt.getTime() >= REFRESH_REUSE_GRACE_MS
+    ) {
+      this.logger.debug(
+        `Logout with a refresh token revoked beyond the grace window (user ${token.userId}, family ${familyId}): ${count} live token(s) revoked`,
+      );
+    }
     return true;
   }
 

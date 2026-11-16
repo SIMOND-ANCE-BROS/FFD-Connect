@@ -206,6 +206,20 @@ describe("AuthController", () => {
         UnauthorizedException,
       );
     });
+
+    it("documents the route as it behaves: no bearer auth, 201 on success (#980)", () => {
+      const handler = AuthController.prototype.logout;
+      // The refresh token is the proof: no guard, so no bearer scheme.
+      expect(Reflect.getMetadata("__guards__", handler)).toBeUndefined();
+      expect(
+        Reflect.getMetadata("swagger/apiSecurity", handler),
+      ).toBeUndefined();
+      const responses = Reflect.getMetadata(
+        "swagger/apiResponse",
+        handler,
+      ) as Record<string, unknown>;
+      expect(Object.keys(responses).sort()).toEqual(["201", "401"]);
+    });
   });
 
   describe("forgotPassword", () => {
