@@ -298,6 +298,16 @@ describe("Store-review read allowlist (integration, real DB)", () => {
     expect(res.body).toEqual([]);
   });
 
+  it("non-allowlisted pending registrations count is 0, like its empty list (#948)", async () => {
+    const res = await request(app.getHttpServer())
+      .get("/api/v1/competitions/club/pending-registrations/count")
+      .set("Authorization", auth)
+      .expect(200);
+    expect(res.headers["x-demo-mode"]).toBe("simulated");
+    // The client reads `count`: an empty `{}` would show an unknown count.
+    expect(res.body).toMatchObject({ count: 0 });
+  });
+
   it("someone else's career is empty", async () => {
     const res = await request(app.getHttpServer())
       .get(`/api/v1/career/user/${ids.victim}`)

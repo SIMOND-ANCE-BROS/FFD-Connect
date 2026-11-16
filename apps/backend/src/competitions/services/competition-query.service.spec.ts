@@ -813,6 +813,105 @@ describe("CompetitionQueryService", () => {
     });
   });
 
+  describe("countPendingRegistrationsForClub (#948)", () => {
+    it("counts with the list's scope and no upper bound", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "CLUB",
+        clubId: "club-1",
+        clubName: null,
+      });
+      // Beyond the list's cap: the count is the database's, not a length.
+      mockPrismaService.registration.count.mockResolvedValue(
+        CLUB_PENDING_REGISTRATIONS_LIMIT + 1,
+      );
+
+      const result =
+        await service.countPendingRegistrationsForClub("organizer-1");
+
+      expect(result).toEqual({ count: CLUB_PENDING_REGISTRATIONS_LIMIT + 1 });
+      expect(mockPrismaService.registration.count).toHaveBeenCalledWith({
+        where: { status: "PENDING", user: { clubId: "club-1" } },
+      });
+      // A count, not the list.
+      expect(mockPrismaService.registration.findMany).not.toHaveBeenCalled();
+    });
+
+    it("counts with the same filter as the list", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "CLUB",
+        clubId: null,
+        clubName: " Club_Test ",
+      });
+      mockPrismaService.club.findMany.mockResolvedValue([{ id: "club-1" }]);
+      mockPrismaService.club.findFirst.mockResolvedValue({ id: "club-1" });
+      mockPrismaService.registration.count.mockResolvedValue(3);
+      mockPrismaService.registration.findMany.mockResolvedValue([]);
+
+      await service.countPendingRegistrationsForClub("organizer-1");
+      await service.getPendingRegistrationsForClub("organizer-1");
+
+      const countWhere =
+        mockPrismaService.registration.count.mock.calls[0][0].where;
+      const listWhere =
+        mockPrismaService.registration.findMany.mock.calls[0][0].where;
+      expect(countWhere).toEqual(listWhere);
+    });
+
+    it.each([
+      [
+        "an account without an active CLUB role",
+        { role: "LICENSEE", clubId: "club-1", clubName: null },
+      ],
+      [
+        "an extra CLUB role of a disabled club",
+        {
+          role: "LICENSEE",
+          extraRoles: ["CLUB"],
+          clubId: "club-1",
+          clubName: null,
+          club: { disabledAt: new Date() },
+        },
+      ],
+      [
+        "a CLUB account without a club",
+        { role: "CLUB", clubId: null, clubName: null },
+      ],
+    ])("is 0 without counting for %s", async (_label, account) => {
+      mockPrismaService.user.findUnique.mockResolvedValue(account);
+
+      await expect(
+        service.countPendingRegistrationsForClub("user-1"),
+      ).resolves.toEqual({ count: 0 });
+      expect(mockPrismaService.registration.count).not.toHaveBeenCalled();
+    });
+
+    it("is 0 for an unknown account", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.countPendingRegistrationsForClub("ghost"),
+      ).resolves.toEqual({ count: 0 });
+      expect(mockPrismaService.registration.count).not.toHaveBeenCalled();
+    });
+
+    it("is 0 for a legacy account whose name designates homonym clubs (#749)", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "CLUB",
+        clubId: null,
+        clubName: "Club Test",
+      });
+      mockPrismaService.club.findMany.mockResolvedValue([
+        { id: "club-1" },
+        { id: "club-2" },
+      ]);
+
+      await expect(
+        service.countPendingRegistrationsForClub("organizer-1"),
+      ).resolves.toEqual({ count: 0 });
+      expect(mockPrismaService.registration.count).not.toHaveBeenCalled();
+    });
+  });
+
   describe("findOrganizedByClub", () => {
     it("returns the competitions linked to the club, or unlinked with its name, bounded (#408)", async () => {
       mockPrismaService.user.findUnique.mockResolvedValue({

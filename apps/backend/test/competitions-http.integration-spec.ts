@@ -17,6 +17,7 @@ import request from "supertest";
 import { AppModule } from "./../src/app.module";
 import { SessionCleanupService } from "./../src/auth/session-cleanup.service";
 import { NotificationsService } from "./../src/notifications/notifications.service";
+import { CLUB_PENDING_REGISTRATIONS_LIMIT } from "./../src/competitions/services/competition-query.service";
 import { PrismaService } from "./../src/prisma/prisma.service";
 import { TtsService } from "./../src/tts/tts.service";
 import { configureTestApp } from "./test-app.factory";
@@ -1131,6 +1132,89 @@ describe("CompetitionsController HTTP Integration", () => {
       );
       expect(eventIds).toContain(event.id);
       void user; // referenced for clarity
+    });
+  });
+
+  // ===========================================================================
+  // GET /competitions/club/pending-registrations/count (#948)
+  // ===========================================================================
+
+  describe("GET /competitions/club/pending-registrations/count (#948)", () => {
+    const path = "/api/v1/competitions/club/pending-registrations/count";
+    const clubName = `Club en attente ${suffix}`;
+    // One more than the list returns: the count must not stop at its cap.
+    const memberPending = CLUB_PENDING_REGISTRATIONS_LIMIT + 1;
+    let clubToken = "";
+
+    beforeAll(async () => {
+      const { user: club, token } = await makeUser(UserRole.CLUB);
+      clubToken = token;
+      await linkToClub(club.id, clubName);
+      const { user: member } = await makeUser();
+      await linkToClub(member.id, clubName);
+      const { user: outsider } = await makeUser();
+      await linkToClub(outsider.id, `Autre club ${suffix}`);
+
+      const comp = await makeCompetition();
+      const event = await makeEvent(comp.id);
+      await prisma.registration.createMany({
+        data: [
+          ...Array.from({ length: memberPending }, () => ({
+            eventId: event.id,
+            userId: member.id,
+            status: RegistrationStatus.PENDING,
+          })),
+          // Out of scope: already validated, or another club's member.
+          {
+            eventId: event.id,
+            userId: member.id,
+            status: RegistrationStatus.CONFIRMED,
+          },
+          {
+            eventId: event.id,
+            userId: outsider.id,
+            status: RegistrationStatus.PENDING,
+          },
+        ],
+      });
+    });
+
+    it("returns 401 without token", async () => {
+      await request(app.getHttpServer()).get(path).expect(401);
+    });
+
+    it("returns 403 for an account without a club role", async () => {
+      const { token } = await makeUser();
+      await request(app.getHttpServer())
+        .get(path)
+        .set("Authorization", `Bearer ${token}`)
+        .expect(403);
+    });
+
+    it("counts every pending registration of the club's members, beyond the list's cap", async () => {
+      const res = await request(app.getHttpServer())
+        .get(path)
+        .set("Authorization", `Bearer ${clubToken}`)
+        .expect(200);
+
+      expect(res.body).toEqual({ count: memberPending });
+
+      // The list itself stays capped and unchanged in shape (installed apps).
+      const list = await request(app.getHttpServer())
+        .get("/api/v1/competitions/club/pending-registrations")
+        .set("Authorization", `Bearer ${clubToken}`)
+        .expect(200);
+      expect(Array.isArray(list.body)).toBe(true);
+      expect(list.body).toHaveLength(CLUB_PENDING_REGISTRATIONS_LIMIT);
+    });
+
+    it("is 0 for a CLUB account without a club", async () => {
+      const { token } = await makeUser(UserRole.CLUB);
+      const res = await request(app.getHttpServer())
+        .get(path)
+        .set("Authorization", `Bearer ${token}`)
+        .expect(200);
+      expect(res.body).toEqual({ count: 0 });
     });
   });
 });
