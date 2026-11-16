@@ -41,6 +41,7 @@ describe("CompetitionsController", () => {
     findOne: jest.fn(),
     findOneForUser: jest.fn(),
     findOrganizedByClub: jest.fn(),
+    countPendingRegistrationsForClub: jest.fn(),
   };
 
   const mockRegistrationService = {
@@ -168,6 +169,23 @@ describe("CompetitionsController", () => {
         "club-user",
       );
       expect(result).toBe(competitions);
+    });
+  });
+
+  describe("countClubPendingRegistrations (#948)", () => {
+    it("returns the caller's club pending registrations count", async () => {
+      queryService.countPendingRegistrationsForClub.mockResolvedValue({
+        count: 501,
+      });
+
+      const result = await controller.countClubPendingRegistrations({
+        user: { userId: "club-user", role: "CLUB" },
+      } as any);
+
+      expect(
+        queryService.countPendingRegistrationsForClub,
+      ).toHaveBeenCalledWith("club-user");
+      expect(result).toEqual({ count: 501 });
     });
   });
 

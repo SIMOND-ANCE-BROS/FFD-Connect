@@ -349,3 +349,14 @@ export class CompetitionDetailDto extends CompetitionBaseDto {
   @ApiProperty({ type: [CompetitionScheduleItemDto] })
   schedule!: CompetitionScheduleItemDto[];
 }
+
+/** `GET /competitions/club/pending-registrations/count` (#948). */
+export class ClubPendingRegistrationsCountDto {
+  @ApiProperty({
+    description:
+      "Nombre exact d'inscriptions en attente de validation du club (sans plafond)",
+    example: 12,
+    minimum: 0,
+  })
+  count!: number;
+}

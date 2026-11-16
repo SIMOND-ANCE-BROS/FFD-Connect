@@ -8,6 +8,7 @@ import {
   simulatedRenewalStart,
   simulatedRenewalSubmit,
   simulatedVolunteerToken,
+  simulatedZeroCount,
 } from "./store-review-responses";
 
 const NOW = new Date("2026-10-09T10:00:00.000Z");
@@ -86,6 +87,10 @@ describe("store-review simulated responses", () => {
       success: true,
       simulated: true,
     });
+  });
+
+  it("a forbidden count read is 0, coherent with the empty list (#948)", () => {
+    expect(simulatedZeroCount(ctx())).toEqual({ count: 0, simulated: true });
   });
 
   describe("license renewal", () => {

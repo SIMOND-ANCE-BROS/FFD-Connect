@@ -6576,7 +6576,7 @@
     },
     "/users/members": {
       "get": {
-        "description": "Retourne la liste des membres du club associé à l'utilisateur organisateur authentifié. Nécessite le rôle ORGANIZER.",
+        "description": "Retourne une page ({ data, meta }) des danseurs du club du compte CLUB authentifié ; `meta.total` donne l'effectif complet.",
         "operationId": "UsersController_getMembers",
         "parameters": [
           {
@@ -6605,44 +6605,11 @@
         ],
         "responses": {
           "200": {
-            "description": "Liste des membres du club récupérée avec succès",
+            "description": "Page des membres du club récupérée avec succès",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "email": {
-                        "type": "string"
-                      },
-                      "firstName": {
-                        "type": "string"
-                      },
-                      "lastName": {
-                        "type": "string"
-                      },
-                      "licenseNumber": {
-                        "type": "string",
-                        "nullable": true
-                      },
-                      "role": {
-                        "type": "string",
-                        "enum": ["LICENSEE", "CLUB", "STAFF", "ADMIN"]
-                      },
-                      "roles": {
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "enum": ["LICENSEE", "CLUB", "STAFF", "ADMIN"]
-                        },
-                        "description": "Rôle principal + rôles supplémentaires (multi-profil)"
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/ClubMembersPageDto"
                 }
               }
             }
@@ -17299,6 +17266,203 @@
           }
         ],
         "summary": "Lance la synchronisation des compétitions depuis l'API FFD",
+        "tags": ["competitions"]
+      }
+    },
+    "/competitions/club/pending-registrations/count": {
+      "get": {
+        "description": "Nombre exact des inscriptions que renverrait GET /competitions/club/pending-registrations (même périmètre : membres du club du compte), sans le plafond de cette liste. 0 pour un compte sans rôle club actif ou sans club résolu.",
+        "operationId": "CompetitionsController_countClubPendingRegistrations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Nombre d'inscriptions en attente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubPendingRegistrationsCountDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Nombre d'inscriptions en attente de validation (club)",
         "tags": ["competitions"]
       }
     },
@@ -30426,6 +30590,182 @@
           "content"
         ]
       },
+      "ClubMemberLicenseDto": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "string",
+            "example": "123456"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["number", "validUntil"]
+      },
+      "ClubMemberWdsfDto": {
+        "type": "object",
+        "properties": {
+          "min": {
+            "type": "string",
+            "description": "Numéro MIN WDSF",
+            "example": "10117265"
+          },
+          "nationality": {
+            "type": "string",
+            "nullable": true
+          },
+          "licenseType": {
+            "type": "string",
+            "nullable": true
+          },
+          "ageGroup": {
+            "type": "string",
+            "nullable": true
+          },
+          "expiresOn": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "federation": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": ["min", "federation"]
+      },
+      "ClubMemberDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserRole"
+              }
+            ]
+          },
+          "category": {
+            "type": "string",
+            "nullable": true,
+            "description": "Discipline(s) : Latin, Standard, Ten Dance"
+          },
+          "ageGroup": {
+            "type": "string",
+            "nullable": true
+          },
+          "competitionLevel": {
+            "type": "string",
+            "nullable": true,
+            "description": "Déprécié : niveau unique dérivé des niveaux par discipline"
+          },
+          "competitionLevelLatin": {
+            "type": "string",
+            "nullable": true
+          },
+          "competitionLevelStandard": {
+            "type": "string",
+            "nullable": true
+          },
+          "clubName": {
+            "type": "string",
+            "nullable": true
+          },
+          "passportLevelLatin": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PassportLevel"
+              }
+            ]
+          },
+          "passportLevelStandard": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PassportLevel"
+              }
+            ]
+          },
+          "license": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClubMemberLicenseDto"
+              }
+            ]
+          },
+          "partnerName": {
+            "type": "string",
+            "description": "Partenaire le plus fréquent sur les inscriptions en cours (PENDING, CONFIRMED)"
+          },
+          "wdsf": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClubMemberWdsfDto"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "firstName",
+          "lastName",
+          "role",
+          "category",
+          "ageGroup",
+          "competitionLevel",
+          "competitionLevelLatin",
+          "competitionLevelStandard",
+          "clubName",
+          "passportLevelLatin",
+          "passportLevelStandard",
+          "license",
+          "wdsf",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ClubMembersPageDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClubMemberDto"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/AdminPageMetaDto"
+          }
+        },
+        "required": ["data", "meta"]
+      },
       "WdsfDataDto": {
         "type": "object",
         "properties": {
@@ -32490,6 +32830,18 @@
           "updatedAt",
           "events"
         ]
+      },
+      "ClubPendingRegistrationsCountDto": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number",
+            "description": "Nombre exact d'inscriptions en attente de validation du club (sans plafond)",
+            "example": 12,
+            "minimum": 0
+          }
+        },
+        "required": ["count"]
       },
       "RegisterMemberDto": {
         "type": "object",

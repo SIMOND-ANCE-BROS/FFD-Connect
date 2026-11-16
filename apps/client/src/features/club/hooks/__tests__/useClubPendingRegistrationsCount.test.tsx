@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useFocusEffect } from "@react-navigation/native";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import React, { PropsWithChildren } from "react";
-import { competitionsControllerGetClubPendingRegistrations } from "../../../../api/generated/sdk.gen";
+import { competitionsControllerCountClubPendingRegistrations } from "../../../../api/generated/sdk.gen";
 import { useAuthStore } from "../../../../stores/auth.store";
 import {
   clubPendingRegistrationsCountQueryKey,
@@ -15,11 +15,11 @@ jest.mock("@react-navigation/native", () => ({
 }));
 jest.mock("../../../../api/client", () => ({}));
 jest.mock("../../../../api/generated/sdk.gen", () => ({
-  competitionsControllerGetClubPendingRegistrations: jest.fn(),
+  competitionsControllerCountClubPendingRegistrations: jest.fn(),
 }));
 
 const pendingMock =
-  competitionsControllerGetClubPendingRegistrations as jest.Mock;
+  competitionsControllerCountClubPendingRegistrations as jest.Mock;
 
 const focusEffectMock = useFocusEffect as jest.Mock;
 
@@ -33,13 +33,19 @@ const wrapper = ({ children }: PropsWithChildren) => {
 describe("fetchClubPendingRegistrationsCount", () => {
   beforeEach(() => pendingMock.mockReset());
 
-  it("counts the pending registrations returned by the API", async () => {
-    pendingMock.mockResolvedValue({ data: [{ id: "r1" }, { id: "r2" }] });
+  it("returns the server's count, without downloading the list (#948)", async () => {
+    pendingMock.mockResolvedValue({ data: { count: 2 } });
     await expect(fetchClubPendingRegistrationsCount()).resolves.toBe(2);
+    expect(pendingMock).toHaveBeenCalledTimes(1);
   });
 
-  it("returns a real zero for an empty list", async () => {
-    pendingMock.mockResolvedValue({ data: [] });
+  it("stays exact beyond the list's 500 cap (#948)", async () => {
+    pendingMock.mockResolvedValue({ data: { count: 742 } });
+    await expect(fetchClubPendingRegistrationsCount()).resolves.toBe(742);
+  });
+
+  it("returns a real zero when nothing is waiting", async () => {
+    pendingMock.mockResolvedValue({ data: { count: 0 } });
     await expect(fetchClubPendingRegistrationsCount()).resolves.toBe(0);
   });
 
@@ -48,8 +54,14 @@ describe("fetchClubPendingRegistrationsCount", () => {
     await expect(fetchClubPendingRegistrationsCount()).rejects.toThrow();
   });
 
-  it("throws when the payload is not a list", async () => {
-    pendingMock.mockResolvedValue({ data: { unexpected: true } });
+  it.each([
+    ["an empty body", {}],
+    ["a list (old payload)", [{ id: "r1" }]],
+    ["a negative count", { count: -1 }],
+    ["a non-integer count", { count: 1.5 }],
+    ["a string count", { count: "3" }],
+  ])("throws on %s", async (_label, data) => {
+    pendingMock.mockResolvedValue({ data });
     await expect(fetchClubPendingRegistrationsCount()).rejects.toThrow();
   });
 });
@@ -75,7 +87,7 @@ describe("useClubPendingRegistrationsCount", () => {
   });
 
   it("loads the count when enabled", async () => {
-    pendingMock.mockResolvedValue({ data: [{ id: "r1" }] });
+    pendingMock.mockResolvedValue({ data: { count: 1 } });
     const { result } = await renderHook(
       () => useClubPendingRegistrationsCount(true),
       { wrapper },
@@ -100,8 +112,8 @@ describe("useClubPendingRegistrationsCount", () => {
     focusEffectMock.mockImplementation((cb: () => void) => {
       focusCallback = cb;
     });
-    pendingMock.mockResolvedValueOnce({ data: [{ id: "r1" }, { id: "r2" }] });
-    pendingMock.mockResolvedValueOnce({ data: [{ id: "r1" }] });
+    pendingMock.mockResolvedValueOnce({ data: { count: 2 } });
+    pendingMock.mockResolvedValueOnce({ data: { count: 1 } });
 
     const { result } = await renderHook(
       () => useClubPendingRegistrationsCount(true),

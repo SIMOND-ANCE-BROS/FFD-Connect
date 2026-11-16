@@ -49,6 +49,7 @@ import { CheckInDto, CheckInResponseDto } from "./dto/checkin.dto";
 import { CompetitionResultDto } from "./dto/competition-result.dto";
 import {
   ApiActiveCompetitionResponse,
+  ClubPendingRegistrationsCountDto,
   CompetitionDetailDto,
   CompetitionPageDto,
 } from "./dto/competition-response.dto";
@@ -94,6 +95,7 @@ import {
   simulatedCheckIn,
   simulatedEmptyList,
   simulatedVolunteerToken,
+  simulatedZeroCount,
 } from "../auth/store-review/store-review-responses";
 
 @ApiTags("competitions")
@@ -165,6 +167,29 @@ export class CompetitionsController {
   @ApiResponse({ status: 409, description: "Sync déjà en cours" })
   sync() {
     return this.managementService.enqueueSyncFFD();
+  }
+
+  // Store-review account: the list is empty for it, so its count is 0 (not
+  // the `{}` default, which the client would read as an unknown count).
+  @StoreReviewRead(simulatedZeroCount)
+  @Get("club/pending-registrations/count")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Nombre d'inscriptions en attente de validation (club)",
+    description:
+      "Nombre exact des inscriptions que renverrait GET /competitions/club/pending-registrations (même périmètre : membres du club du compte), sans le plafond de cette liste. 0 pour un compte sans rôle club actif ou sans club résolu.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Nombre d'inscriptions en attente",
+    type: ClubPendingRegistrationsCountDto,
+  })
+  countClubPendingRegistrations(
+    @Request() req: RequestWithUser,
+  ): Promise<ClubPendingRegistrationsCountDto> {
+    return this.queryService.countPendingRegistrationsForClub(req.user.userId);
   }
 
   @StoreReviewRead(simulatedEmptyList)

@@ -3,6 +3,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
+import { ClubMembersPageDto } from "./dto/club-members-page.dto";
 import { UsersController } from "./users.controller";
 import { UsersService } from "./users.service";
 
@@ -114,6 +115,17 @@ describe("UsersController", () => {
   });
 
   describe("getMembers", () => {
+    it("documents its 200 answer as a page ({ data, meta }), not a list (#953)", () => {
+      // Metadata key of @ApiResponse (@nestjs/swagger DECORATORS.API_RESPONSE).
+      const responses = Reflect.getMetadata(
+        "swagger/apiResponse",
+        UsersController.prototype.getMembers,
+      ) as Record<string, { type?: unknown; schema?: unknown }>;
+
+      expect(responses["200"].type).toBe(ClubMembersPageDto);
+      expect(responses["200"].schema).toBeUndefined();
+    });
+
     it("calls service.findClubMembers with userId from req.user and pagination params", async () => {
       const members = {
         data: [{ id: "1", name: "Member 1" }],
