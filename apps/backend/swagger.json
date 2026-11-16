@@ -666,7 +666,7 @@
           }
         },
         "responses": {
-          "200": {
+          "201": {
             "description": "Déconnexion réussie",
             "content": {
               "application/json": {
@@ -840,11 +840,6 @@
             }
           }
         },
-        "security": [
-          {
-            "JWT-auth": []
-          }
-        ],
         "summary": "Déconnexion",
         "tags": ["auth"]
       }

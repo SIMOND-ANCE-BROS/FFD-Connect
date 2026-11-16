@@ -68,6 +68,16 @@ function makeUser(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Raw WDSF columns that must never reach an API response (#972). */
+const RAW_WDSF_COLUMNS = [
+  "wdsfMin",
+  "wdsfNationality",
+  "wdsfLicenseType",
+  "wdsfAgeGroup",
+  "wdsfExpiresOn",
+  "wdsfFederation",
+];
+
 // ---------------------------------------------------------------------------
 // Suite
 // ---------------------------------------------------------------------------
@@ -319,6 +329,19 @@ describe("UsersService", () => {
       expect(result.wdsf?.federation).toBeNull();
     });
 
+    it("returns the wdsf object without the raw wdsf columns (#972)", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ wdsfMin: "12345", wdsfFederation: "FFD" }),
+      );
+
+      const result = (await service.findOne("u1")) as Record<string, unknown>;
+
+      expect(result.wdsf).toEqual(expect.objectContaining({ min: "12345" }));
+      for (const column of RAW_WDSF_COLUMNS) {
+        expect(result).not.toHaveProperty(column);
+      }
+    });
+
     it("passes the correct select shape to prisma", async () => {
       prisma.user.findUnique.mockResolvedValue(makeUser());
 
@@ -429,6 +452,39 @@ describe("UsersService", () => {
 
       expect(result.data).toHaveLength(2);
       expect(result.meta.total).toBe(2);
+    });
+
+    it("returns each member's wdsf object without the raw wdsf columns (#972)", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: "org1",
+        role: UserRole.CLUB,
+        clubId: "c1",
+        clubName: "DanceClub",
+      });
+      prisma.user.count.mockResolvedValue(1);
+      prisma.user.findMany.mockResolvedValue([
+        makeUser({
+          id: "m1",
+          wdsfMin: "777",
+          wdsfNationality: "France",
+          wdsfExpiresOn: new Date("2027-01-01"),
+          registrations: [],
+        }),
+      ] as never);
+
+      const result = await service.findClubMembers("org1");
+      const member = result.data[0] as Record<string, unknown>;
+
+      expect(member.wdsf).toEqual(
+        expect.objectContaining({
+          min: "777",
+          nationality: "France",
+          expiresOn: "2027-01-01T00:00:00.000Z",
+        }),
+      );
+      for (const column of RAW_WDSF_COLUMNS) {
+        expect(member).not.toHaveProperty(column);
+      }
     });
 
     it("never selects the members' extraRoles (data minimisation)", async () => {
