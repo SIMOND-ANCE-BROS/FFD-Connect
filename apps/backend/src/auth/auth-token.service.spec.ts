@@ -969,21 +969,119 @@ describe("AuthTokenService", () => {
     });
   });
 
-  describe("revokeRefreshToken", () => {
-    it("should hash the token and revoke by hash", async () => {
-      mockPrismaService.refreshToken.updateMany.mockResolvedValue({ count: 1 });
-      const result = await service.revokeRefreshToken("plain-token");
-      expect(result).toBe(true);
-      expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalledWith({
-        where: { token: hashToken("plain-token"), revoked: false },
-        data: expect.objectContaining({ revoked: true }),
+  describe("revokeRefreshToken (logout, #947)", () => {
+    const familyUpdate = (userId: string, familyId: string) => ({
+      where: {
+        userId,
+        revoked: false,
+        OR: [{ familyId }, { id: familyId }],
+      },
+      data: { revoked: true, revokedAt: expect.any(Date) as unknown },
+    });
+    const knownToken = (familyId: string | null, id = "rt-1") =>
+      mockPrismaService.refreshToken.findUnique.mockResolvedValue({
+        id,
+        userId: "u1",
+        familyId,
+      });
+
+    it("looks the token up by its SHA-256 hash, never in plain text", async () => {
+      knownToken("rt-1");
+
+      await service.revokeRefreshToken("plain-token");
+
+      expect(mockPrismaService.refreshToken.findUnique).toHaveBeenCalledWith({
+        where: { token: hashToken("plain-token") },
+        select: { id: true, userId: true, familyId: true },
       });
     });
 
-    it("should return false when token not found", async () => {
-      mockPrismaService.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+    it("revokes the live descendant of an already-rotated token", async () => {
+      // The presented token was rotated away; its child is still live.
+      knownToken("fam-1", "rt-old");
+      mockPrismaService.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.revokeRefreshToken("rotated-token");
+
+      expect(result).toBe(true);
+      expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalledTimes(
+        1,
+      );
+      // Not filtered on the presented token: the whole family goes.
+      expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalledWith(
+        familyUpdate("u1", "fam-1"),
+      );
+    });
+
+    it("touches no other family: the update is scoped to the user and the family", async () => {
+      knownToken("fam-1");
+
+      await service.revokeRefreshToken("token");
+
+      const { where } = mockPrismaService.refreshToken.updateMany.mock
+        .calls[0][0] as { where: Record<string, unknown> };
+      expect(where).toEqual({
+        userId: "u1",
+        revoked: false,
+        OR: [{ familyId: "fam-1" }, { id: "fam-1" }],
+      });
+    });
+
+    it("uses the token's own id as family for a pre-#687 token", async () => {
+      knownToken(null, "legacy-1");
+
+      await service.revokeRefreshToken("legacy");
+
+      expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalledWith(
+        familyUpdate("u1", "legacy-1"),
+      );
+    });
+
+    it("answers false for an unknown token and revokes nothing", async () => {
+      mockPrismaService.refreshToken.findUnique.mockResolvedValue(null);
+
       const result = await service.revokeRefreshToken("unknown");
+
       expect(result).toBe(false);
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+      expect(mockPrismaService.$queryRaw).not.toHaveBeenCalled();
+      expect(mockPrismaService.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("is idempotent: a known token whose family is already dead answers true", async () => {
+      // A second logout, or a family revoked by reuse detection.
+      knownToken("fam-1");
+      mockPrismaService.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.revokeRefreshToken("dead")).resolves.toBe(true);
+    });
+
+    it("revokes under the user lock, in one transaction", async () => {
+      knownToken("fam-1");
+
+      await service.revokeRefreshToken("token");
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+      const call = mockPrismaService.$queryRaw.mock.calls[0] as unknown[];
+      expect(rawSql(call)).toContain("FOR UPDATE");
+      expect(rawValues(call)).toEqual(["u1"]);
+      expect(
+        mockPrismaService.$queryRaw.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        mockPrismaService.refreshToken.updateMany.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("logs no reuse warning: a logout is not an attack signal", async () => {
+      knownToken("fam-1");
+      const warn = jest.spyOn(Logger.prototype, "warn");
+
+      try {
+        await service.revokeRefreshToken("token");
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
     });
   });
 

@@ -7,6 +7,7 @@ import { hashToken } from "../utils/token-hash.util";
 import {
   accountStatusSelect,
   idOnlySelect,
+  refreshTokenFamilySelect,
   refreshTokenRotationSelect,
 } from "../utils/prisma-selects";
 import { ACCOUNT_DISABLED_MESSAGE, accountBlockReason } from "./account-status";
@@ -258,20 +259,32 @@ export class AuthTokenService {
     }
   }
 
+  /**
+   * Logout (#947): revokes the whole family of the presented token, its live
+   * descendant included, even when that token was already rotated away or
+   * has expired. A logout that races a refresh still in flight on the device
+   * would otherwise leave the freshly rotated token — which the device never
+   * received — valid for its whole lifetime. Holding any token of the family
+   * proves membership; a stolen stale token can at worst log the user out,
+   * which reuse detection (#687) already allows. The user's other families
+   * (other devices, other logins) are never touched.
+   *
+   * @returns false only for an unknown token (nothing revoked: the caller
+   *   answers 401). A known token answers true even when its family was
+   *   already fully revoked (an earlier logout, reuse detection, password
+   *   reset): logout is idempotent for whoever holds a real token.
+   */
   async revokeRefreshToken(refreshToken: string): Promise<boolean> {
-    const tokenHash = hashToken(refreshToken);
-    const result = await this.prisma.refreshToken.updateMany({
-      where: {
-        token: tokenHash,
-        revoked: false,
-      },
-      data: {
-        revoked: true,
-        revokedAt: new Date(),
-      },
+    const token = await this.prisma.refreshToken.findUnique({
+      where: { token: hashToken(refreshToken) },
+      select: refreshTokenFamilySelect,
     });
-
-    return result.count > 0;
+    if (!token) {
+      return false;
+    }
+    // A token issued before #687 has no familyId: its family is its own id.
+    await this.revokeFamily(token.userId, token.familyId ?? token.id);
+    return true;
   }
 
   async revokeAllUserTokens(userId: string): Promise<number> {
@@ -317,11 +330,30 @@ export class AuthTokenService {
       return;
     }
 
+    const count = await this.revokeFamily(token.userId, familyId);
+
+    // Ids only: never the token, never an e-mail address.
+    this.logger.warn(
+      `Refresh token reuse detected (user ${token.userId}, family ${familyId}): ${count} live token(s) revoked`,
+    );
+  }
+
+  /**
+   * Revokes every live token of one family of one user, under the user lock:
+   * a rotation in flight has either committed (its new token is visible here
+   * and gets revoked) or runs afterwards and finds its own token revoked.
+   *
+   * @returns the number of tokens revoked (0 when the family was already dead).
+   */
+  private async revokeFamily(
+    userId: string,
+    familyId: string,
+  ): Promise<number> {
     const revoked = await this.prisma.$transaction(async (tx) => {
-      await lockUserSessions(tx, token.userId);
+      await lockUserSessions(tx, userId);
       return tx.refreshToken.updateMany({
         where: {
-          userId: token.userId,
+          userId,
           revoked: false,
           // `id` also catches a pre-#687 root, whose familyId is still null.
           OR: [{ familyId }, { id: familyId }],
@@ -329,11 +361,7 @@ export class AuthTokenService {
         data: { revoked: true, revokedAt: new Date() },
       });
     });
-
-    // Ids only: never the token, never an e-mail address.
-    this.logger.warn(
-      `Refresh token reuse detected (user ${token.userId}, family ${familyId}): ${revoked.count} live token(s) revoked`,
-    );
+    return revoked.count;
   }
 
   private async cleanupExpiredTokens(userId: string): Promise<void> {
