@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act } from "@testing-library/react-native";
 import React from "react";
 import { useTheme } from "../../../../context/ThemeContext";
 import { useAuthStore } from "../../../../stores/auth.store";
@@ -181,8 +182,12 @@ describe("AudioPlayerScreen", () => {
         actions: mockActions,
       });
 
-    afterEach(() => {
-      useAuthStore.setState({ role: null, isGuest: false });
+    // The screen is still mounted here (RNTL cleanup runs after this hook)
+    // and subscribes to the auth store: reset it inside act.
+    afterEach(async () => {
+      await act(async () => {
+        useAuthStore.setState({ role: null, isGuest: false });
+      });
     });
 
     it("un licencié voit « Signaler / proposer une correction » et ouvre le formulaire pré-rempli", async () => {
