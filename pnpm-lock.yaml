@@ -766,8 +766,8 @@ importers:
         specifier: ^7.2.8
         version: 7.3.5(@azure/identity@4.14.0)(@azure/storage-blob@12.34.0)(@types/node@26.6.5)(ioredis@5.11.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.23.15)(yaml@2.8.3)
       cookie:
-        specifier: ^2.0.1
-        version: 2.0.1
+        specifier: ^2.0.2
+        version: 2.0.2
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -6759,6 +6759,10 @@ packages:
 
   cookie@2.0.1:
     resolution: {integrity: sha512-yuToqVvRrj6pfDXREyQAAv8SkAEk/8GS3jQRTiUMm66TVtBYmqQeoEjL2Lmq8Rpo6271vH76InTChTitEAm65w==}
+    engines: {node: '>=22'}
+
+  cookie@2.0.2:
+    resolution: {integrity: sha512-SL0cVuEdETEp7pN0FuZb01toc3vnODEfVUCooxG1SJN0yIirh7JMb9X9bvfCFf0vzzbT68RdbKDHYTiWy7a7iw==}
     engines: {node: '>=22'}
 
   cookiejar@2.1.4:
@@ -19225,7 +19229,7 @@ snapshots:
       ci-info: 4.4.0
       clsx: 2.1.1
       common-ancestor-path: 2.0.0
-      cookie: 2.0.1
+      cookie: 2.0.2
       devalue: 5.9.4
       diff: 9.0.0
       dset: 3.1.4
@@ -20034,6 +20038,8 @@ snapshots:
   cookie@1.1.1: {}
 
   cookie@2.0.1: {}
+
+  cookie@2.0.2: {}
 
   cookiejar@2.1.4: {}
 
