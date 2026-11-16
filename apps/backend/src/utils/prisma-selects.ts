@@ -1376,6 +1376,16 @@ export const refreshTokenRotationSelect = {
   },
 } as const;
 
+/**
+ * Logout (#947): what identifies a refresh token's family — the owner (for
+ * the user row lock) and the family id (`familyId ?? id`).
+ */
+export const refreshTokenFamilySelect = {
+  id: true,
+  userId: true,
+  familyId: true,
+} as const;
+
 /** Back-office deletion: what the confirmation and the audit row need. */
 export const adminUserDeletionTargetSelect = {
   id: true,

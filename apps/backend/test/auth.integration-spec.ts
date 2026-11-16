@@ -670,6 +670,85 @@ describe("AuthController (integration with real DB)", () => {
         .send({ refresh_token: "non-existent-token-xyz" })
         .expect(401);
     });
+
+    // #947: logout revokes the whole family of the presented token.
+    describe("family revocation (#947)", () => {
+      const server = () => app.getHttpServer() as Parameters<typeof request>[0];
+      const login = async (email: string, password: string) => {
+        const res = await request(server())
+          .post("/api/v1/auth/login")
+          .send({ username: email, password })
+          .expect(201);
+        return (res.body as { refresh_token: string }).refresh_token;
+      };
+      const rotate = async (refresh_token: string) => {
+        const res = await request(server())
+          .post("/api/v1/auth/refresh")
+          .send({ refresh_token })
+          .expect(201);
+        return (res.body as { refresh_token: string }).refresh_token;
+      };
+      const logout = (refresh_token: string) =>
+        request(server()).post("/api/v1/auth/logout").send({ refresh_token });
+      const liveTokens = (userId: string) =>
+        prisma.refreshToken.count({ where: { userId, revoked: false } });
+
+      it("a logout with an already-rotated token revokes its live descendant, not the other devices", async () => {
+        const { user, email, password } = await makeUser();
+        const phone = await login(email, password);
+        const tablet = await login(email, password);
+        // A refresh the phone lost track of: the server rotated, the device
+        // still holds the old token when it logs out.
+        const phoneChild = await rotate(phone);
+
+        await logout(phone)
+          .expect(201)
+          .expect((res) => expect(res.body).toHaveProperty("success", true));
+
+        await request(server())
+          .post("/api/v1/auth/refresh")
+          .send({ refresh_token: phoneChild })
+          .expect(401);
+        // Only the tablet's family is left alive.
+        expect(await liveTokens(user.id)).toBe(1);
+        await rotate(tablet);
+      });
+
+      it("a second logout with the same token is idempotent (201, nothing else revoked)", async () => {
+        const { user, email, password } = await makeUser();
+        const first = await login(email, password);
+        await login(email, password);
+
+        await logout(first).expect(201);
+        await logout(first).expect(201);
+        expect(await liveTokens(user.id)).toBe(1);
+      });
+
+      it("an expired token still revokes its family", async () => {
+        const { user, email, password } = await makeUser();
+        const old = await login(email, password);
+        const child = await rotate(old);
+        await prisma.refreshToken.updateMany({
+          where: { userId: user.id, revoked: true },
+          data: { expiresAt: new Date(Date.now() - 1000) },
+        });
+
+        await logout(old).expect(201);
+        await request(server())
+          .post("/api/v1/auth/refresh")
+          .send({ refresh_token: child })
+          .expect(401);
+        expect(await liveTokens(user.id)).toBe(0);
+      });
+
+      it("an unknown token answers 401 and revokes nothing", async () => {
+        const { user, email, password } = await makeUser();
+        await login(email, password);
+
+        await logout("unknown-token-947").expect(401);
+        expect(await liveTokens(user.id)).toBe(1);
+      });
+    });
   });
 
   // ---------------------------------------------------------------------------
