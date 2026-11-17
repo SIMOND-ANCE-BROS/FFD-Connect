@@ -1750,6 +1750,7 @@ describe("UsersService", () => {
       prisma.seatBooking.deleteMany.mockReturnValue(marker("seatBookings"));
       prisma.registration.deleteMany.mockReturnValue(marker("registrations"));
       prisma.registration.updateMany.mockReturnValue(marker("partnerAnon"));
+      prisma.license.updateMany.mockReturnValue(marker("licenceReleased"));
       prisma.trackCorrection.updateMany.mockReturnValue(
         marker("trackCorrectionAnon"),
       );
@@ -1772,6 +1773,8 @@ describe("UsersService", () => {
         "partnerAnon",
         // Imported results' second-member link (#652).
         "resultAnon",
+        // Licence marked released while still linked (#897).
+        "licenceReleased",
         "trackCorrectionAnon",
         "bugReports",
         "adminAudit",

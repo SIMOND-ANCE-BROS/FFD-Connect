@@ -6,6 +6,14 @@ model License {
   clubName        String
   userId          String?  @unique
   qrCodeSignature String?
+  /// Date à laquelle la licence a été LIBÉRÉE par la suppression du compte qui
+  /// la détenait (#897) : `userId` repasse à null (`ON DELETE SET NULL`), mais
+  /// la licence ne se rattache plus d'elle-même à une nouvelle inscription
+  /// (le numéro seul ne prouve pas l'identité). Null pour une licence jamais
+  /// détenue. NULLABLE : colonne ajoutée à une table peuplée, migration
+  /// additive (ADR-0017) ; les libérations antérieures sont couvertes par
+  /// `ErasedResultIdentity`. Lue par numéro (clé unique) : pas d'index.
+  releasedAt      DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   user            User?    @relation(fields: [userId], references: [id])

@@ -43,6 +43,7 @@ describe("account-deletion.core", () => {
       prisma.seatBooking.deleteMany.mockReturnValue(marker("seat"));
       prisma.registration.deleteMany.mockReturnValue(marker("registration"));
       prisma.registration.updateMany.mockReturnValue(marker("partner"));
+      prisma.license.updateMany.mockReturnValue(marker("licence"));
       prisma.trackCorrection.updateMany.mockReturnValue(marker("correction"));
       prisma.bugReport.deleteMany.mockReturnValue(marker("bug"));
       prisma.adminAuditLog.updateMany.mockReturnValue(marker("audit"));
@@ -77,6 +78,8 @@ describe("account-deletion.core", () => {
         "partnerNameScrub",
         // #652: imported results' second-member link, after the scrub.
         "result",
+        // #897: the licence is marked released while still linked.
+        "licence",
         "correction",
         "bug",
         "audit",
@@ -91,6 +94,35 @@ describe("account-deletion.core", () => {
         data: { before: Prisma.DbNull, after: Prisma.DbNull },
       });
       expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+    });
+  });
+
+  describe("licence release (#897)", () => {
+    it("marks the user's licence released in the transaction, before the user row goes", () => {
+      const marker = (op: string) => ({ op }) as never;
+      prisma.license.updateMany.mockReturnValue(marker("licence"));
+      prisma.user.delete.mockReturnValue(marker("user"));
+      const before = Date.now();
+
+      const ops = buildAccountDeletionOperations(prisma, "u1", {
+        results: [],
+        partnerNameScrub: { ops: [], competitionIds: [] },
+        notificationNameScrub: [],
+      }) as unknown as ({ op?: string } | undefined)[];
+
+      expect(prisma.license.updateMany).toHaveBeenCalledWith({
+        where: { userId: "u1" },
+        data: { releasedAt: expect.any(Date) },
+      });
+      const { data } = prisma.license.updateMany.mock.calls[0][0] as {
+        data: { releasedAt: Date };
+      };
+      expect(data.releasedAt.getTime()).toBeGreaterThanOrEqual(before);
+      // After the user row, `userId` is already null: the licence would be
+      // out of reach.
+      const order = ops.map((o) => o?.op);
+      expect(order.indexOf("licence")).toBeGreaterThanOrEqual(0);
+      expect(order.indexOf("licence")).toBeLessThan(order.indexOf("user"));
     });
   });
 

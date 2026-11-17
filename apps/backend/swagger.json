@@ -15,7 +15,7 @@
     },
     "/auth/register": {
       "post": {
-        "description": "Crée un compte utilisateur en vérifiant que le numéro de licence FFD existe, est valide, et n'est pas déjà associé à un compte.",
+        "description": "Crée un compte utilisateur en vérifiant que le numéro de licence FFD existe, est valide, n'est pas déjà associé à un compte et n'a pas été libérée par la suppression d'un compte (#897).",
         "operationId": "AuthController_register",
         "parameters": [],
         "requestBody": {
@@ -87,7 +87,7 @@
             "description": "Numéro de licence introuvable"
           },
           "409": {
-            "description": "Email ou licence déjà utilisé"
+            "description": "Email déjà utilisé, ou licence non rattachable (déjà associée à un compte, ou libérée par la suppression d'un compte, #897 : même réponse dans les deux cas)"
           },
           "429": {
             "description": "Trop de requêtes - Rate limit dépassé",

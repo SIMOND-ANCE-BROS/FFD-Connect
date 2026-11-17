@@ -21,9 +21,11 @@
  * acceptance (version and date) kept with the account and in the export (#894).
  * 2026-11-08: what the Face ID / Touch ID lock keeps on the phone and until
  * when, session revoked at logout, push token deletion no longer "immediate"
- * (#942, #943).
+ * (#942, #943). 2026-11-17: licence of a deleted account marked released
+ * (date kept with the licence) and, with the licence-number fingerprint,
+ * used to refuse a new registration without support verification (#897).
  */
-export const PRIVACY_POLICY_VERSION = "2026-11-08";
+export const PRIVACY_POLICY_VERSION = "2026-11-17";
 
 /** Shape accepted for a version in an acknowledgement. */
 export const PRIVACY_POLICY_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
