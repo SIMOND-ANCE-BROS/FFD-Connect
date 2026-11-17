@@ -1410,6 +1410,20 @@ export const adminUserDeletionTargetSelect = {
   isStoreReview: true,
 } as const;
 
+/**
+ * Inactive-account purge (#991): what the warning e-mail needs (address,
+ * first name) and the dates it is computed from. The previous warning date is
+ * kept to restore it if the e-mail cannot be sent.
+ */
+export const inactiveAccountWarningSelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  createdAt: true,
+  lastLoginAt: true,
+  inactivityWarningSentAt: true,
+} as const;
+
 /** Back-office clubs table. Never select HelloAsso credentials. */
 export const adminClubListSelect = {
   id: true,

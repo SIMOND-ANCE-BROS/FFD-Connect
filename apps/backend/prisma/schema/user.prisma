@@ -26,6 +26,9 @@ model User {
   updatedAt            DateTime       @updatedAt
   lastLoginAt          DateTime?      // Dernière connexion réussie (back-office : « renvoyer l'invitation » tant que null)
   disabledAt           DateTime?      // Désactivé par un admin (null = actif) : connexion, refresh et requêtes refusés
+  // Avertissement « compte inactif » envoyé (#991) : suppression à 3 ans sans connexion, prévenue 30 jours avant.
+  // Ne compte que s'il est postérieur à la dernière connexion (une connexion annule l'avertissement).
+  inactivityWarningSentAt DateTime?
   // Dernière version de la politique de confidentialité signalée et lue (#734) ; null = jamais. Information, pas consentement.
   privacyPolicySeenVersion String?
   // Dernière version des CGU acceptée par CE compte (#894, preuve du consentement) ; null = jamais acceptées côté serveur.
@@ -79,6 +82,7 @@ model User {
   @@index([clubId, role]) // membres d'un club filtrés par rôle
   @@index([disabledAt])
   @@index([createdAt]) // back-office : liste triée par date d'inscription (défaut)
+  @@index([lastLoginAt]) // purge des comptes inactifs depuis 3 ans (#991)
   @@index([lastName, firstName]) // back-office : tri par nom
 }
 

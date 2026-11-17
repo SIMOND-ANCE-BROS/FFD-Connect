@@ -87,6 +87,14 @@ describe("EmailService", () => {
       expect(mockSend).not.toHaveBeenCalled();
     });
 
+    it("cannot send, and refuses the inactive-account warning (#991)", async () => {
+      expect(service.canSend()).toBe(false);
+      await expect(
+        service.sendInactiveAccountWarning("d@x.fr", "Jo", new Date()),
+      ).rejects.toThrow("no Resend config");
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
     it("only logs when Resend is not configured", async () => {
       await expect(
         service.sendInvitationEmail("c@x.fr", "tok", "Jo", "CLUB"),
@@ -147,6 +155,37 @@ describe("EmailService", () => {
       expect(html).toContain("Bonjour Jo,");
       expect(html).not.toContain("<Jo>");
       expect(html).not.toContain("href");
+    });
+
+    it("can send once Resend is configured", () => {
+      expect(service.canSend()).toBe(true);
+    });
+
+    it("sends the inactive-account warning with the deletion date in French (#991)", async () => {
+      await service.sendInactiveAccountWarning(
+        "dancer@x.fr",
+        "<Jo>",
+        new Date("2029-07-10T08:00:00.000Z"),
+      );
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "dancer@x.fr",
+          from: "noreply@test.com",
+          subject: "Votre compte FFD Connect va être supprimé",
+        }),
+      );
+      const html = mockSend.mock.calls[0][0].html as string;
+      expect(html).toContain("Bonjour Jo,");
+      expect(html).not.toContain("<Jo>");
+      expect(html).toContain("à partir du 10 juillet 2029");
+      expect(html).toContain("connecter");
+    });
+
+    it("throws when Resend refuses the inactive-account warning", async () => {
+      mockSend.mockResolvedValue({ data: null, error: { message: "boom" } });
+      await expect(
+        service.sendInactiveAccountWarning("d@x.fr", "Jo", new Date()),
+      ).rejects.toThrow("Failed to send email: boom");
     });
 
     it("throws when Resend refuses the email-changed notice", async () => {
