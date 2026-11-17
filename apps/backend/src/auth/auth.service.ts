@@ -60,12 +60,14 @@ const BCRYPT_ROUNDS = 12;
 const BETA_AUTO_LICENSE_VALIDITY_MS = 365 * 24 * 60 * 60 * 1000;
 
 /**
- * Registration with the number of a licence released by a deleted account
- * (#897): refused, the number alone proves nothing about who registers.
- * Step 2 (#987) adds a verified recourse; until then, support.
+ * Registration refused because the licence cannot be claimed (409): linked to
+ * an account, or released by an account since deleted (#897). ONE answer for
+ * both, so a registration attempt never reveals that a licensee deleted their
+ * account; the reason is only logged, by licence id. Step 2 (#987) adds a
+ * verified recourse for a released licence; until then, support.
  */
-export const RELEASED_LICENCE_MESSAGE =
-  "Cette licence doit être vérifiée avant d'être rattachée à un nouveau compte. Contactez le support.";
+export const LICENCE_NOT_CLAIMABLE_MESSAGE =
+  "Cette licence ne peut pas être rattachée à un nouveau compte. Contactez le support.";
 
 export interface LoginResponse {
   access_token: string;
@@ -119,6 +121,22 @@ export class AuthService {
       select: erasedResultIdentitySelect,
     });
     return erased !== null;
+  }
+
+  /**
+   * 409 with the single "not claimable" answer (#897). The reason (linked /
+   * released) only goes to the log, with the licence id: never the number,
+   * which identifies a person (RGPD, #529).
+   */
+  private refuseUnclaimableLicence(
+    licenceId: string | null,
+    reason: "linked" | "released",
+  ): never {
+    this.logger.warn(
+      { licenceId, reason },
+      "Registration refused: licence not claimable",
+    );
+    throw new ConflictException(LICENCE_NOT_CLAIMABLE_MESSAGE);
   }
 
   /** Staging-only escape hatch: strictly "true" enables it, anything else off. */
@@ -293,11 +311,14 @@ export class AuthService {
       releasedAt: null,
     };
 
-    // 5. Check license not already linked to an account
+    // 5. Check license not already linked to an account, nor released by an
+    // account since deleted (#897): its number alone no longer links it. A
+    // licence to auto-create (id === null) was never held: unchanged.
     if (license.userId) {
-      throw new ConflictException(
-        "Cette licence est déjà associée à un compte",
-      );
+      this.refuseUnclaimableLicence(license.id, "linked");
+    }
+    if (license.id !== null && (await this.isReleasedLicence(license))) {
+      this.refuseUnclaimableLicence(license.id, "released");
     }
 
     // 6. Check license validity (valid through its whole Paris day, #384)
@@ -305,15 +326,6 @@ export class AuthService {
       throw new BadRequestException(
         "Cette licence a expiré. Contactez votre club pour le renouvellement.",
       );
-    }
-
-    // 6b. Released licence (#897): held by an account since deleted, so its
-    // number alone no longer links it. 403, not 409: the licence is free,
-    // but this registrant is not allowed to claim it without a verification
-    // (support today, #987 tomorrow) — retrying never succeeds. A licence to
-    // auto-create (id === null) was never held: unchanged.
-    if (license.id !== null && (await this.isReleasedLicence(license))) {
-      throw new ForbiddenException(RELEASED_LICENCE_MESSAGE);
     }
 
     // 7. Hash password
@@ -391,9 +403,7 @@ export class AuthService {
             err instanceof Prisma.PrismaClientKnownRequestError &&
             err.code === "P2002"
           ) {
-            throw new ConflictException(
-              "Cette licence est déjà associée à un compte",
-            );
+            throw new ConflictException(LICENCE_NOT_CLAIMABLE_MESSAGE);
           }
           throw err;
         }
@@ -402,9 +412,7 @@ export class AuthService {
         // licence (account deleted, link set to null) never designate the
         // new account. Conditional on the licence being still unclaimed.
         if (!(await linkUnclaimedLicence(tx, license.id, newUser.id))) {
-          throw new ConflictException(
-            "Cette licence est déjà associée à un compte",
-          );
+          throw new ConflictException(LICENCE_NOT_CLAIMABLE_MESSAGE);
         }
       }
 

@@ -12,7 +12,7 @@ import request from "supertest";
 import { purgeTestUser } from "./../scripts/purge-test-accounts.utils";
 import { AdminUserIdentifiersService } from "./../src/admin/admin-user-identifiers.service";
 import { AppModule } from "./../src/app.module";
-import { RELEASED_LICENCE_MESSAGE } from "./../src/auth/auth.service";
+import { LICENCE_NOT_CLAIMABLE_MESSAGE } from "./../src/auth/auth.service";
 import { toLicenseQrExpiry } from "./../src/licenses/qr/license-qr";
 import {
   LicenseQrService,
@@ -454,7 +454,7 @@ describe("Signed license QR check-in (e2e)", () => {
     expect(ok.body.user.firstName).toBe("Next");
   });
 
-  it("refuses with 403 a registration on a licence released by an account deletion (#897)", async () => {
+  it("refuses with 409 a registration on a licence released by an account deletion (#897)", async () => {
     // Not a seeded number: the purge keeps the licence and only unlinks it,
     // through the same deletion core as an in-app or back-office deletion.
     const number = "FFD-QR-8970";
@@ -500,8 +500,8 @@ describe("Signed license QR check-in (e2e)", () => {
         lastName: "Released",
         firstName: "Claim",
       })
-      .expect(403);
-    expect(String(refused.body.message)).toBe(RELEASED_LICENCE_MESSAGE);
+      .expect(409);
+    expect(String(refused.body.message)).toBe(LICENCE_NOT_CLAIMABLE_MESSAGE);
 
     // Nothing written: no account, the licence stays free and released.
     await expect(

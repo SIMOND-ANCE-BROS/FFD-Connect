@@ -1,6 +1,6 @@
 # Supprimer son compte FFD Connect
 
-_Dernière mise à jour : 8 novembre 2026_
+_Dernière mise à jour : 17 novembre 2026_
 
 Cette page explique comment supprimer votre compte de l'application **FFD Connect**
 (y compris sa version de test **FFD Connect Beta**), éditée par Gabin Simond, et ce
@@ -65,8 +65,12 @@ Certaines informations ne sont pas effacées, car elles ne vous appartiennent pa
 propre ou relèvent d'une obligation légale :
 
 - **Licence fédérale** : votre numéro de licence appartient à la Fédération Française
-  de Danse et reste valable auprès d'elle. Il est simplement **détaché** de
-  l'application, sans plus aucun lien avec un compte.
+  de Danse et reste valable auprès d'elle. Il est **détaché** de l'application,
+  sans plus aucun lien avec un compte, et la licence est marquée comme
+  **libérée**, avec la date de la suppression. Pour qu'une autre personne ne
+  puisse pas la reprendre en connaissant seulement son numéro, une nouvelle
+  inscription avec cette licence, la vôtre comprise, demande une **vérification
+  par le support** avant tout rattachement.
 - **Musiques ajoutées à la bibliothèque partagée** : elles restent disponibles pour
   les autres utilisateurs, **sans indication** de la personne qui les a ajoutées.
 - **Propositions de correction de musiques** : conservées **sans lien** avec votre

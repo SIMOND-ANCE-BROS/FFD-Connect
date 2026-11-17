@@ -84,17 +84,13 @@ export class AuthController {
     description: "Mot de passe invalide ou licence expirée",
   })
   @ApiResponse({
-    status: 403,
-    description:
-      "Licence libérée par la suppression d'un compte : à vérifier par le support avant tout rattachement (#897)",
-  })
-  @ApiResponse({
     status: 404,
     description: "Numéro de licence introuvable",
   })
   @ApiResponse({
     status: 409,
-    description: "Email ou licence déjà utilisé",
+    description:
+      "Email déjà utilisé, ou licence non rattachable (déjà associée à un compte, ou libérée par la suppression d'un compte, #897 : même réponse dans les deux cas)",
   })
   async register(
     @Body() body: RegisterDto,

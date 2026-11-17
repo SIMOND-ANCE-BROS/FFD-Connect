@@ -26,9 +26,11 @@ export type LicenceLinkWriter = Pick<
  * `userId: null` in the filter makes the link conditional: a concurrent
  * registration that linked the licence first leaves 0 matching rows (the
  * second UPDATE waits for the first one's row lock, then re-checks the
- * filter).
+ * filter). `releasedAt: null` keeps a licence released by a deleted account
+ * (#897) out of reach even if a caller skipped the registration check.
  *
- * Returns the new licence id, or null when the licence was already linked —
+ * Returns the new licence id, or null when the licence was already linked or
+ * released —
  * the caller answers 409 and rolls its transaction back.
  */
 export async function linkUnclaimedLicence(
@@ -38,7 +40,7 @@ export async function linkUnclaimedLicence(
 ): Promise<string | null> {
   const newId = randomUUID();
   const { count } = await tx.license.updateMany({
-    where: { id: licenceId, userId: null },
+    where: { id: licenceId, userId: null, releasedAt: null },
     data: { id: newId, userId },
   });
   if (count === 0) return null;

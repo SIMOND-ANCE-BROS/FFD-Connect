@@ -60,13 +60,34 @@
             }
           },
           "403": {
-            "description": "Licence libérée par la suppression d'un compte : à vérifier par le support avant tout rattachement (#897)"
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
           },
           "404": {
             "description": "Numéro de licence introuvable"
           },
           "409": {
-            "description": "Email ou licence déjà utilisé"
+            "description": "Email déjà utilisé, ou licence non rattachable (déjà associée à un compte, ou libérée par la suppression d'un compte, #897 : même réponse dans les deux cas)"
           },
           "429": {
             "description": "Trop de requêtes - Rate limit dépassé",

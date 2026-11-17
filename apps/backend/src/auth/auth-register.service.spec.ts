@@ -3,7 +3,6 @@ import { emailLookupFor } from "../../test/mocks/email-lookup.mock";
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -19,7 +18,7 @@ import {
   licenseClaimSelect,
 } from "../utils/prisma-selects";
 import { erasedLicenceFingerprint } from "../utils/results-pseudonym";
-import { AuthService, RELEASED_LICENCE_MESSAGE } from "./auth.service";
+import { AuthService, LICENCE_NOT_CLAIMABLE_MESSAGE } from "./auth.service";
 import { AuthTokenService } from "./auth-token.service";
 
 // Real hashes at the minimum cost: cost 12 ran these tests past their budget
@@ -847,7 +846,7 @@ describe("AuthService.register", () => {
 
       expect(tx.license.create).not.toHaveBeenCalled();
       expect(tx.license.updateMany).toHaveBeenCalledWith({
-        where: { id: "lic-1", userId: null },
+        where: { id: "lic-1", userId: null, releasedAt: null },
         data: { id: expect.any(String), userId: "user-beta" },
       });
     });
@@ -940,7 +939,11 @@ describe("AuthService.register", () => {
       await register();
 
       const call = tx.license.updateMany.mock.calls[0][0];
-      expect(call.where).toEqual({ id: "lic-1", userId: null });
+      expect(call.where).toEqual({
+        id: "lic-1",
+        userId: null,
+        releasedAt: null,
+      });
       expect(call.data.userId).toBe("user-new");
       expect(call.data.id).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
@@ -1033,15 +1036,23 @@ describe("AuthService.register", () => {
       expect(licenseClaimSelect).toMatchObject({ releasedAt: true });
     });
 
-    it("refuses a licence marked released at the deletion of its account, with 403", async () => {
+    const warnSpy = () =>
+      jest
+        .spyOn(
+          (authService as unknown as { logger: { warn: jest.Mock } }).logger,
+          "warn",
+        )
+        .mockImplementation(() => undefined);
+
+    it("refuses a licence marked released at the deletion of its account, with 409", async () => {
       prisma.license.findUnique.mockResolvedValue({
         ...validLicense,
         releasedAt: new Date("2026-11-01T10:00:00Z"),
       });
 
       const attempt = register();
-      await expect(attempt).rejects.toThrow(ForbiddenException);
-      await expect(attempt).rejects.toThrow(RELEASED_LICENCE_MESSAGE);
+      await expect(attempt).rejects.toThrow(ConflictException);
+      await expect(attempt).rejects.toThrow(LICENCE_NOT_CLAIMABLE_MESSAGE);
       expect(prisma.$transaction).not.toHaveBeenCalled();
       // The column settles it: no fingerprint lookup needed.
       expect(prisma.erasedResultIdentity.findUnique).not.toHaveBeenCalled();
@@ -1056,7 +1067,7 @@ describe("AuthService.register", () => {
       });
 
       await expect(register()).rejects.toThrow(
-        new ForbiddenException(RELEASED_LICENCE_MESSAGE),
+        new ConflictException(LICENCE_NOT_CLAIMABLE_MESSAGE),
       );
       // Same fingerprint as the deletion writes (#652), never the number.
       expect(prisma.erasedResultIdentity.findUnique).toHaveBeenCalledWith({
@@ -1074,7 +1085,7 @@ describe("AuthService.register", () => {
 
       expect(prisma.erasedResultIdentity.findUnique).toHaveBeenCalledTimes(1);
       expect(tx.license.updateMany).toHaveBeenCalledWith({
-        where: { id: "lic-1", userId: null },
+        where: { id: "lic-1", userId: null, releasedAt: null },
         data: { id: expect.any(String), userId: "user-new" },
       });
       expect(result.access_token).toBe("jwt-tok");
@@ -1104,14 +1115,51 @@ describe("AuthService.register", () => {
       expect(tx.license.updateMany).toHaveBeenCalledTimes(1);
     });
 
-    it("answers 409, not 403, for a licence already linked to an account", async () => {
-      prisma.license.findUnique.mockResolvedValue({
+    it("answers a released licence exactly like a linked one: never reveals a deleted account", async () => {
+      const refusal = async (licence: object) => {
+        prisma.license.findUnique.mockResolvedValue(licence);
+        const error: unknown = await register().catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(ConflictException);
+        const conflict = error as ConflictException;
+        return { status: conflict.getStatus(), body: conflict.getResponse() };
+      };
+      const warn = warnSpy();
+
+      const linked = await refusal({ ...validLicense, userId: "other-user" });
+      const released = await refusal({
         ...validLicense,
-        userId: "other-user",
         releasedAt: new Date("2026-11-01T10:00:00Z"),
       });
 
-      await expect(register()).rejects.toThrow(ConflictException);
+      expect(released).toEqual(linked);
+      expect(linked.status).toBe(409);
+      expect(linked.body).toMatchObject({
+        message: LICENCE_NOT_CLAIMABLE_MESSAGE,
+      });
+      // The reason is only logged, by licence id, never by number (#529).
+      expect(warn).toHaveBeenNthCalledWith(
+        1,
+        { licenceId: "lic-1", reason: "linked" },
+        expect.any(String),
+      );
+      expect(warn).toHaveBeenNthCalledWith(
+        2,
+        { licenceId: "lic-1", reason: "released" },
+        expect.any(String),
+      );
+      expect(JSON.stringify(warn.mock.calls)).not.toContain("FFD-2025-001");
+    });
+
+    it("answers 409 for a released licence even once expired, like a linked one", async () => {
+      prisma.license.findUnique.mockResolvedValue({
+        ...validLicense,
+        validUntil: new Date("2020-01-01"),
+        releasedAt: new Date("2026-11-01T10:00:00Z"),
+      });
+
+      await expect(register()).rejects.toThrow(
+        new ConflictException(LICENCE_NOT_CLAIMABLE_MESSAGE),
+      );
     });
 
     it("leaves the BETA_AUTO_LICENSE auto-creation unchanged (never held)", async () => {
