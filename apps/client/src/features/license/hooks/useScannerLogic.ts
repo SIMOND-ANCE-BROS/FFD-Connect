@@ -122,7 +122,8 @@ export const useScannerLogic = (initialCompetitionId?: string) => {
       setError(null);
 
       try {
-        logger.debug("Processing Code:", data);
+        // Not the payload: it identifies the licensee (#990).
+        logger.debug("Processing code");
         const response = await CheckinService.checkIn(competitionId, data);
         setResult(response);
         const hasSuccess = response.registrations.some(

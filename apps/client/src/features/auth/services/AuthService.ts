@@ -505,7 +505,8 @@ export const AuthService = {
         message = "Identifiant ou mot de passe incorrect";
       }
 
-      logger.info("Login attempt", { email: username });
+      // Never the identifier: it is an e-mail, personal data (#990).
+      logger.info("Login attempt failed", { status });
       throw new Error(message); // Propagate to UI with friendly message
     }
   },
@@ -579,7 +580,8 @@ export const AuthService = {
       // repasser par login(), donc sans cet appel il n'enregistrerait son
       // appareil qu'à sa deuxième session.
       void registerDeviceTokenForPush();
-      logger.info(`User registered: ${email} (Role: ${user.role})`);
+      // Role only: the e-mail is personal data (#990).
+      logger.info(`User registered (Role: ${user.role})`);
     } catch (error: unknown) {
       let message = "Erreur lors de l'inscription";
 
@@ -699,7 +701,8 @@ export const AuthService = {
     // copy) and per-account state go, like at a logout. After the token
     // switch, so a refetch can only bring the target's data back.
     await runSessionEndCleanups();
-    logger.info(`Impersonation started → ${targetName}`);
+    // Not the target's name: personal data (#990).
+    logger.info("Impersonation started");
   },
 
   /**
@@ -1150,7 +1153,7 @@ export const AuthService = {
   forgotPassword: async (email: string): Promise<void> => {
     try {
       await api.post("/auth/forgot-password", { email });
-      logger.info(`Password reset requested for ${email}`);
+      logger.info("Password reset requested");
     } catch (error: unknown) {
       logger.error("Failed to request password reset", error);
       let message = "Erreur lors de la demande de réinitialisation.";
