@@ -18,13 +18,20 @@ import {
   BETA_LICENSE_PLACEHOLDER_CATEGORY,
 } from "../licenses/beta-license-placeholder";
 import { isLicenseExpired } from "../licenses/license-expiry";
+import { normalizeLicenseNumber } from "../licenses/license-number.util";
 import { linkUnclaimedLicence } from "../licenses/license-relink";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   accountStatusSelect,
+  erasedResultIdentitySelect,
   idOnlySelect,
+  licenseClaimSelect,
   licenseIdSelect,
 } from "../utils/prisma-selects";
+import {
+  erasedLicenceFingerprint,
+  resultsPseudonymisationKey,
+} from "../utils/results-pseudonym";
 import {
   ACCOUNT_DISABLED_MESSAGE,
   AccountStatusFields,
@@ -51,6 +58,16 @@ const BCRYPT_ROUNDS = 12;
  * an unknown discipline — never "Ten Dance" (#555) — and a visible fake club.
  */
 const BETA_AUTO_LICENSE_VALIDITY_MS = 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * Registration refused because the licence cannot be claimed (409): linked to
+ * an account, or released by an account since deleted (#897). ONE answer for
+ * both, so a registration attempt never reveals that a licensee deleted their
+ * account; the reason is only logged, by licence id. Step 2 (#987) adds a
+ * verified recourse for a released licence; until then, support.
+ */
+export const LICENCE_NOT_CLAIMABLE_MESSAGE =
+  "Cette licence ne peut pas être rattachée à un nouveau compte. Contactez le support.";
 
 export interface LoginResponse {
   access_token: string;
@@ -83,6 +100,44 @@ export class AuthService {
     private authTokenService: AuthTokenService,
     private configService: ConfigService,
   ) {}
+
+  /**
+   * A licence was held by an account since deleted (#897): marked at the
+   * deletion (`releasedAt`, since #897), or — for deletions before it — its
+   * number's keyed fingerprint is in `ErasedResultIdentity` (#652, written
+   * only when the pseudonymisation key is configured). Never true for a
+   * licence no account ever held (federation import, staging seeds).
+   */
+  private async isReleasedLicence(licence: {
+    number: string;
+    releasedAt: Date | null;
+  }): Promise<boolean> {
+    if (licence.releasedAt) return true;
+    const key = resultsPseudonymisationKey(this.configService);
+    const number = normalizeLicenseNumber(licence.number);
+    if (!key || !number) return false;
+    const erased = await this.prisma.erasedResultIdentity.findUnique({
+      where: { fingerprint: erasedLicenceFingerprint(key, number) },
+      select: erasedResultIdentitySelect,
+    });
+    return erased !== null;
+  }
+
+  /**
+   * 409 with the single "not claimable" answer (#897). The reason (linked /
+   * released) only goes to the log, with the licence id: never the number,
+   * which identifies a person (RGPD, #529).
+   */
+  private refuseUnclaimableLicence(
+    licenceId: string | null,
+    reason: "linked" | "released",
+  ): never {
+    this.logger.warn(
+      { licenceId, reason },
+      "Registration refused: licence not claimable",
+    );
+    throw new ConflictException(LICENCE_NOT_CLAIMABLE_MESSAGE);
+  }
 
   /** Staging-only escape hatch: strictly "true" enables it, anything else off. */
   private isBetaAutoLicenseEnabled(): boolean {
@@ -226,14 +281,7 @@ export class AuthService {
     const trimmedLicenseNumber = licenseNumber.trim();
     const existingLicense = await this.prisma.license.findUnique({
       where: { number: trimmedLicenseNumber },
-      select: {
-        id: true,
-        number: true,
-        validUntil: true,
-        category: true,
-        clubName: true,
-        userId: true,
-      },
+      select: licenseClaimSelect,
     });
 
     // Staging only (BETA_AUTO_LICENSE=true): an unknown number is auto-created
@@ -260,13 +308,17 @@ export class AuthService {
       category: BETA_LICENSE_PLACEHOLDER_CATEGORY,
       clubName: BETA_AUTO_LICENSE_CLUB_NAME,
       userId: null,
+      releasedAt: null,
     };
 
-    // 5. Check license not already linked to an account
+    // 5. Check license not already linked to an account, nor released by an
+    // account since deleted (#897): its number alone no longer links it. A
+    // licence to auto-create (id === null) was never held: unchanged.
     if (license.userId) {
-      throw new ConflictException(
-        "Cette licence est déjà associée à un compte",
-      );
+      this.refuseUnclaimableLicence(license.id, "linked");
+    }
+    if (license.id !== null && (await this.isReleasedLicence(license))) {
+      this.refuseUnclaimableLicence(license.id, "released");
     }
 
     // 6. Check license validity (valid through its whole Paris day, #384)
@@ -351,9 +403,7 @@ export class AuthService {
             err instanceof Prisma.PrismaClientKnownRequestError &&
             err.code === "P2002"
           ) {
-            throw new ConflictException(
-              "Cette licence est déjà associée à un compte",
-            );
+            throw new ConflictException(LICENCE_NOT_CLAIMABLE_MESSAGE);
           }
           throw err;
         }
@@ -362,9 +412,7 @@ export class AuthService {
         // licence (account deleted, link set to null) never designate the
         // new account. Conditional on the licence being still unclaimed.
         if (!(await linkUnclaimedLicence(tx, license.id, newUser.id))) {
-          throw new ConflictException(
-            "Cette licence est déjà associée à un compte",
-          );
+          throw new ConflictException(LICENCE_NOT_CLAIMABLE_MESSAGE);
         }
       }
 

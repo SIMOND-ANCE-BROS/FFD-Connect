@@ -20,7 +20,7 @@ describe("linkUnclaimedLicence (#881)", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
     expect(tx.license.updateMany).toHaveBeenCalledWith({
-      where: { id: "lic-old", userId: null },
+      where: { id: "lic-old", userId: null, releasedAt: null },
       data: { id: newId, userId: "user-1" },
     });
     // The numbers the licence carried before follow it.
@@ -35,6 +35,21 @@ describe("linkUnclaimedLicence (#881)", () => {
     const first = await linkUnclaimedLicence(client, "lic-old", "user-1");
     const second = await linkUnclaimedLicence(client, "lic-old", "user-2");
     expect(first).not.toBe(second);
+  });
+
+  it("never links a licence released by a deleted account (#897)", async () => {
+    const { tx, client } = writer(0);
+
+    await expect(
+      linkUnclaimedLicence(client, "lic-released", "user-1"),
+    ).resolves.toBeNull();
+    // The release date is part of the conditional UPDATE itself.
+    expect(tx.license.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ releasedAt: null }),
+      }),
+    );
+    expect(tx.retiredLicenseNumber.updateMany).not.toHaveBeenCalled();
   });
 
   it("returns null and moves nothing when the licence is already linked", async () => {

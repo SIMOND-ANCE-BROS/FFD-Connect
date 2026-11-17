@@ -13,7 +13,12 @@ import * as bcrypt from "bcrypt";
 import { BETA_LICENSE_PLACEHOLDER_CATEGORY } from "../licenses/beta-license-placeholder";
 import { PrismaService } from "../prisma/prisma.service";
 import { PRIVACY_POLICY_VERSION } from "../privacy-policy/privacy-policy-version";
-import { AuthService } from "./auth.service";
+import {
+  erasedResultIdentitySelect,
+  licenseClaimSelect,
+} from "../utils/prisma-selects";
+import { erasedLicenceFingerprint } from "../utils/results-pseudonym";
+import { AuthService, LICENCE_NOT_CLAIMABLE_MESSAGE } from "./auth.service";
 import { AuthTokenService } from "./auth-token.service";
 
 // Real hashes at the minimum cost: cost 12 ran these tests past their budget
@@ -35,6 +40,7 @@ describe("AuthService.register", () => {
       update: jest.Mock;
     };
     license: { findUnique: jest.Mock; update: jest.Mock };
+    erasedResultIdentity: { findUnique: jest.Mock };
     $transaction: jest.Mock;
     $queryRaw: jest.Mock;
   };
@@ -49,6 +55,8 @@ describe("AuthService.register", () => {
         update: jest.fn().mockResolvedValue({}),
       },
       license: { findUnique: jest.fn(), update: jest.fn() },
+      // No account ever held the number by default (#897).
+      erasedResultIdentity: { findUnique: jest.fn().mockResolvedValue(null) },
       $transaction: jest.fn(),
       // E-mail lookup (#465): the address is free by default.
       $queryRaw: jest.fn().mockResolvedValue([]),
@@ -86,6 +94,7 @@ describe("AuthService.register", () => {
     category: "Latin",
     clubName: "Club Paris Danse",
     userId: null,
+    releasedAt: null,
   };
 
   it("registers a new user with a valid unclaimed license", async () => {
@@ -837,7 +846,7 @@ describe("AuthService.register", () => {
 
       expect(tx.license.create).not.toHaveBeenCalled();
       expect(tx.license.updateMany).toHaveBeenCalledWith({
-        where: { id: "lic-1", userId: null },
+        where: { id: "lic-1", userId: null, releasedAt: null },
         data: { id: expect.any(String), userId: "user-beta" },
       });
     });
@@ -930,7 +939,11 @@ describe("AuthService.register", () => {
       await register();
 
       const call = tx.license.updateMany.mock.calls[0][0];
-      expect(call.where).toEqual({ id: "lic-1", userId: null });
+      expect(call.where).toEqual({
+        id: "lic-1",
+        userId: null,
+        releasedAt: null,
+      });
       expect(call.data.userId).toBe("user-new");
       expect(call.data.id).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
@@ -961,6 +974,212 @@ describe("AuthService.register", () => {
       mockLinkTransaction(jest.fn().mockRejectedValue(boom));
 
       await expect(register()).rejects.toBe(boom);
+    });
+  });
+
+  describe("licence released by a deleted account (#897)", () => {
+    // A fake key (not a secret): only its length matters.
+    const KEY = "k".repeat(40);
+
+    const newUser = {
+      id: "user-new",
+      email: "new@example.com",
+      firstName: "",
+      lastName: "Dupont",
+      role: "LICENSEE",
+      clubId: null,
+      clubName: "Club Paris Danse",
+      category: "Latin",
+      ageGroup: null,
+      passportLevelLatin: null,
+      passportLevelStandard: null,
+    };
+
+    const mockLinkTransaction = () => {
+      const tx = {
+        user: { create: jest.fn().mockResolvedValue(newUser) },
+        license: {
+          create: jest.fn().mockResolvedValue({ id: "lic-new" }),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+        retiredLicenseNumber: {
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+      };
+      prisma.$transaction.mockImplementation(
+        async (fn: (t: unknown) => Promise<unknown>) => fn(tx),
+      );
+      return tx;
+    };
+
+    const configure = (values: Record<string, string>) =>
+      configService.get.mockImplementation((key: string) => values[key]);
+
+    const register = (number = "FFD-2025-001") =>
+      authService.register("new@example.com", "MonPass1!abc", number, "Dupont");
+
+    beforeEach(() => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      configure({ RESULTS_PSEUDONYMISATION_KEY: KEY });
+    });
+
+    it("reads the licence with the shared claim select, release date included", async () => {
+      prisma.license.findUnique.mockResolvedValue(validLicense);
+      mockLinkTransaction();
+
+      await register();
+
+      expect(prisma.license.findUnique).toHaveBeenCalledWith({
+        where: { number: "FFD-2025-001" },
+        select: licenseClaimSelect,
+      });
+      expect(licenseClaimSelect).toMatchObject({ releasedAt: true });
+    });
+
+    const warnSpy = () =>
+      jest
+        .spyOn(
+          (authService as unknown as { logger: { warn: jest.Mock } }).logger,
+          "warn",
+        )
+        .mockImplementation(() => undefined);
+
+    it("refuses a licence marked released at the deletion of its account, with 409", async () => {
+      prisma.license.findUnique.mockResolvedValue({
+        ...validLicense,
+        releasedAt: new Date("2026-11-01T10:00:00Z"),
+      });
+
+      const attempt = register();
+      await expect(attempt).rejects.toThrow(ConflictException);
+      await expect(attempt).rejects.toThrow(LICENCE_NOT_CLAIMABLE_MESSAGE);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      // The column settles it: no fingerprint lookup needed.
+      expect(prisma.erasedResultIdentity.findUnique).not.toHaveBeenCalled();
+      expect(authTokenService.createRefreshToken).not.toHaveBeenCalled();
+    });
+
+    it("refuses a licence whose number was erased with a deleted account before #897", async () => {
+      prisma.license.findUnique.mockResolvedValue(validLicense);
+      prisma.erasedResultIdentity.findUnique.mockResolvedValue({
+        fingerprint: "f",
+        createdAt: new Date("2026-10-01T10:00:00Z"),
+      });
+
+      await expect(register()).rejects.toThrow(
+        new ConflictException(LICENCE_NOT_CLAIMABLE_MESSAGE),
+      );
+      // Same fingerprint as the deletion writes (#652), never the number.
+      expect(prisma.erasedResultIdentity.findUnique).toHaveBeenCalledWith({
+        where: { fingerprint: erasedLicenceFingerprint(KEY, "FFD-2025-001") },
+        select: erasedResultIdentitySelect,
+      });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("still links a licence no account ever held", async () => {
+      prisma.license.findUnique.mockResolvedValue(validLicense);
+      const tx = mockLinkTransaction();
+
+      const result = await register();
+
+      expect(prisma.erasedResultIdentity.findUnique).toHaveBeenCalledTimes(1);
+      expect(tx.license.updateMany).toHaveBeenCalledWith({
+        where: { id: "lic-1", userId: null, releasedAt: null },
+        data: { id: expect.any(String), userId: "user-new" },
+      });
+      expect(result.access_token).toBe("jwt-tok");
+    });
+
+    it("skips the fingerprint lookup without a pseudonymisation key (production unset)", async () => {
+      configure({ NODE_ENV: "production" });
+      prisma.license.findUnique.mockResolvedValue(validLicense);
+      const tx = mockLinkTransaction();
+
+      await register();
+
+      expect(prisma.erasedResultIdentity.findUnique).not.toHaveBeenCalled();
+      expect(tx.license.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it("skips the fingerprint lookup for a stored number not shaped like a licence number", async () => {
+      prisma.license.findUnique.mockResolvedValue({
+        ...validLicense,
+        number: "#odd",
+      });
+      const tx = mockLinkTransaction();
+
+      await register("#odd");
+
+      expect(prisma.erasedResultIdentity.findUnique).not.toHaveBeenCalled();
+      expect(tx.license.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it("answers a released licence exactly like a linked one: never reveals a deleted account", async () => {
+      const refusal = async (licence: object) => {
+        prisma.license.findUnique.mockResolvedValue(licence);
+        const error: unknown = await register().catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(ConflictException);
+        const conflict = error as ConflictException;
+        return { status: conflict.getStatus(), body: conflict.getResponse() };
+      };
+      const warn = warnSpy();
+
+      const linked = await refusal({ ...validLicense, userId: "other-user" });
+      const released = await refusal({
+        ...validLicense,
+        releasedAt: new Date("2026-11-01T10:00:00Z"),
+      });
+
+      expect(released).toEqual(linked);
+      expect(linked.status).toBe(409);
+      expect(linked.body).toMatchObject({
+        message: LICENCE_NOT_CLAIMABLE_MESSAGE,
+      });
+      // The reason is only logged, by licence id, never by number (#529).
+      expect(warn).toHaveBeenNthCalledWith(
+        1,
+        { licenceId: "lic-1", reason: "linked" },
+        expect.any(String),
+      );
+      expect(warn).toHaveBeenNthCalledWith(
+        2,
+        { licenceId: "lic-1", reason: "released" },
+        expect.any(String),
+      );
+      expect(JSON.stringify(warn.mock.calls)).not.toContain("FFD-2025-001");
+    });
+
+    it("answers 409 for a released licence even once expired, like a linked one", async () => {
+      prisma.license.findUnique.mockResolvedValue({
+        ...validLicense,
+        validUntil: new Date("2020-01-01"),
+        releasedAt: new Date("2026-11-01T10:00:00Z"),
+      });
+
+      await expect(register()).rejects.toThrow(
+        new ConflictException(LICENCE_NOT_CLAIMABLE_MESSAGE),
+      );
+    });
+
+    it("leaves the BETA_AUTO_LICENSE auto-creation unchanged (never held)", async () => {
+      configure({
+        RESULTS_PSEUDONYMISATION_KEY: KEY,
+        BETA_AUTO_LICENSE: "true",
+      });
+      prisma.license.findUnique.mockResolvedValue(null);
+      // Even a fingerprint on record does not block a number with no licence row.
+      prisma.erasedResultIdentity.findUnique.mockResolvedValue({
+        fingerprint: "f",
+        createdAt: new Date(),
+      });
+      const tx = mockLinkTransaction();
+
+      await register("20990101-beta-01");
+
+      expect(prisma.erasedResultIdentity.findUnique).not.toHaveBeenCalled();
+      expect(tx.license.create).toHaveBeenCalledTimes(1);
+      expect(tx.license.updateMany).not.toHaveBeenCalled();
     });
   });
 });

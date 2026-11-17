@@ -583,13 +583,20 @@ describe("Competition results import (integration, real DB)", () => {
     expect(sendToUsers).toHaveBeenCalledTimes(1);
   });
   it("a deleted account's licence re-claimed by a new account never re-attaches the old rankings, only later ones (#899)", async () => {
-    // Bravo was deleted above: the licence is free, and anyone knowing its
-    // number can claim it at registration (#897).
+    // Bravo was deleted above: the licence is free but released (#897), so
+    // registration refuses it and so does the link itself.
     const licence = await prisma.license.findUnique({
       where: { number: licenceBravo },
-      select: { id: true, userId: true },
+      select: { id: true, userId: true, releasedAt: true },
     });
     expect(licence?.userId).toBeNull();
+    expect(licence?.releasedAt).toBeInstanceOf(Date);
+    // A re-claim only happens after a verified recourse (support today,
+    // #987 later), which lifts the release before linking.
+    await prisma.license.update({
+      where: { id: licence?.id ?? "" },
+      data: { releasedAt: null },
+    });
     const newcomer = await prisma.user.create({
       data: {
         email: `results-import-newcomer-${suffix}@test.local`,

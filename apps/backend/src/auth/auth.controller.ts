@@ -72,7 +72,7 @@ export class AuthController {
   @ApiOperation({
     summary: "Inscription avec vérification de licence FFD",
     description:
-      "Crée un compte utilisateur en vérifiant que le numéro de licence FFD existe, est valide, et n'est pas déjà associé à un compte.",
+      "Crée un compte utilisateur en vérifiant que le numéro de licence FFD existe, est valide, n'est pas déjà associé à un compte et n'a pas été libérée par la suppression d'un compte (#897).",
   })
   @ApiBody({ type: RegisterDto })
   @ApiResponse({
@@ -89,7 +89,8 @@ export class AuthController {
   })
   @ApiResponse({
     status: 409,
-    description: "Email ou licence déjà utilisé",
+    description:
+      "Email déjà utilisé, ou licence non rattachable (déjà associée à un compte, ou libérée par la suppression d'un compte, #897 : même réponse dans les deux cas)",
   })
   async register(
     @Body() body: RegisterDto,

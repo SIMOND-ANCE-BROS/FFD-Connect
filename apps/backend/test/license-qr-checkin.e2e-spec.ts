@@ -12,6 +12,7 @@ import request from "supertest";
 import { purgeTestUser } from "./../scripts/purge-test-accounts.utils";
 import { AdminUserIdentifiersService } from "./../src/admin/admin-user-identifiers.service";
 import { AppModule } from "./../src/app.module";
+import { LICENCE_NOT_CLAIMABLE_MESSAGE } from "./../src/auth/auth.service";
 import { toLicenseQrExpiry } from "./../src/licenses/qr/license-qr";
 import {
   LicenseQrService,
@@ -397,6 +398,9 @@ describe("Signed license QR check-in (e2e)", () => {
     });
 
     // The account is deleted: the licence stays, unlinked (ON DELETE SET NULL).
+    // A raw delete, as before #897 without a pseudonymisation key: neither
+    // `releasedAt` nor a fingerprint marks the licence, so it is still linked
+    // (the #897 refusal is covered below).
     await prisma.user.delete({ where: { id: formerHolder.id } });
 
     // Someone registers with the same number.
@@ -448,6 +452,70 @@ describe("Signed license QR check-in (e2e)", () => {
     expect(JSON.parse(nextQr)).toMatchObject({ id: number, lid: licence.id });
     const ok = await checkIn(nextQr).expect(201);
     expect(ok.body.user.firstName).toBe("Next");
+  });
+
+  it("refuses with 409 a registration on a licence released by an account deletion (#897)", async () => {
+    // Not a seeded number: the purge keeps the licence and only unlinks it,
+    // through the same deletion core as an in-app or back-office deletion.
+    const number = "FFD-QR-8970";
+    const formerHolder = await prisma.user.create({
+      data: {
+        email: "qr-released-holder@ffd.com",
+        password: "hash",
+        firstName: "Former",
+        lastName: "Holder",
+        role: UserRole.LICENSEE,
+        license: {
+          create: {
+            number,
+            validUntil: new Date(Date.now() + 120 * 86_400_000),
+            category: "Standard",
+            clubName: "Club QR",
+          },
+        },
+      },
+      select: { id: true },
+    });
+    await purgeTestUser(
+      {
+        prisma,
+        files: { deleteFiles: jest.fn().mockResolvedValue(new Set()) },
+        warn: jest.fn(),
+      },
+      formerHolder.id,
+    );
+    await expect(
+      prisma.license.findUniqueOrThrow({
+        where: { number },
+        select: { userId: true, releasedAt: true },
+      }),
+    ).resolves.toEqual({ userId: null, releasedAt: expect.any(Date) });
+
+    const refused = await request(server())
+      .post("/api/v1/auth/register")
+      .send({
+        email: "qr-released@ffd.com",
+        password: "Brand-New-Pass1!",
+        licenseNumber: number,
+        lastName: "Released",
+        firstName: "Claim",
+      })
+      .expect(409);
+    expect(String(refused.body.message)).toBe(LICENCE_NOT_CLAIMABLE_MESSAGE);
+
+    // Nothing written: no account, the licence stays free and released.
+    await expect(
+      prisma.user.findUnique({
+        where: { email: "qr-released@ffd.com" },
+        select: { id: true },
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      prisma.license.findUniqueOrThrow({
+        where: { number },
+        select: { userId: true, releasedAt: true },
+      }),
+    ).resolves.toEqual({ userId: null, releasedAt: expect.any(Date) });
   });
 
   it("links an unclaimed licence to one account only when two registrations race (#881)", async () => {
