@@ -170,6 +170,35 @@ describe("Inactive-account purge selection (integration, real DB)", () => {
     expect(counts.deletion).toBeGreaterThanOrEqual(2);
   });
 
+  it("crash between claim and send: never deleted, the stale claim is retried", async () => {
+    // Claimed 2 h ago (lease over), never sent: the replica died mid-send.
+    const crashed = await user({
+      createdAt: daysAgo(2000),
+      lastLoginAt: daysAgo(YEARS_3 + 60),
+    });
+    await prisma.user.update({
+      where: { id: crashed },
+      data: { inactivityWarningClaimedAt: new Date(NOW.getTime() - 7.2e6) },
+      select: idOnlySelect,
+    });
+    // Claimed a minute ago: another replica is sending it right now.
+    const inFlight = await user({
+      createdAt: daysAgo(2000),
+      lastLoginAt: daysAgo(YEARS_3 + 60),
+    });
+    await prisma.user.update({
+      where: { id: inFlight },
+      data: { inactivityWarningClaimedAt: new Date(NOW.getTime() - 60_000) },
+      select: idOnlySelect,
+    });
+
+    await expect(query.isDeletionDue(crashed, NOW)).resolves.toBe(false);
+    await expect(query.isDeletionDue(inFlight, NOW)).resolves.toBe(false);
+    const due = await allWarningDue();
+    expect(due).toContain(crashed);
+    expect(due).not.toContain(inFlight);
+  });
+
   it("deletes through the shared chain: the licence is released (#897)", async () => {
     const id = await user({
       createdAt: daysAgo(2000),

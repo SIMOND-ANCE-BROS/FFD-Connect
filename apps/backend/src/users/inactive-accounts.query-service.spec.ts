@@ -6,6 +6,7 @@ import {
 import {
   deletionDueWhere,
   LastLoginAtRef,
+  warningClaimableWhere,
   warningDueWhere,
 } from "./inactive-account.rules";
 import { InactiveAccountsQueryService } from "./inactive-accounts.query-service";
@@ -36,7 +37,9 @@ describe("InactiveAccountsQueryService (#991)", () => {
     ]);
 
     expect(prisma.user.findMany).toHaveBeenCalledWith({
-      where: warningDueWhere(NOW, REF),
+      where: {
+        AND: [warningDueWhere(NOW, REF), warningClaimableWhere(NOW)],
+      },
       select: inactiveAccountWarningSelect,
       orderBy: { id: "asc" },
       take: 50,
@@ -50,7 +53,12 @@ describe("InactiveAccountsQueryService (#991)", () => {
 
     expect(prisma.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { AND: [warningDueWhere(NOW, REF), { id: { gt: "u9" } }] },
+        where: {
+          AND: [
+            { AND: [warningDueWhere(NOW, REF), warningClaimableWhere(NOW)] },
+            { id: { gt: "u9" } },
+          ],
+        },
         take: 10,
       }),
     );

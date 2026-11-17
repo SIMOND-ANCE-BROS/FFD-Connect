@@ -216,16 +216,17 @@ export class EmailService {
    * THROWS when Resend is not configured: the purge records the warning only
    * once it really left, and never deletes an account it did not warn.
    * Circuit breaker + timeout; throws on failure, the caller degrades.
+   * Returns the Resend message id: the proof the provider accepted it.
    */
   async sendInactiveAccountWarning(
     email: string,
     firstName: string,
     deletionDate: Date,
-  ): Promise<void> {
+  ): Promise<string> {
     if (!this.resend) {
       throw new Error("Inactive-account warning not sent (no Resend config)");
     }
-    await this.send(
+    return this.send(
       this.resend,
       "email",
       {

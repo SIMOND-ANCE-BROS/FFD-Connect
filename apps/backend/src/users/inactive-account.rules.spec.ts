@@ -8,6 +8,8 @@ import {
   LastLoginAtRef,
   noticeCutoff,
   scheduledDeletionDate,
+  WARNING_CLAIM_LEASE_MS,
+  warningClaimableWhere,
   warningCutoff,
   warningDueWhere,
 } from "./inactive-account.rules";
@@ -87,6 +89,31 @@ describe("inactive-account rules (#991)", () => {
       expect(and).toContainEqual({
         OR: [{ lastLoginAt: null }, { inactivityWarningSentAt: { gt: REF } }],
       });
+    });
+  });
+
+  describe("warningClaimableWhere", () => {
+    it("is 1 hour", () => {
+      expect(WARNING_CLAIM_LEASE_MS).toBe(3_600_000);
+    });
+
+    it("accepts no claim or a stale one (crashed replica): retried", () => {
+      expect(warningClaimableWhere(NOW)).toEqual({
+        OR: [
+          { inactivityWarningClaimedAt: null },
+          {
+            inactivityWarningClaimedAt: {
+              lt: new Date("2029-06-15T09:00:00.000Z"),
+            },
+          },
+        ],
+      });
+    });
+
+    it("the deletion filter never reads the claim", () => {
+      expect(JSON.stringify(deletionDueWhere(NOW, REF))).not.toContain(
+        "inactivityWarningClaimedAt",
+      );
     });
   });
 

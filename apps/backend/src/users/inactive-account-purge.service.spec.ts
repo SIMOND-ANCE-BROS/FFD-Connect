@@ -10,6 +10,7 @@ import { AccountDeletionService } from "./account-deletion.service";
 import {
   LastLoginAtRef,
   scheduledDeletionDate,
+  warningClaimableWhere,
   warningDueWhere,
 } from "./inactive-account.rules";
 import {
@@ -40,7 +41,6 @@ const account = (
   firstName: "Camille",
   createdAt: new Date("2020-01-01T00:00:00.000Z"),
   lastLoginAt: new Date("2021-01-01T00:00:00.000Z"),
-  inactivityWarningSentAt: null,
   ...overrides,
 });
 
@@ -84,7 +84,7 @@ describe("InactiveAccountPurgeService (#991)", () => {
     query.countDue.mockResolvedValue({ warning: 0, deletion: 0 });
     deletion.deleteAccount.mockResolvedValue(undefined);
     email.canSend.mockReturnValue(true);
-    email.sendInactiveAccountWarning.mockResolvedValue(undefined);
+    email.sendInactiveAccountWarning.mockResolvedValue("msg_1");
     redis.exists.mockResolvedValue(false);
     redis.set.mockResolvedValue(undefined);
     jest.spyOn(Logger.prototype, "log").mockImplementation(() => undefined);
@@ -100,9 +100,9 @@ describe("InactiveAccountPurgeService (#991)", () => {
     );
   });
 
-  afterEach(() => {
-    service.onModuleDestroy();
+  afterEach(async () => {
     jest.useRealTimers();
+    await service.onModuleDestroy();
     jest.restoreAllMocks();
   });
 
@@ -129,15 +129,52 @@ describe("InactiveAccountPurgeService (#991)", () => {
       expect(run).not.toHaveBeenCalled();
     });
 
-    it("cancels the boot pass on shutdown", () => {
+    it("cancels the boot pass on shutdown", async () => {
       jest.useFakeTimers();
       const run = jest.spyOn(service, "runPass").mockResolvedValue(null);
 
       service.onModuleInit();
-      service.onModuleDestroy();
+      await service.onModuleDestroy();
       jest.advanceTimersByTime(PURGE_BOOT_DELAY_MS);
 
       expect(run).not.toHaveBeenCalled();
+    });
+
+    it("shutdown awaits the pass in progress, which stops after the current account", async () => {
+      let finishSend: (id: string) => void = () => undefined;
+      query.findWarningDue.mockResolvedValueOnce([account("a"), account("b")]);
+      email.sendInactiveAccountWarning.mockReturnValueOnce(
+        new Promise<string>((resolve) => {
+          finishSend = resolve;
+        }),
+      );
+
+      const pass = service.runPass("cron");
+      await new Promise((resolve) => setImmediate(resolve));
+      let destroyed = false;
+      const destroy = service.onModuleDestroy().then(() => {
+        destroyed = true;
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(destroyed).toBe(false); // still waiting for the in-flight send
+
+      finishSend("msg_a");
+      await destroy;
+      const report = await pass;
+
+      // "a" was recorded as sent before shutdown completed; "b" untouched.
+      expect(email.sendInactiveAccountWarning).toHaveBeenCalledTimes(1);
+      expect(prisma.user.updateMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            inactivityWarningSentAt: expect.any(Date),
+          }),
+        }),
+      );
+      expect(report).toEqual(expect.objectContaining({ warned: 1 }));
+      expect(query.findDeletionDueIds).not.toHaveBeenCalled();
+      // No new pass once stopping.
+      await expect(service.runPass("cron")).resolves.toBeNull();
     });
 
     it("the hourly cron runs a pass", async () => {
@@ -288,7 +325,13 @@ describe("InactiveAccountPurgeService (#991)", () => {
   describe("warnDueAccounts", () => {
     const NOW = new Date("2029-06-15T10:00:00.000Z");
 
-    it("claims the warning atomically, then sends it with the deletion date", async () => {
+    /** Every `data` written by updateMany, in order. */
+    const writes = () =>
+      prisma.user.updateMany.mock.calls.map(
+        (c: [{ data: Record<string, unknown> }]) => c[0].data,
+      );
+
+    it("claims a lease, sends, then records the sent date only after the provider's message id", async () => {
       const target = account("u1");
       query.findWarningDue.mockResolvedValueOnce([target]);
 
@@ -297,21 +340,45 @@ describe("InactiveAccountPurgeService (#991)", () => {
         warningFailures: 0,
       });
 
-      expect(prisma.user.updateMany).toHaveBeenCalledWith({
-        where: { AND: [{ id: "u1" }, warningDueWhere(NOW, REF)] },
-        data: { inactivityWarningSentAt: NOW },
+      const [claimCall, sentCall] = prisma.user.updateMany.mock.calls as [
+        [
+          {
+            where: { AND: unknown[] };
+            data: { inactivityWarningClaimedAt: Date };
+          },
+        ],
+        [{ where: unknown; data: unknown }],
+      ];
+      const claimedAt = claimCall[0].data.inactivityWarningClaimedAt;
+      expect(claimCall[0].where.AND).toEqual([
+        { id: "u1" },
+        warningDueWhere(NOW, REF),
+        warningClaimableWhere(claimedAt),
+      ]);
+      // The claim never touches the sent date (the only one deletion reads).
+      expect(claimCall[0].data).toEqual({
+        inactivityWarningClaimedAt: claimedAt,
       });
       expect(email.sendInactiveAccountWarning).toHaveBeenCalledWith(
         "u1@example.test",
         "Camille",
         scheduledDeletionDate(target, NOW),
       );
-      expect(prisma.user.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
-        email.sendInactiveAccountWarning.mock.invocationCallOrder[0],
-      );
+      expect(sentCall[0]).toEqual({
+        where: { id: "u1", inactivityWarningClaimedAt: claimedAt },
+        data: {
+          inactivityWarningSentAt: expect.any(Date),
+          inactivityWarningClaimedAt: null,
+        },
+      });
+      const order = prisma.user.updateMany.mock.invocationCallOrder;
+      const sendOrder =
+        email.sendInactiveAccountWarning.mock.invocationCallOrder[0];
+      expect(order[0]).toBeLessThan(sendOrder);
+      expect(order[1]).toBeGreaterThan(sendOrder);
     });
 
-    it("does not send when another replica claimed the account first", async () => {
+    it("does not send when another replica holds the lease", async () => {
       query.findWarningDue.mockResolvedValueOnce([account("u1")]);
       prisma.user.updateMany.mockResolvedValueOnce({ count: 0 });
 
@@ -322,11 +389,8 @@ describe("InactiveAccountPurgeService (#991)", () => {
       expect(email.sendInactiveAccountWarning).not.toHaveBeenCalled();
     });
 
-    it("releases the claim when the e-mail fails (no deletion without a warning)", async () => {
-      const previous = new Date("2024-01-01T00:00:00.000Z");
-      query.findWarningDue.mockResolvedValueOnce([
-        account("u1", { inactivityWarningSentAt: previous }),
-      ]);
+    it("send failure: no sent mark, the lease is released", async () => {
+      query.findWarningDue.mockResolvedValueOnce([account("u1")]);
       email.sendInactiveAccountWarning.mockRejectedValueOnce(
         new Error("resend down"),
       );
@@ -335,10 +399,81 @@ describe("InactiveAccountPurgeService (#991)", () => {
         warned: 0,
         warningFailures: 1,
       });
-      expect(prisma.user.updateMany).toHaveBeenLastCalledWith({
-        where: { id: "u1", inactivityWarningSentAt: NOW },
-        data: { inactivityWarningSentAt: previous },
+      expect(writes()).toEqual([
+        { inactivityWarningClaimedAt: expect.any(Date) },
+        { inactivityWarningClaimedAt: null },
+      ]);
+      expect(writes()).not.toContainEqual(
+        expect.objectContaining({ inactivityWarningSentAt: expect.anything() }),
+      );
+    });
+
+    it("no message id from the provider counts as not sent", async () => {
+      query.findWarningDue.mockResolvedValueOnce([account("u1")]);
+      email.sendInactiveAccountWarning.mockResolvedValueOnce("");
+
+      await expect(service.warnDueAccounts(NOW)).resolves.toEqual({
+        warned: 0,
+        warningFailures: 1,
       });
+      expect(writes()).not.toContainEqual(
+        expect.objectContaining({ inactivityWarningSentAt: expect.anything() }),
+      );
+    });
+
+    it("a failed lease release is reported, never a sent mark (the lease expires)", async () => {
+      query.findWarningDue.mockResolvedValueOnce([account("u1")]);
+      email.sendInactiveAccountWarning.mockRejectedValueOnce(new Error("x"));
+      prisma.user.updateMany
+        .mockResolvedValueOnce({ count: 1 })
+        .mockRejectedValueOnce(new Error("db down"));
+
+      await expect(service.warnDueAccounts(NOW)).resolves.toEqual({
+        warned: 0,
+        warningFailures: 1,
+      });
+      expect(Logger.prototype.error).toHaveBeenCalledWith(
+        "Inactive-account purge: could not release the warning claim: Error",
+      );
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        "Inactive-account purge write failed",
+        expect.objectContaining({
+          extra: { step: "release the warning claim", error: "Error" },
+        }),
+      );
+    });
+
+    it("sent but not recorded: reported, counted as sent (duplicate later, never an unwarned deletion)", async () => {
+      query.findWarningDue.mockResolvedValueOnce([account("u1")]);
+      prisma.user.updateMany
+        .mockResolvedValueOnce({ count: 1 })
+        .mockRejectedValueOnce(new Error("db down"));
+
+      await expect(service.warnDueAccounts(NOW)).resolves.toEqual({
+        warned: 1,
+        warningFailures: 0,
+      });
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        "Inactive-account purge write failed",
+        expect.objectContaining({
+          extra: { step: "record the sent warning", error: "Error" },
+        }),
+      );
+    });
+
+    it("crash between claim and send: only the lease is written, the sent date never", async () => {
+      query.findWarningDue.mockResolvedValueOnce([account("u1")]);
+      // The process dies while the e-mail is in flight.
+      email.sendInactiveAccountWarning.mockReturnValueOnce(
+        new Promise<string>(() => undefined),
+      );
+
+      void service.warnDueAccounts(NOW);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(writes()).toEqual([
+        { inactivityWarningClaimedAt: expect.any(Date) },
+      ]);
     });
 
     it("stops warning after repeated failures (provider down)", async () => {
@@ -362,7 +497,7 @@ describe("InactiveAccountPurgeService (#991)", () => {
       email.sendInactiveAccountWarning
         .mockRejectedValueOnce(new Error("x"))
         .mockRejectedValueOnce(new Error("x"))
-        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce("msg_1")
         .mockRejectedValueOnce(new Error("x"))
         .mockRejectedValueOnce(new Error("x"));
 

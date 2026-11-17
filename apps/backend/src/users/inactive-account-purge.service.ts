@@ -15,9 +15,13 @@ import { RedisService } from "../redis/redis.service";
 import { AccountDeletionService } from "./account-deletion.service";
 import {
   scheduledDeletionDate,
+  warningClaimableWhere,
   warningDueWhere,
 } from "./inactive-account.rules";
-import { InactiveAccountsQueryService } from "./inactive-accounts.query-service";
+import {
+  InactiveAccountsQueryService,
+  InactiveAccountWarningTarget,
+} from "./inactive-accounts.query-service";
 
 /**
  * First pass after boot, delayed: never on the cold-start path of the request
@@ -69,9 +73,12 @@ function errorKind(error: unknown): string {
  *
  * ## Several replicas
  * Best-effort Redis marker (skips a pass another replica / boot ran in the
- * last 20 h), and per-account idempotence underneath: the warning is claimed
- * by a conditional `updateMany` (only one replica sends it), a deletion that
- * lost the race fails on the missing user row and rolls back.
+ * last 20 h), and per-account idempotence underneath: a warning is claimed
+ * by a 1-hour lease (`inactivityWarningClaimedAt`, conditional `updateMany`,
+ * only one replica sends it); the sent date that a deletion requires is
+ * written only after Resend accepted the e-mail. A deletion that lost the
+ * race fails on the missing user row and rolls back. Shutdown awaits the
+ * pass in progress (stopped after the current account).
  *
  * ## Flags (docs/exploitation/purge-comptes-inactifs.md)
  * INACTIVE_ACCOUNT_PURGE_ENABLED=false disables it (enabled by default);
@@ -86,6 +93,8 @@ export class InactiveAccountPurgeService
   private running = false;
   private lastRunAt: number | null = null;
   private bootTimer: NodeJS.Timeout | null = null;
+  private stopping = false;
+  private currentPass: Promise<unknown> | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -110,14 +119,26 @@ export class InactiveAccountPurgeService
     this.bootTimer.unref();
   }
 
-  onModuleDestroy(): void {
+  /**
+   * Shutdown (scale-to-zero, new revision): no new pass, the running one
+   * stops after the account in progress, and is awaited so its last write
+   * (sent date, lease release) completes before Prisma disconnects.
+   */
+  async onModuleDestroy(): Promise<void> {
+    this.stopping = true;
     if (this.bootTimer) clearTimeout(this.bootTimer);
     this.bootTimer = null;
+    if (this.currentPass) await this.currentPass;
   }
 
   @Cron(CronExpression.EVERY_HOUR)
   async handleCron(): Promise<void> {
     await this.runPass("cron");
+  }
+
+  /** Read through a method: shutdown flips it while a loop is awaiting. */
+  private isStopping(): boolean {
+    return this.stopping;
   }
 
   isEnabled(): boolean {
@@ -138,7 +159,7 @@ export class InactiveAccountPurgeService
   async runPass(
     trigger: "boot" | "cron",
   ): Promise<InactiveAccountPurgeReport | null> {
-    if (!this.isEnabled() || this.running) return null;
+    if (!this.isEnabled() || this.running || this.stopping) return null;
     if (
       this.lastRunAt !== null &&
       Date.now() - this.lastRunAt < PURGE_MIN_INTERVAL_MS
@@ -146,6 +167,19 @@ export class InactiveAccountPurgeService
       return null;
     }
     this.running = true;
+    const pass = this.executePass(trigger);
+    this.currentPass = pass;
+    try {
+      return await pass;
+    } finally {
+      this.currentPass = null;
+      this.running = false;
+    }
+  }
+
+  private async executePass(
+    trigger: "boot" | "cron",
+  ): Promise<InactiveAccountPurgeReport | null> {
     try {
       const now = new Date();
       const report = this.isDryRun()
@@ -163,8 +197,6 @@ export class InactiveAccountPurgeService
         extra: { error: kind },
       });
       return null;
-    } finally {
-      this.running = false;
     }
   }
 
@@ -208,44 +240,23 @@ export class InactiveAccountPurgeService
       );
       return { warned, warningFailures };
     }
-    const lastLoginAt = this.prisma.user.fields.lastLoginAt;
     let consecutiveFailures = 0;
     let afterId: string | undefined;
     let processed = 0;
-    while (processed < MAX_WARNINGS_PER_PASS) {
+    while (processed < MAX_WARNINGS_PER_PASS && !this.isStopping()) {
       const take = Math.min(PURGE_PAGE_SIZE, MAX_WARNINGS_PER_PASS - processed);
       const page = await this.query.findWarningDue(now, afterId, take);
       for (const account of page) {
+        if (this.isStopping()) break;
         processed += 1;
         afterId = account.id;
-        // Atomic claim: under concurrency, only one replica matches.
-        const claim = await this.prisma.user.updateMany({
-          where: {
-            AND: [{ id: account.id }, warningDueWhere(now, lastLoginAt)],
-          },
-          data: { inactivityWarningSentAt: now },
-        });
-        if (claim.count === 0) continue;
-        try {
-          await this.email.sendInactiveAccountWarning(
-            account.email,
-            account.firstName,
-            scheduledDeletionDate(account, now),
-          );
+        const outcome = await this.warnOne(account, now);
+        if (outcome === "sent") {
           warned += 1;
           consecutiveFailures = 0;
-        } catch (error) {
+        } else if (outcome === "failed") {
           warningFailures += 1;
           consecutiveFailures += 1;
-          // Not sent: release the claim, retried at the next pass. Guarded
-          // on our own value so a concurrent change is never overwritten.
-          await this.prisma.user.updateMany({
-            where: { id: account.id, inactivityWarningSentAt: now },
-            data: { inactivityWarningSentAt: account.inactivityWarningSentAt },
-          });
-          this.logger.warn(
-            `Inactive-account warning not sent: ${errorKind(error)}`,
-          );
           if (consecutiveFailures >= MAX_CONSECUTIVE_SEND_FAILURES) {
             this.logger.warn(
               `Inactive-account purge: ${consecutiveFailures} warnings failed in a row, warnings stopped for this pass`,
@@ -259,6 +270,85 @@ export class InactiveAccountPurgeService
     return { warned, warningFailures };
   }
 
+  /**
+   * One warning, in three steps that never let an UNSENT warning count:
+   * 1. claim a lease (`inactivityWarningClaimedAt`, atomic: one replica);
+   * 2. send; 3. only once Resend returned a message id, record
+   * `inactivityWarningSentAt` (the only column a deletion depends on) and
+   * drop the lease. A crash between 1 and 3 leaves a stale lease, retried
+   * after WARNING_CLAIM_LEASE_MS, and no sent date: no deletion.
+   */
+  private async warnOne(
+    account: InactiveAccountWarningTarget,
+    now: Date,
+  ): Promise<"sent" | "failed" | "skipped"> {
+    const claimedAt = new Date();
+    const claim = await this.prisma.user.updateMany({
+      where: {
+        AND: [
+          { id: account.id },
+          warningDueWhere(now, this.prisma.user.fields.lastLoginAt),
+          warningClaimableWhere(claimedAt),
+        ],
+      },
+      data: { inactivityWarningClaimedAt: claimedAt },
+    });
+    if (claim.count === 0) return "skipped"; // claimed by another replica
+
+    let messageId: string;
+    try {
+      messageId = await this.email.sendInactiveAccountWarning(
+        account.email,
+        account.firstName,
+        scheduledDeletionDate(account, now),
+      );
+      if (!messageId) throw new Error("no message id");
+    } catch (error) {
+      this.logger.warn(
+        `Inactive-account warning not sent: ${errorKind(error)}`,
+      );
+      await this.releaseClaim(account.id, claimedAt);
+      return "failed";
+    }
+
+    try {
+      await this.prisma.user.updateMany({
+        where: { id: account.id, inactivityWarningClaimedAt: claimedAt },
+        data: {
+          inactivityWarningSentAt: new Date(),
+          inactivityWarningClaimedAt: null,
+        },
+      });
+    } catch (error) {
+      // Sent but not recorded: a duplicate warning later, never a deletion
+      // without one. Reported, the pass goes on.
+      this.reportWriteFailure("record the sent warning", error);
+    }
+    return "sent";
+  }
+
+  /** Best-effort: a lease left behind expires on its own (no sent date). */
+  private async releaseClaim(userId: string, claimedAt: Date): Promise<void> {
+    try {
+      await this.prisma.user.updateMany({
+        where: { id: userId, inactivityWarningClaimedAt: claimedAt },
+        data: { inactivityWarningClaimedAt: null },
+      });
+    } catch (error) {
+      this.reportWriteFailure("release the warning claim", error);
+    }
+  }
+
+  private reportWriteFailure(what: string, error: unknown): void {
+    const kind = errorKind(error);
+    this.logger.error(`Inactive-account purge: could not ${what}: ${kind}`);
+    Sentry.captureMessage("Inactive-account purge write failed", {
+      level: "error",
+      tags: { rgpd: "inactive-account-purge-failed" },
+      extra: { step: what, error: kind },
+    });
+  }
+
   /** Deletions through the shared account-deletion chain. */
   async deleteDueAccounts(now: Date): Promise<{
     deleted: number;
@@ -270,13 +360,14 @@ export class InactiveAccountPurgeService
     let deletionSkipped = 0;
     let afterId: string | undefined;
     let processed = 0;
-    while (processed < MAX_DELETIONS_PER_PASS) {
+    while (processed < MAX_DELETIONS_PER_PASS && !this.isStopping()) {
       const take = Math.min(
         PURGE_PAGE_SIZE,
         MAX_DELETIONS_PER_PASS - processed,
       );
       const ids = await this.query.findDeletionDueIds(now, afterId, take);
       for (const userId of ids) {
+        if (this.isStopping()) break;
         processed += 1;
         afterId = userId;
         // Logged in since the page was read: keep the account.

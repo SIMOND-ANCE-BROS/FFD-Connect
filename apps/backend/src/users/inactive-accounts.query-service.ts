@@ -5,7 +5,11 @@ import {
   idOnlySelect,
   inactiveAccountWarningSelect,
 } from "../utils/prisma-selects";
-import { deletionDueWhere, warningDueWhere } from "./inactive-account.rules";
+import {
+  deletionDueWhere,
+  warningClaimableWhere,
+  warningDueWhere,
+} from "./inactive-account.rules";
 
 /** An account due for the inactivity warning (#991). */
 export type InactiveAccountWarningTarget = Prisma.UserGetPayload<{
@@ -36,7 +40,12 @@ export class InactiveAccountsQueryService {
   ): Promise<InactiveAccountWarningTarget[]> {
     return this.prisma.user.findMany({
       where: after(
-        warningDueWhere(now, this.prisma.user.fields.lastLoginAt),
+        {
+          AND: [
+            warningDueWhere(now, this.prisma.user.fields.lastLoginAt),
+            warningClaimableWhere(now),
+          ],
+        },
         afterId,
       ),
       select: inactiveAccountWarningSelect,

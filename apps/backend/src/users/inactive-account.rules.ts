@@ -85,8 +85,31 @@ export function warningDueWhere(
 }
 
 /**
+ * Lease of a warning claim: a replica that claimed a warning and died before
+ * sending it (scale-to-zero shutdown, crash) leaves a stale claim, retried
+ * once this lease is over. Far above one send (8 s timeout).
+ */
+export const WARNING_CLAIM_LEASE_MS = 60 * 60_000;
+
+/** No other replica is sending this warning (no claim, or a stale one). */
+export function warningClaimableWhere(now: Date): Prisma.UserWhereInput {
+  return {
+    OR: [
+      { inactivityWarningClaimedAt: null },
+      {
+        inactivityWarningClaimedAt: {
+          lt: new Date(now.getTime() - WARNING_CLAIM_LEASE_MS),
+        },
+      },
+    ],
+  };
+}
+
+/**
  * Inactive for 3 years AND warned at least 30 days ago, after the last
- * login. Never without a warning: no e-mail sent means no deletion.
+ * login. Never without a warning: no e-mail sent means no deletion. Only the
+ * CONFIRMED-sent date counts; a claim (`inactivityWarningClaimedAt`) never
+ * does.
  */
 export function deletionDueWhere(
   now: Date,
