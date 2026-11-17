@@ -98,6 +98,14 @@ describe("AuthService", () => {
     jest.clearAllMocks();
   });
 
+  // #990: personal data (e-mail, name) must never reach the logs, whatever
+  // the level or the argument it is passed in.
+  const loggedText = (): string =>
+    [mockLogger.info, mockLogger.error, mockLogger.debug]
+      .flatMap((fn) => fn.mock.calls)
+      .map((args) => JSON.stringify(args))
+      .join("\n");
+
   it("returns default config when storage is empty", async () => {
     (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
     const result = await AuthService.getAuthConfig();
@@ -177,7 +185,10 @@ describe("AuthService", () => {
     await expect(AuthService.login("u@test.com", "bad")).rejects.toThrow(
       "Identifiant ou mot de passe incorrect",
     );
-    expect(mockLogger.info).toHaveBeenCalled();
+    expect(mockLogger.info).toHaveBeenCalledWith("Login attempt failed", {
+      status: 401,
+    });
+    expect(loggedText()).not.toContain("u@test.com");
   });
 
   it("logs out and updates storage", async () => {
@@ -285,8 +296,9 @@ describe("AuthService", () => {
         expect.stringContaining('"isLoggedIn":true'),
       );
       expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.stringContaining("new@test.com"),
+        "User registered (Role: LICENSEE)",
       );
+      expect(loggedText()).not.toContain("new@test.com");
     });
 
     // #894: the new account's id replaces the previous session's (Sentry id,
@@ -608,21 +620,8 @@ describe("AuthService", () => {
       expect(api.post).toHaveBeenCalledWith("/auth/forgot-password", {
         email: "test@example.com",
       });
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.stringContaining("test@example.com"),
-      ); // This one might be tricky if add calls were removed in source. Source now uses .info or .error.
-      // Wait, in AuthService I changed it to .info or .error.
-      // Line 166 in source: logger.info('Login attempt', { email: username });
-      // Line 363 (forgot password): logger.add(`Password reset requested for ${email}`); -> NEED TO CHECK SOURCE.
-      // I will check source first or just assume I replaced it with info.
-      // In step 132/138 I replaced usages in AuthService.ts.
-      // login success: .info
-      // login failed: .error -> wait, step 138 shows logger.info for login attempt.
-      // I replaced 3 chunks in step 132.
-      // Chunk 1: Login attempt -> logger.info
-      // Chunk 2: Login successful -> logger.info
-      // Chunk 3: Login failed -> logger.error
-      // I need to be careful with line numbers.
+      expect(mockLogger.info).toHaveBeenCalledWith("Password reset requested");
+      expect(loggedText()).not.toContain("test@example.com");
     });
 
     it("handles forgotPassword error", async () => {
@@ -784,6 +783,8 @@ describe("AuthService", () => {
 
       await AuthService.impersonate("target-1", "Test Club");
 
+      expect(mockLogger.info).toHaveBeenCalledWith("Impersonation started");
+      expect(loggedText()).not.toContain("Test Club");
       expect(api.post).toHaveBeenCalledWith("/auth/impersonate", {
         targetUserId: "target-1",
         reason: undefined,
