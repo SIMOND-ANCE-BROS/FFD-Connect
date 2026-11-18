@@ -53,7 +53,9 @@ overrides:
   axios: '^1.20.0'
   fast-xml-builder: '>=1.1.7'
   fast-uri: '^4.2.3'
-  astro: '^7.2.8'
+  # astro ^7.4.7: GHSA-mh32-jxcr-mh9f (XSS, fixed in 7.4.5). The 7.4 line needs
+  # Node >=22.23.4 (.nvmrc, apps/client/eas.json) or `astro build` refuses to run.
+  astro: '^7.4.7'
   # shell-quote GHSA-pqg4-j6r4-53mv (CRITICAL, 2026-10) — quote() injection, fixed in 1.11.0.
   # Dependents: launch-editor (^1.8.4), react-devtools-core (^1.6.1).
   'shell-quote@<1.11.0': '^1.11.0'
