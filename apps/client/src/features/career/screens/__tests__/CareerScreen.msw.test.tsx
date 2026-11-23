@@ -7,7 +7,7 @@
  * - Gestion des erreurs API (500)
  * - Réponse vide (carrière sans données)
  */
-import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import { http, HttpResponse } from "msw";
 import React from "react";
 import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
@@ -244,7 +244,10 @@ describe("CareerScreen (MSW)", () => {
       const { queryByTestId } = await render(<CareerScreen {...props} />);
       expect(queryByTestId("career-loading")).toBeNull();
     } finally {
-      useWakeStore.setState({ waking: false, visible: false });
+      // Still mounted and subscribed to the wake store: reset it inside act.
+      await act(async () => {
+        useWakeStore.setState({ waking: false, visible: false });
+      });
     }
   });
 

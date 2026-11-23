@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import React, { PropsWithChildren } from "react";
 import type { MockFluidSegmentedTabProps } from "../../../../__tests__/mocks/types";
 import { competitionsControllerGetClubCompetitions } from "../../../../api/generated/sdk.gen";
 import { useTheme } from "../../../../context/ThemeContext";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { ClubCompetitionsScreen } from "../ClubCompetitionsScreen";
+import { settleFlashListAfterEach } from "../../../../__tests__/mocks/settleFlashList";
 
 jest.mock("../../../../context/ThemeContext", () => ({
   ThemeProvider: ({ children }: PropsWithChildren) => <>{children}</>,
@@ -72,6 +73,8 @@ const PAST = {
 };
 
 describe("ClubCompetitionsScreen", () => {
+  settleFlashListAfterEach();
+
   const mockTheme = {
     background: "#fff",
     surface: "#f2f2f2",
@@ -182,7 +185,9 @@ describe("ClubCompetitionsScreen", () => {
     expect(listMock).toHaveBeenCalledTimes(1);
 
     listMock.mockResolvedValueOnce({ data: [UPCOMING] });
-    refocus();
+    await act(async () => {
+      refocus();
+    });
 
     expect(await findByText("Gala du club")).toBeTruthy();
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));

@@ -3,6 +3,7 @@ import React from "react";
 // import { mockUseNavigation } from '../../../../__tests__/mocks/mockNavigation';
 import { useClubMembersLogic } from "../../hooks/useClubMembersLogic";
 import { ClubMembersScreen } from "../ClubMembersScreen";
+import { settleFlashListAfterEach } from "../../../../__tests__/mocks/settleFlashList";
 
 jest.mock("../../hooks/useClubMembersLogic");
 
@@ -70,6 +71,8 @@ jest.mock("react-native-safe-area-context", () => {
 });
 
 describe("ClubMembersScreen", () => {
+  settleFlashListAfterEach();
+
   const mockMembers = [
     {
       id: "m1",
