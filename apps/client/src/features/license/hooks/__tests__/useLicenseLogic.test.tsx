@@ -210,8 +210,9 @@ describe("useLicenseLogic", () => {
       expect(mockAuthRepository.getAuthConfig).toHaveBeenCalled(),
     );
 
-    // Call the action without awaiting inside act to avoid hanging
-    result.current.actions.handleVerifyWdsf("bad-min").catch(() => {});
+    await act(async () => {
+      await result.current.actions.handleVerifyWdsf("bad-min").catch(() => {});
+    });
 
     await waitFor(
       () => {
@@ -242,7 +243,9 @@ describe("useLicenseLogic", () => {
       expect(mockAuthRepository.getAuthConfig).toHaveBeenCalled(),
     );
 
-    result.current.actions.handleVerifyWdsf("10117265").catch(() => {});
+    await act(async () => {
+      await result.current.actions.handleVerifyWdsf("10117265").catch(() => {});
+    });
 
     await waitFor(
       () => {

@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import React from "react";
 import { StyleSheet } from "react-native";
 import type { ReactTestRendererJSON } from "react-test-renderer";
@@ -952,8 +952,12 @@ describe("LicenseScreen Integration", () => {
     });
 
     describe("during a support access (#759)", () => {
-      afterEach(() => {
-        useAuthStore.setState({ impersonating: false });
+      // The screen is still mounted here (RNTL cleanup runs after this hook)
+      // and subscribes to the auth store: reset it inside act.
+      afterEach(async () => {
+        await act(async () => {
+          useAuthStore.setState({ impersonating: false });
+        });
       });
 
       it("shows neither the Wallet button nor the licence QR", async () => {

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import React, { PropsWithChildren } from "react";
 import { AccessibilityInfo, Alert } from "react-native";
 import { useTheme } from "../../../../context/ThemeContext";
@@ -299,7 +299,9 @@ describe("NotificationsScreen", () => {
 
     await fireEvent.press(getByTestId("notifications-clear-all-button"));
     expect(confirm).toBeDefined();
-    confirm?.();
+    await act(async () => {
+      confirm?.();
+    });
 
     await waitFor(() =>
       expect(NotificationApi.deleteAllNotifications).toHaveBeenCalled(),

@@ -6,6 +6,7 @@ import {
   ClubRefundsDueScreen,
   formatRefundAmount,
 } from "../ClubRefundsDueScreen";
+import { settleFlashListAfterEach } from "../../../../__tests__/mocks/settleFlashList";
 
 jest.mock("../../../../context/ThemeContext", () => ({
   ThemeProvider: ({ children }: PropsWithChildren) => <>{children}</>,
@@ -48,6 +49,8 @@ const page = (
 });
 
 describe("ClubRefundsDueScreen (#516)", () => {
+  settleFlashListAfterEach();
+
   beforeEach(() => {
     jest.clearAllMocks();
     (useTheme as jest.Mock).mockReturnValue({
