@@ -39,6 +39,7 @@ import { RedisModule } from "./redis/redis.module";
 import { ReportsModule } from "./reports/reports.module";
 import { StorageModule } from "./storage/storage.module";
 import { TtsModule } from "./tts/tts.module";
+import { InactiveAccountsModule } from "./users/inactive-accounts.module";
 import { UsersModule } from "./users/users.module";
 import { WdsfModule } from "./wdsf/wdsf.module";
 
@@ -83,6 +84,8 @@ import { WdsfModule } from "./wdsf/wdsf.module";
     CompetitionsModule,
     ReportsModule,
     UsersModule,
+    // Deletion 3 years after the last login (#991), in-process daily job.
+    InactiveAccountsModule,
     WdsfModule,
     NotificationsModule,
     LicensesModule,
