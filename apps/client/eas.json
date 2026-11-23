@@ -6,21 +6,21 @@
   },
   "build": {
     "development-android": {
-      "node": "22.23.1",
+      "node": "22.23.5",
       "environment": "development",
       "developmentClient": true,
       "distribution": "internal",
       "android": {}
     },
     "development-ios-device": {
-      "node": "22.23.1",
+      "node": "22.23.5",
       "environment": "development",
       "developmentClient": true,
       "distribution": "internal",
       "ios": {}
     },
     "development-ios-simulator": {
-      "node": "22.23.1",
+      "node": "22.23.5",
       "environment": "development",
       "developmentClient": true,
       "distribution": "internal",
@@ -29,7 +29,7 @@
       }
     },
     "preview": {
-      "node": "22.23.1",
+      "node": "22.23.5",
       "autoIncrement": true,
       "distribution": "internal",
       "channel": "preview",
@@ -57,7 +57,7 @@
       }
     },
     "production": {
-      "node": "22.23.1",
+      "node": "22.23.5",
       "environment": "production",
       "autoIncrement": true,
       "channel": "production",
@@ -71,7 +71,7 @@
       }
     },
     "development-ios-standalone": {
-      "node": "22.23.1",
+      "node": "22.23.5",
       "developmentClient": false,
       "distribution": "internal",
       "environment": "preview",
