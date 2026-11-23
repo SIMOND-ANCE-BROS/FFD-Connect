@@ -5,6 +5,7 @@ import { useTheme } from "../../../../context/ThemeContext";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useCompetitionRepository } from "../../context/CompetitionContext";
 import { EventRegistrantsScreen } from "../EventRegistrantsScreen";
+import { settleFlashListAfterEach } from "../../../../__tests__/mocks/settleFlashList";
 
 jest.mock("../../context/CompetitionContext");
 jest.mock("../../../../context/ThemeContext");
@@ -25,6 +26,8 @@ const mockTheme = {
 };
 
 describe("EventRegistrantsScreen", () => {
+  settleFlashListAfterEach();
+
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });

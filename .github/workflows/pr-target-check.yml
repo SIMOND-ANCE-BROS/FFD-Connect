@@ -62,14 +62,16 @@ jobs:
 
           # ── develop: only allowed prefixes ──
           if [ "$BASE" = "develop" ]; then
-            ALLOWED="^(feature|fix|refactor|test|docs|chore|dependabot|hotfix|claude)/"
+            # Same types as the shared PR conventions (GabinSMD/shared-workflows).
+            # feature/ is kept only for PRs opened before the convention (#994); drop it once they are merged.
+            ALLOWED="^(feat|fix|refactor|perf|test|docs|chore|ci|build|security|hotfix|revert|dependabot|feature)/"
             if echo "$HEAD" | grep -qE "$ALLOWED"; then
               echo "Valid: $HEAD → develop"
               exit 0
             fi
             echo "::error::Branch '$HEAD' cannot target 'develop'."
-            echo "Allowed prefixes: feature/, fix/, refactor/, test/, docs/, chore/, dependabot/, hotfix/"
-            echo "Rename your branch: git branch -m $HEAD feature/$(echo $HEAD | sed 's|.*/||')"
+            echo "Allowed prefixes: feat/ fix/ refactor/ perf/ test/ docs/ chore/ ci/ build/ security/ hotfix/ revert/ (and dependabot/)"
+            echo "Rename your branch: git branch -m $HEAD feat/$(echo $HEAD | sed 's|.*/||')"
             exit 1
           fi
 

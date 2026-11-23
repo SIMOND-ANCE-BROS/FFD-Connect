@@ -22,9 +22,12 @@ describe("ClubContext", () => {
     checkEligibility: jest.fn(),
   };
 
-  afterEach(() => {
-    // Reset Zustand store to default after each test
-    useClubStore.setState({ repository: defaultClubRepository });
+  // Reset the Zustand store to its default after each test. The hook is still
+  // mounted here (RNTL cleanup runs after this hook): reset it inside act.
+  afterEach(async () => {
+    await act(async () => {
+      useClubStore.setState({ repository: defaultClubRepository });
+    });
   });
 
   it("provides the repository through context", async () => {

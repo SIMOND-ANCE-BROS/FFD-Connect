@@ -1,0 +1,21 @@
+name: PR conventions
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  # Required checks must also report in the develop merge queue (#493).
+  # The shared workflow skips both jobs there (no PR title or branch), which
+  # GitHub counts as passing.
+  merge_group:
+
+permissions: {}
+
+concurrency:
+  # A merge group has no PR number: its unique ref keeps queue runs apart
+  # instead of cancelling one another.
+  group: pr-conventions-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  conventions:
+    uses: GabinSMD/shared-workflows/.github/workflows/pr-conventions.yml@main

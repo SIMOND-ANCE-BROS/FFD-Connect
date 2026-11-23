@@ -175,6 +175,17 @@ class EnvironmentVariables {
   @IsOptional()
   TOPTURNIER_ALLOWED_HOSTS?: string;
 
+  // Suppression des comptes inactifs depuis 3 ans (#991, politique de
+  // confidentialité §5). Active sauf « false » ; « true » en DRY_RUN se contente
+  // de journaliser les nombres (docs/exploitation/purge-comptes-inactifs.md).
+  @IsIn(["true", "false"])
+  @IsOptional()
+  INACTIVE_ACCOUNT_PURGE_ENABLED?: string;
+
+  @IsIn(["true", "false"])
+  @IsOptional()
+  INACTIVE_ACCOUNT_PURGE_DRY_RUN?: string;
+
   // GitHub (rapports de bugs)
   @IsString()
   @IsOptional()

@@ -35,6 +35,7 @@ voir le [README racine](../README.md).
 - [Chiffrement des secrets HelloAsso des clubs](exploitation/chiffrement-secrets-clubs.md) — clé AES-256-GCM, Key Vault, migration, rotation
 - [Clés de distribution](exploitation/rotation-cles-distribution.md) — inventaire, Key Vault, rotation (ASC, APNs, Play, EXPO_TOKEN)
 - [Données personnelles dans les logs](exploitation/donnees-personnelles-logs.md) — IP tronquées, identifiants plutôt que noms (RGPD)
+- [Suppression des comptes inactifs](exploitation/purge-comptes-inactifs.md) — 3 ans sans connexion, avertissement 30 jours avant, essai à blanc (RGPD)
 - [Mesure d'usage de l'app](exploitation/mesure-usage.md) — ce qui est mesuré, tableau de bord du back-office, position RGPD
 - [Tests de charge k6](exploitation/tests-de-charge.md) — scénarios, données dédiées, limiteur de débit, lancement local / staging, coût
 
