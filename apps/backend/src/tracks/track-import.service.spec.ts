@@ -73,8 +73,12 @@ describe("TrackImportService", () => {
     audit = { record: jest.fn().mockResolvedValue(undefined) };
     query = { detail: jest.fn().mockResolvedValue({ id: "t-new" }) };
     // Real tempo rules (calculateMpm, bpmForPatch); only the ffmpeg analysis is faked.
+    // Never the real ffmpeg (#988): a test that sets no result gets a failed
+    // analysis, which importTrack turns into a raw BPM of 0.
     const bpm = new BpmService();
-    analyze = jest.spyOn(bpm, "analyzeBpm");
+    analyze = jest
+      .spyOn(bpm, "analyzeBpm")
+      .mockRejectedValue(new Error("tempo analysis not faked by this test"));
     const tracks = new TracksService(
       prisma as unknown as PrismaService,
       bpm,
@@ -339,6 +343,8 @@ describe("TrackImportService", () => {
     });
 
     it("converts an MPM given as a BPM for the dance (#338)", async () => {
+      analyze.mockResolvedValue(0);
+
       await service.importTrack(
         "admin-1",
         dto({ style: "Valse Lente", rawBpm: undefined, mpm: 87 }),
