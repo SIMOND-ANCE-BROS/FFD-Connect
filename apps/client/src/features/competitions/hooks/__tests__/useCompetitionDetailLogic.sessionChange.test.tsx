@@ -186,7 +186,7 @@ describe("optimistic registrations across a session end (#892)", () => {
     });
     await waitFor(() => expect(registerForEvent).toHaveBeenCalled());
 
-    await sessionEnds();
+    await act(() => sessionEnds());
     // The navigator re-mounts on an identity change: the screen is gone, its
     // mutation is not.
     await unmount();
@@ -214,7 +214,7 @@ describe("optimistic registrations across a session end (#892)", () => {
     });
     await waitFor(() => expect(unregisterFromEvent).toHaveBeenCalled());
 
-    await sessionEnds();
+    await act(() => sessionEnds());
     await unmount();
     await act(async () => {
       answer.reject(new Error("500"));

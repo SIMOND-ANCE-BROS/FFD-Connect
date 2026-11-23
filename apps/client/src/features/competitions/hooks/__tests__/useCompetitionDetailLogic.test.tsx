@@ -599,8 +599,12 @@ describe("useCompetitionDetailLogic", () => {
         onlineManager.setOnline(false);
         (NetInfo.fetch as jest.Mock).mockResolvedValue({ isConnected: false });
       });
-      afterEach(() => {
-        onlineManager.setOnline(true);
+      // Back online resumes the paused queries of the still-mounted hook: let
+      // their re-renders settle inside act before the cleanup unmounts it.
+      afterEach(async () => {
+        await act(async () => {
+          onlineManager.setOnline(true);
+        });
       });
 
       it("still queues a register instead of pausing the mutation", async () => {

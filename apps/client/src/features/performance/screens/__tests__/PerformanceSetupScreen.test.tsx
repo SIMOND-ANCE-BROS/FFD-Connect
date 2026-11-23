@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { fireEvent, render } from "@testing-library/react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 import React, { PropsWithChildren } from "react";
 import { Alert } from "react-native";
 import { useTheme } from "../../../../context/ThemeContext";
@@ -459,12 +459,16 @@ describe("PerformanceSetupScreen", () => {
     const presets = () => useCompetitionPresetsStore.getState();
 
     /** Presses a button of the last Alert.alert by its label. */
-    const pressAlert = (spy: jest.SpyInstance, label: string) => {
+    // The choice updates the screen (preset store, engine config): press it
+    // inside act, as the native alert would from outside the test.
+    const pressAlert = async (spy: jest.SpyInstance, label: string) => {
       const buttons = spy.mock.calls[spy.mock.calls.length - 1][2] as {
         text: string;
         onPress?: () => void;
       }[];
-      buttons.find((b) => b.text === label)?.onPress?.();
+      await act(async () => {
+        buttons.find((b) => b.text === label)?.onPress?.();
+      });
     };
 
     it("shows a custom programme when no preset is active", async () => {
@@ -514,7 +518,7 @@ describe("PerformanceSetupScreen", () => {
         expect.any(Array),
       );
       expect(setConfig).not.toHaveBeenCalled();
-      pressAlert(alertSpy, "Remplacer");
+      await pressAlert(alertSpy, "Remplacer");
 
       const loaded = applyLast(setConfig);
       expect(isSameProgram(loaded, baseConfig)).toBe(true);
@@ -553,13 +557,13 @@ describe("PerformanceSetupScreen", () => {
       await fireEvent.press(getByTestId(`performance-preset-${saved.id}-load`));
 
       expect(alertSpy).toHaveBeenCalledTimes(1);
-      pressAlert(alertSpy, "Annuler");
+      await pressAlert(alertSpy, "Annuler");
       expect(setConfig).not.toHaveBeenCalled();
       expect(presets().activePresetId).toBeNull();
 
       await fireEvent.press(getByTestId("performance-presets-open"));
       await fireEvent.press(getByTestId(`performance-preset-${saved.id}-load`));
-      pressAlert(alertSpy, "Remplacer");
+      await pressAlert(alertSpy, "Remplacer");
       expect(applyLast(setConfig).duration).toBe(45);
       expect(presets().activePresetId).toBe(saved.id);
       alertSpy.mockRestore();

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react-native";
+import { act, renderHook, waitFor } from "@testing-library/react-native";
 import React, { PropsWithChildren } from "react";
 import {
   CareerApi,
@@ -97,9 +97,13 @@ describe("useCurrentPartner", () => {
     getAuthConfig.mockResolvedValue({ authToken: "tok", isLoggedIn: true });
   });
 
-  afterEach(() => {
-    queryClient.clear();
-    useAuthStore.setState({ impersonating: false, impersonatedName: null });
+  // The hook is still mounted here (RNTL cleanup runs after this hook) and
+  // subscribes to the auth store and the query cache: reset them inside act.
+  afterEach(async () => {
+    await act(async () => {
+      queryClient.clear();
+      useAuthStore.setState({ impersonating: false, impersonatedName: null });
+    });
   });
 
   it("loads the career with the session token", async () => {

@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import React, { PropsWithChildren } from "react";
 import { Alert } from "react-native";
 import {
@@ -10,6 +10,7 @@ import { useTheme } from "../../../../context/ThemeContext";
 import { ClubService } from "../../services/ClubService";
 import { ClubRegistrationsScreen } from "../ClubRegistrationsScreen";
 import { announce } from "../../../../utils/announce";
+import { settleFlashListAfterEach } from "../../../../__tests__/mocks/settleFlashList";
 
 jest.mock("../../../../context/ThemeContext", () => ({
   ThemeProvider: ({ children }: PropsWithChildren) => <>{children}</>,
@@ -66,6 +67,8 @@ const buildRow = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe("ClubRegistrationsScreen", () => {
+  settleFlashListAfterEach();
+
   const mockTheme = {
     background: "#fff",
     surface: "#f2f2f2",
@@ -109,7 +112,7 @@ describe("ClubRegistrationsScreen", () => {
     const confirm = buttons.find(
       (b: { text: string }) => b.text === "Confirmer",
     );
-    await confirm.onPress();
+    await act(() => confirm.onPress());
 
     expect(confirmMock).toHaveBeenCalledWith({
       path: { registrationId: "reg-1" },
@@ -125,7 +128,7 @@ describe("ClubRegistrationsScreen", () => {
     const confirm = buttons.find(
       (b: { text: string }) => b.text === "Confirmer",
     );
-    await confirm.onPress();
+    await act(() => confirm.onPress());
 
     expect(unregisterMock).toHaveBeenCalledWith({
       body: { eventId: "evt-1", userId: "usr-1" },
@@ -142,7 +145,7 @@ describe("ClubRegistrationsScreen", () => {
     const confirm = buttons.find(
       (b: { text: string }) => b.text === "Confirmer",
     );
-    await confirm.onPress();
+    await act(() => confirm.onPress());
 
     // Optimistic removal is reverted: the seeded dancer is back on screen.
     await waitFor(() => expect(getByText("Eelef Testeur")).toBeTruthy());
@@ -186,9 +189,9 @@ describe("ClubRegistrationsScreen", () => {
         }),
       );
       const [, , buttons] = (Alert.alert as jest.Mock).mock.calls[0];
-      await buttons
-        .find((b: { text: string }) => b.text === "Confirmer")
-        .onPress();
+      await act(() =>
+        buttons.find((b: { text: string }) => b.text === "Confirmer").onPress(),
+      );
 
       expect(announce).toHaveBeenCalledWith(
         "Inscription de Eelef Testeur validée",

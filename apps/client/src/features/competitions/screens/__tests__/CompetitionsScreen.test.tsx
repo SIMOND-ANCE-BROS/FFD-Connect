@@ -6,6 +6,7 @@ import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useCompetitionsLogic } from "../../hooks/useCompetitionsLogic";
 import { CompetitionsScreen } from "../CompetitionsScreen";
 import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
+import { settleFlashListAfterEach } from "../../../../__tests__/mocks/settleFlashList";
 
 // Le date-picker natif → stub pour le rendu du calendrier dans la feuille de filtres.
 jest.mock("@react-native-community/datetimepicker", () => "DateTimePicker");
@@ -84,6 +85,8 @@ jest.mock("react-native-safe-area-context", () => {
 preloadReactNative("Modal", "ActivityIndicator");
 
 describe("CompetitionsScreen", () => {
+  settleFlashListAfterEach();
+
   const mockState = {
     competitions: [],
     isRefreshing: false,

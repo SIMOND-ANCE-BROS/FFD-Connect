@@ -55,6 +55,7 @@ export const HEALTH_DATA_ACCESS_ROUTES = {
   selfAccountDeletion: "DELETE /users/me",
   adminAccountDeletion: "DELETE /admin/users/:id",
   retentionPurge: "job:health-data-retention",
+  inactiveAccountPurge: "job:inactive-account-purge",
 } as const;
 
 /** One access to write. Never any health content, name or e-mail. */

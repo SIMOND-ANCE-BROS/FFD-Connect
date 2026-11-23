@@ -19,7 +19,6 @@ Cocher ce qui est pertinent selon les paquets effectivement mis à jour. Les mod
 | ---------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------- |
 | Auth & session         | JWT, AsyncStorage, intercepteurs                   | Login, logout, session restaurée au cold start                                    |
 | Navigation             | React Navigation, Reanimated, Screens              | Navigation stack + tabs, pas de flash / freeze                                    |
-| Réseau temps réel      | `socket.io-client`                                 | Flux live (compétition) si applicable                                             |
 | Musique                | `expo-audio`                                       | Lecture, file, fond Android/iOS, contrôles écran verrouillé, pas de crash au skip |
 | Caméra / scan          | `expo-camera`, `react-native-vision-camera`, QR    | Scan licence / check-in, permissions                                              |
 | Push                   | `@react-native-firebase/messaging`                 | Réception ou pipeline d’inscription (selon env)                                   |

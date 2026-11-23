@@ -2,12 +2,6 @@
   "$comment": "Exceptions DATEES a la porte d'audit high/critical. Contrat et validation dans scripts/audit-exceptions.ts. Une exception coupe la porte, jamais la detection : l'avis reste liste dans DEPENDENCY_AUDIT.md. Toute entree perime ; a l'echeance l'avis redevient bloquant.",
   "exceptions": [
     {
-      "id": "GHSA-xcx6-jx8p-x3h5",
-      "package": "@azure/msal-node",
-      "expires": "2027-01-25",
-      "reason": "Divulgation de parametres vers un point de terminaison controle par un attaquant dans le flux authorization code (CVSS high, publie en 2026-10). Correctif UNIQUEMENT en 7.1.0 (aucune 6.x corrigee) alors que @azure/identity, y compris sa derniere 4.14.0, declare msal-node ^6.0.0 : forcer la 7.x franchirait une majeure sous un paquet qui ne la supporte pas. Le backend n utilise que DefaultAzureCredential (identite managee, OCR, TTS, Blob Storage) et n appelle jamais le flux authorization code (acquireTokenByCode), seul flux concerne. Aussi transitif via unstorage <- astro (construction statique de apps/docs). A reexaminer au plus tard le 2027-01-25 ou des que @azure/identity accepte msal-node 7.1+."
-    },
-    {
       "id": "GHSA-mrhx-c7xc-m3w5",
       "package": "zod",
       "expires": "2027-01-25",

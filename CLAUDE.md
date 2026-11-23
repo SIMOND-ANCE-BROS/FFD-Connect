@@ -52,16 +52,19 @@ pnpm install --frozen-lockfile
 
 A PR cannot merge unless these pass (see `docs/exploitation/ci-cd-minimal.md`):
 
-| Job                  | What it checks                        |
-| -------------------- | ------------------------------------- |
-| `typecheck`          | `tsc --noEmit` on backend + client    |
-| `lint-format`        | ESLint + Prettier across all apps     |
-| `backend-test`       | Unit + integration + e2e with real DB |
-| `backend-build`      | Compile + swagger.json freshness      |
-| `client`             | Lint + unit tests                     |
-| `docs-build`         | `astro build` on apps/docs            |
-| `audit-dependencies` | osv-scanner (OSV DB) — high/critical  |
-| `secret-scan`        | gitleaks on the commits the PR adds   |
+| Job                  | What it checks                                              |
+| -------------------- | ----------------------------------------------------------- |
+| `typecheck`          | `tsc --noEmit` on backend + client                          |
+| `lint-format`        | ESLint + Prettier across all apps                           |
+| `backend-test`       | Unit + integration + e2e with real DB                       |
+| `backend-build`      | Compile + swagger.json freshness                            |
+| `client`             | Lint + unit tests                                           |
+| `docs-build`         | `astro build` on apps/docs                                  |
+| `audit-dependencies` | osv-scanner (OSV DB) — high/critical                        |
+| `secret-scan`        | gitleaks on the commits the PR adds                         |
+| `conventions`        | Branch `<type>/<n°>-<words>`, Conventional Commits PR title |
+
+Required status checks on `develop`: `CI Success` (aggregates the jobs above) plus `conventions / Branch name` and `conventions / PR title`. The two conventions checks are skipped in the merge queue (a `merge_group` has no PR title or branch; GitHub counts a skipped check as passed), and long-lived branches (merge-backs) and bot PRs pass without naming rules (#1002).
 
 Informational (non-blocking): `playwright-e2e`, `mutation` (Stryker). Weekly `mutation-nightly.yml` (Sundays) provides full mutation coverage.
 

@@ -205,6 +205,39 @@ export class EmailService {
     );
   }
 
+  /** Whether e-mails really leave (Resend configured), not just logged. */
+  canSend(): boolean {
+    return this.resend !== null;
+  }
+
+  /**
+   * Inactive-account warning (#991), 30 days before the deletion announced by
+   * the privacy policy (3 years without login). Unlike the other mails it
+   * THROWS when Resend is not configured: the purge records the warning only
+   * once it really left, and never deletes an account it did not warn.
+   * Circuit breaker + timeout; throws on failure, the caller degrades.
+   * Returns the Resend message id: the proof the provider accepted it.
+   */
+  async sendInactiveAccountWarning(
+    email: string,
+    firstName: string,
+    deletionDate: Date,
+  ): Promise<string> {
+    if (!this.resend) {
+      throw new Error("Inactive-account warning not sent (no Resend config)");
+    }
+    return this.send(
+      this.resend,
+      "email",
+      {
+        to: email,
+        subject: "Votre compte FFD Connect va être supprimé",
+        html: this.getInactiveAccountWarningTemplate(firstName, deletionDate),
+      },
+      "resend:inactive-account-warning",
+    );
+  }
+
   /**
    * One Resend call through a circuit breaker, bounded by
    * EMAIL_SEND_TIMEOUT_MS (ADR-0009, #464). Password resets use their own
@@ -242,6 +275,32 @@ export class EmailService {
           <p>Un administrateur de FFD Connect a modifié l'adresse email de connexion de votre compte. Cette adresse-ci n'est plus associée à votre compte.</p>
           <p>Par sécurité, vos sessions ouvertes ont été fermées : reconnectez-vous avec votre nouvelle adresse et votre mot de passe habituel.</p>
           <p>Si vous n'êtes pas à l'origine de cette demande, contactez au plus vite votre club ou la fédération.</p>
+        </body>
+      </html>`;
+  }
+
+  private getInactiveAccountWarningTemplate(
+    firstName: string,
+    deletionDate: Date,
+  ): string {
+    const safeName = firstName.replace(/[<>&"']/g, "");
+    const date = new Intl.DateTimeFormat("fr-FR", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "Europe/Paris",
+    }).format(deletionDate);
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head><meta charset="utf-8"><title>Votre compte FFD Connect va être supprimé</title></head>
+        <body style="font-family: Arial, sans-serif; color: #222; max-width: 560px; margin: auto;">
+          <p>Bonjour ${safeName},</p>
+          <p>Vous ne vous êtes pas connecté à FFD Connect depuis bientôt 3 ans. Comme l'annonce notre politique de confidentialité, un compte est supprimé 3 ans après la dernière connexion, avec les données qui y sont liées.</p>
+          <p><strong>Sans connexion de votre part, votre compte sera supprimé définitivement à partir du ${date}.</strong></p>
+          <p>Pour le conserver, il vous suffit de vous connecter à l'application FFD Connect avant cette date. Si vous avez oublié votre mot de passe, utilisez « Mot de passe oublié » sur l'écran de connexion. Si vous ne parvenez pas à vous connecter, contactez votre club ou la fédération.</p>
+          <p>Si vous n'avez plus besoin de ce compte, vous n'avez rien à faire.</p>
+          <p style="color: #666; font-size: 12px;">Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
         </body>
       </html>`;
   }
