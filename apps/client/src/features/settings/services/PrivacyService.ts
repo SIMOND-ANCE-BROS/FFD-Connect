@@ -6,7 +6,7 @@ import {
   writeAsStringAsync,
 } from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
-import { Platform } from "react-native";
+import { AppState, type NativeEventSubscription, Platform } from "react-native";
 import {
   usersControllerDeleteMyAccount,
   usersControllerExportMyData,
@@ -26,11 +26,41 @@ const logger = createLogger("PrivacyService");
 const EXPORT_FILE_URI = `${cacheDirectory}ffd-connect-mes-donnees.json`;
 
 /**
+ * Minimum time between the share and the deferred Android purge, so the target
+ * app (Drive, Quick Share…) can finish reading the content:// URI (#926).
+ */
+export const ANDROID_EXPORT_DELETE_DELAY_MS = 30_000;
+
+let deferredDeleteSubscription: NativeEventSubscription | null = null;
+
+function cancelDeferredExportDelete(): void {
+  deferredDeleteSubscription?.remove();
+  deferredDeleteSubscription = null;
+}
+
+/**
+ * Android only (#926): purges the export the next time the app is back in the
+ * foreground, once DELAY has elapsed since the share. Launch and session-end
+ * purges stay as the safety net.
+ */
+function scheduleDeferredExportDelete(): void {
+  cancelDeferredExportDelete();
+  const sharedAt = Date.now();
+  deferredDeleteSubscription = AppState.addEventListener("change", (state) => {
+    if (state !== "active") return;
+    if (Date.now() - sharedAt < ANDROID_EXPORT_DELETE_DELAY_MS) return;
+    void deleteExportFile(); // unsubscribes, never throws
+  });
+}
+
+/**
  * Deletes the data export file from the cache (#912). Idempotent and never
  * throws: a missing file is the normal case, and a failed purge must break
  * neither the share flow nor the logout.
  */
 export async function deleteExportFile(): Promise<void> {
+  // The purge is happening anyway: a pending deferred purge is now moot.
+  cancelDeferredExportDelete();
   // No file-system cache on web: nothing was ever written there.
   if (Platform.OS === "web") return;
   try {
@@ -49,13 +79,18 @@ onSessionEnd(deleteExportFile);
  * Export RGPD (portabilité, art. 20) : télécharge les données personnelles,
  * les écrit en JSON dans le cache puis ouvre la feuille de partage iOS/Android
  * (AirDrop, Fichiers, mail…). Le fichier est supprimé dès la feuille fermée
- * (iOS) ou en cas d'échec ; sinon au prochain lancement / fin de session (#912).
+ * (iOS) ou en cas d'échec ; sur Android, au prochain retour au premier plan
+ * (≥ 30 s après le partage, #926), sinon au prochain lancement / fin de session.
  */
 export async function exportAndShareMyData(): Promise<void> {
   const { data, error } = await usersControllerExportMyData();
   if (error || !data) {
     throw new Error("EXPORT_FAILED");
   }
+
+  // A purge armed by a previous share must not delete the file this export is
+  // about to rewrite while its target is still reading it (#926).
+  cancelDeferredExportDelete();
 
   // Checked before writing: no personal data on disk when it cannot be shared.
   if (!(await Sharing.isAvailableAsync())) {
@@ -77,8 +112,11 @@ export async function exportAndShareMyData(): Promise<void> {
   // iOS resolves once the share sheet's activity is done with the file. On
   // Android the promise can resolve while the target (Drive, Quick Share…)
   // still reads the content:// URI in the background, so the file is kept
-  // there and purged at the next launch or session end instead.
-  if (Platform.OS !== "android") {
+  // there and purged when the app is next foregrounded after a short delay
+  // (#926), or at the next launch / session end at the latest.
+  if (Platform.OS === "android") {
+    scheduleDeferredExportDelete();
+  } else {
     await deleteExportFile();
   }
 }
