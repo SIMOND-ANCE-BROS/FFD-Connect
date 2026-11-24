@@ -37,41 +37,54 @@ Contraintes :
 
 ### 1. Un référentiel en base : domaines et disciplines
 
-- **`DanceDomain`** : `code` stable (ex. `DANSE_SPORTIVE`), libellé français, ordre d'affichage, `capabilities String[]`.
+- **`DanceDomain`** : `code` stable (ex. `LATINES_STANDARDS`), libellé français, ordre d'affichage, `capabilities String[]`. Un domaine correspond à une **famille de danses** de la fédération, et une discipline à un style de cette famille. On reprend ainsi le découpage que la fédération publie déjà.
 - **`Discipline`** : `code` stable (ex. `LATIN`), libellé français, `domainId`, ordre, `active`, `aliases String[]` (saisies libres et imports reconnus : « latines », « 10 danses »…).
 - **Dance** (rattachée au lecteur de musique, #1028) : code, libellé, `disciplineId`, plage de BPM, temps par mesure.
 
 Les codes sont la clé utilisée par le code et les API. Les libellés ne servent qu'à l'affichage. L'API publique `GET /disciplines` sert l'arbre domaines → disciplines → capacités, que le client et le back-office mettent en cache. Les copies locales disparaissent.
 
-Liste **provisoire**, à valider avec la fédération (#1020) :
+Liste de départ : les **12 familles** publiées sur ffdanse.fr (page « Découvrez toutes les danses », relevée le 2026-11-24), avec les styles de chaque page famille. Les familles et les styles sont à confirmer avec la fédération, ainsi que les capacités de chaque famille (#1020). La colonne « Résultats » indique que la page famille donne accès à des résultats de compétition.
 
-| Domaine                   | Disciplines (provisoire)                                           |
-| ------------------------- | ------------------------------------------------------------------ |
-| Danse sportive            | Latine, Standard, 10 danses                                        |
-| Rock et danses swing      | Rock, rock acrobatique, boogie-woogie, lindy hop, west coast swing |
-| Danses latines de société | Salsa, bachata, kizomba                                            |
-| Danses urbaines           | Hip-hop, breaking                                                  |
-| Danses en ligne           | Country, line dance                                                |
-| Danses de création        | Jazz, contemporain, claquettes                                     |
+| Famille (domaine)         | Styles (disciplines)                                                                  | Résultats |
+| ------------------------- | ------------------------------------------------------------------------------------- | --------- |
+| Latines & standards       | Danses latines, danses standards (et 10 danses, épreuve qui combine les deux)         | oui       |
+| Danses de salon           | Pas de style détaillé (danses de société, de bal, musette)                            | non       |
+| Danses rock & swing       | Rock acrobatique, rock'n'roll, rock sauté, boogie-woogie, lindy hop, west coast swing | oui       |
+| Salsa - bachata - kizomba | Salsa, bachata, kizomba, danses latino-caraïbes, zumba                                | oui       |
+| Hip-hop - breaking        | Danses hip-hop, breaking                                                              | oui       |
+| Danse country             | Pas de style détaillé (country & line)                                                | oui       |
+| Danse classique           | Barre au sol classique                                                                | oui       |
+| Danses jazz               | Modern jazz, afro-jazz, claquettes, comédie musicale, cabaret, disco                  | oui       |
+| Danse contemporaine       | Ateliers de création, barre au sol contemporaine                                      | non       |
+| Pole - aérien             | Danses aériennes, pole dance, pole sport                                              | oui       |
+| Danse historique          | Pas de style détaillé                                                                 | non       |
+| Danses du monde           | Danses ethniques, flamenco, tango argentin, danses traditionnelles                    | non       |
 
-Seule la danse sportive est reprise au départ (seed + migration). Les autres domaines arrivent quand leur liste et leurs capacités sont validées.
+« Latines & standards » (compétition, en couple) et « Danses de salon » (loisir) sont deux familles distinctes. L'app ne couvre aujourd'hui que la première.
+
+Seule la famille « Latines & standards » est reprise au départ (seed + migration). Les autres familles arrivent quand leurs styles et leurs capacités sont confirmés. Le formulaire d'inscription peut toutefois proposer les 12 familles dès l'étape 1, avec le seul socle commun.
 
 ### 2. Des capacités déclarées par domaine
 
 Une **capacité** est une fonctionnalité que le domaine utilise. La liste est **fermée** et définie dans `@ffd-connect/shared` : une nouvelle capacité veut dire du nouveau code. Les capacités sont stockées en `String[]` sur le domaine. Liste initiale :
 
-| Capacité              | Ce qu'elle active                                                            | Danse sportive |
-| --------------------- | ---------------------------------------------------------------------------- | -------------- |
-| `COUPLE`              | Partenariats, couples, inscription en couple                                 | oui            |
-| `TEAM`                | Équipes et formations (`SoloTeam`)                                           | oui            |
-| `PASSPORT`            | Passeport Danse (couleurs) et règles d'accès aux niveaux                     | oui            |
-| `COMPETITION_LEVELS`  | Niveaux de compétition par discipline (Débutant → International)             | oui            |
-| `TEMPO_PLAYER`        | Lecteur au tempo réglementaire (MPM)                                         | oui            |
-| `COMPETITION_SKATING` | Épreuves en rounds jugées au Skating System, import TopTurnier, liaison WDSF | oui            |
+| Capacité              | Ce qu'elle active                                                            | Latines & standards |
+| --------------------- | ---------------------------------------------------------------------------- | ------------------- |
+| `COUPLE`              | Partenariats, couples, inscription en couple                                 | oui                 |
+| `TEAM`                | Équipes et formations (`SoloTeam`)                                           | oui                 |
+| `PASSPORT`            | Passeport Danse (couleurs) et règles d'accès aux niveaux                     | oui                 |
+| `COMPETITION_LEVELS`  | Niveaux de compétition par discipline (Débutant → International)             | oui                 |
+| `TEMPO_PLAYER`        | Lecteur au tempo réglementaire (MPM)                                         | oui                 |
+| `COMPETITION_SKATING` | Épreuves en rounds jugées au Skating System, import TopTurnier, liaison WDSF | oui                 |
 
 Le code teste une capacité (`hasCapability(domain, "PASSPORT")`), jamais un code de discipline. Les règles réellement propres à la danse sportive (10 danses = Latine + Standard, Passeport Jaune/Orange commun) restent dans un module dédié, appelé seulement quand la capacité est présente.
 
-Le moteur de compétition d'une autre discipline (battles, jugement du rock…) est une **nouvelle capacité avec son propre module**, pas un réglage du moteur actuel.
+Le moteur de compétition d'une autre discipline est une **nouvelle capacité avec son propre module**, pas un réglage du moteur actuel. Huit familles sur douze publient des résultats de compétition, sous des formats très différents. Exemples de capacités futures, à confirmer famille par famille :
+
+- battles de breaking ;
+- concours artistiques en solo ou en groupe, avec variations imposées (classique, jazz) ;
+- jugement du rock acrobatique ;
+- compétitions de pole sport.
 
 ### 3. Les disciplines d'un danseur et d'un club
 
@@ -143,6 +156,6 @@ L'étape 5 n'a lieu qu'une fois la version minimale de l'app relevée au-delà d
 
 ### Risks
 
-- **La liste provisoire est fausse ou incomplète** : seule la danse sportive est reprise tant que #1020 n'est pas tranchée. Ajouter un domaine ne demande pas de code.
+- **La liste publiée sur le site ne correspond pas au référentiel interne de la fédération** (licences, extranet) : seule « Latines & standards » est reprise tant que #1020 n'est pas tranchée. Ajouter ou renommer une famille ne demande pas de code.
 - **Reprise incorrecte des données** (« Ten Dance », casse et variantes en texte libre) : reprise idempotente, comptes avant/après sur une copie de staging, repli de lecture sur les anciennes colonnes jusqu'à l'étape 5.
 - **Promesse excessive à la fédération** : ce découpage ouvre le socle à toutes les disciplines. Les compétitions de chaque nouvelle discipline restent un module à construire, à prioriser une par une.
