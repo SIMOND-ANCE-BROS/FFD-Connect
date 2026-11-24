@@ -26,8 +26,31 @@ const mockCircuitBreaker = {
   fire: jest.fn().mockImplementation((_key: string, fn: () => unknown) => fn()),
 } as unknown as CircuitBreakerService;
 
+/**
+ * Axios follows HTTPS_PROXY / HTTP_PROXY (cloud sessions, corporate networks),
+ * which sends the requests to the proxy where nock never sees them. Exempt the
+ * mocked hosts for the duration of this spec only; production is untouched.
+ */
+const MOCKED_HOSTS = [
+  "helloasso.com",
+  ".helloasso.com",
+  "helloasso-sandbox.com",
+  ".helloasso-sandbox.com",
+];
+const PROXY_BYPASS_VARS = ["NO_PROXY", "no_proxy"] as const;
+const savedBypass: Record<string, string | undefined> = {};
+
 describe("HelloAssoService — contrats HTTP", () => {
   let service: HelloAssoService;
+
+  beforeAll(() => {
+    for (const name of PROXY_BYPASS_VARS) {
+      savedBypass[name] = process.env[name];
+      process.env[name] = [process.env[name], ...MOCKED_HOSTS]
+        .filter(Boolean)
+        .join(",");
+    }
+  });
 
   beforeEach(() => {
     nock.cleanAll();
@@ -41,6 +64,10 @@ describe("HelloAssoService — contrats HTTP", () => {
 
   afterAll(() => {
     nock.cleanAll();
+    for (const name of PROXY_BYPASS_VARS) {
+      if (savedBypass[name] === undefined) delete process.env[name];
+      else process.env[name] = savedBypass[name];
+    }
   });
 
   describe("createCheckoutIntent — succès", () => {
