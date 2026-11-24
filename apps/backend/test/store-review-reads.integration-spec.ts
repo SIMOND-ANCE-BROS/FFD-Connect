@@ -35,6 +35,8 @@ const EXPECTED_ALLOWLIST = [
   "GET competitions/:id/seat-occupancy",
   "GET competitions/sync/status",
   "GET competitions/user/registrations",
+  // Public catalog of dance domains and disciplines, no personal data (#1022).
+  "GET disciplines",
   "GET licenses/my",
   "GET licenses/my/entry-qr",
   "GET licenses/renewal/my",
@@ -235,6 +237,7 @@ describe("Store-review read allowlist (integration, real DB)", () => {
     `/competitions/${ids.competition}/seat-occupancy`,
     "/competitions/sync/status",
     "/competitions/user/registrations",
+    "/disciplines",
     "/licenses/my",
     "/licenses/my/entry-qr",
     "/licenses/renewal/my",
