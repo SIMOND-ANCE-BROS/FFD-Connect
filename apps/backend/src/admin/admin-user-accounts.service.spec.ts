@@ -21,6 +21,14 @@ import {
   INVITATION_EXPIRY_HOURS,
 } from "./admin-user-accounts.service";
 import type { CreateAdminUserDto } from "./dto/admin-user-accounts.dto";
+import { syncUserDisciplines } from "../disciplines/user-disciplines.sync";
+
+// Dual write of the disciplines (#1023): rows covered on a real database
+// (test/user-discipline-dual-write.integration-spec.ts); here only the call.
+jest.mock("../disciplines/user-disciplines.sync", () => ({
+  ...jest.requireActual<object>("../disciplines/user-disciplines.sync"),
+  syncUserDisciplines: jest.fn().mockResolvedValue(undefined),
+}));
 
 // Real hashes at the minimum cost: cost 12 ran these tests past their budget
 // under load (#546). The requested cost is asserted below.
@@ -40,6 +48,7 @@ describe("AdminUserAccountsService", () => {
   let email: { sendInvitationEmail: jest.Mock };
 
   beforeEach(async () => {
+    jest.mocked(syncUserDisciplines).mockClear();
     prisma = createMockPrismaService();
     prisma.$transaction.mockImplementation(((fn: (tx: unknown) => unknown) =>
       fn(prisma)) as never);
@@ -162,6 +171,11 @@ describe("AdminUserAccountsService", () => {
       UserRole.LICENSEE,
     );
     expect(res.clubId).toBeNull();
+    // Dual write (#1023), in the transaction, after the user is created.
+    expect(syncUserDisciplines).toHaveBeenCalledWith(prisma, "u-new");
+    expect(
+      jest.mocked(syncUserDisciplines).mock.invocationCallOrder[0],
+    ).toBeGreaterThan(prisma.user.create.mock.invocationCallOrder[0]);
   });
 
   it("creates a licensee with a competition level per discipline", async () => {
@@ -183,6 +197,9 @@ describe("AdminUserAccountsService", () => {
 
   it("writes no legacy level when no level is given, and never audits it", async () => {
     await service.create("admin-1", dto({}));
+
+    // No discipline field: nothing to mirror (#1023).
+    expect(syncUserDisciplines).not.toHaveBeenCalled();
 
     expect(prisma.user.create.mock.calls[0][0].data.competitionLevel).toBe(
       undefined,

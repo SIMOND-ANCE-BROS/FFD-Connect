@@ -20,6 +20,10 @@ import {
   legacyCompetitionLevelMirror,
   mirrorLegacyCompetitionLevel,
 } from "../common/competition-level";
+import {
+  syncUserDisciplines,
+  touchesDisciplineFields,
+} from "../disciplines/user-disciplines.sync";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   adminClubAttachSelect,
@@ -113,6 +117,10 @@ export class AdminUserAccountsService {
           },
           select: { id: true },
         });
+        // Dual write of the disciplines (#1023, ADR-0026 step 2), not audited.
+        if (touchesDisciplineFields(profile)) {
+          await syncUserDisciplines(tx, user.id);
+        }
         await this.audit.record(tx, {
           actorId,
           action: "USER_CREATE",

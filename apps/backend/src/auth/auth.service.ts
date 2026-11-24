@@ -13,6 +13,7 @@ import { User } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { extractBirthDateFromLicenseNumber } from "../common/birth-date/license-birth-date.util";
 import { normalizeDiscipline } from "../common/competition-level/competition-level.util";
+import { syncUserDisciplines } from "../disciplines/user-disciplines.sync";
 import {
   BETA_AUTO_LICENSE_CLUB_NAME,
   BETA_LICENSE_PLACEHOLDER_CATEGORY,
@@ -383,6 +384,9 @@ export class AuthService {
           }
           throw err;
         });
+
+      // Dual write of the declared discipline (#1023, ADR-0026 step 2).
+      if (newUser.category) await syncUserDisciplines(tx, newUser.id);
 
       if (license.id === null) {
         try {

@@ -46,6 +46,36 @@ model Discipline {
   aliases   String[]    @default([])
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
+  users     UserDiscipline[]
 
   @@index([domainId])
+}
+
+/// Disciplines pratiquées par un danseur, avec ses niveaux (ADR-0026 §3,
+/// #1023). Remplacera `User.category` et les colonnes `…Latin` /
+/// `…Standard`.
+///
+/// Étape 2 de la migration : DOUBLE ÉCRITURE. Toute écriture des anciennes
+/// colonnes recalcule ces lignes dans la même transaction
+/// (`src/disciplines/user-disciplines.sync.ts`) ; la lecture reste sur les
+/// anciennes colonnes jusqu'à #1024.
+model UserDiscipline {
+  id               String         @id @default(uuid())
+  userId           String
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  disciplineId     String
+  discipline       Discipline     @relation(fields: [disciplineId], references: [id], onDelete: Restrict)
+  /// Couleur du Passeport Danse dans cette discipline ; vide si le domaine n'a
+  /// pas la capacité PASSPORT.
+  passportLevel    PassportLevel?
+  /// Niveau de compétition (Débutant → International) ; vide si le domaine
+  /// n'a pas la capacité COMPETITION_LEVELS. Texte, comme l'ancienne colonne.
+  competitionLevel String?
+  /// Discipline principale déclarée par le danseur (au plus une par danseur).
+  primary          Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([userId, disciplineId])
+  @@index([disciplineId])
 }

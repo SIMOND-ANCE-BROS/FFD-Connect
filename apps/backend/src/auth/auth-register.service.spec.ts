@@ -20,6 +20,15 @@ import {
 import { erasedLicenceFingerprint } from "../utils/results-pseudonym";
 import { AuthService, LICENCE_NOT_CLAIMABLE_MESSAGE } from "./auth.service";
 import { AuthTokenService } from "./auth-token.service";
+import { syncUserDisciplines } from "../disciplines/user-disciplines.sync";
+
+// Dual write of the disciplines (#1023): its rows are covered on a real
+// database (test/user-discipline-dual-write.integration-spec.ts); here only
+// the call, inside the registration transaction, is checked.
+jest.mock("../disciplines/user-disciplines.sync", () => ({
+  ...jest.requireActual<object>("../disciplines/user-disciplines.sync"),
+  syncUserDisciplines: jest.fn().mockResolvedValue(undefined),
+}));
 
 // Real hashes at the minimum cost: cost 12 ran these tests past their budget
 // under load (#546). The requested cost is asserted below.
@@ -48,6 +57,7 @@ describe("AuthService.register", () => {
   let configService: { get: jest.Mock };
 
   beforeEach(async () => {
+    jest.mocked(syncUserDisciplines).mockClear();
     prisma = {
       user: {
         findUnique: jest.fn(),
@@ -581,19 +591,24 @@ describe("AuthService.register", () => {
         ...validLicense,
         category,
       });
-      const createMock = jest.fn().mockResolvedValue({
-        id: "user-1",
-        email: "new@example.com",
-        firstName: "",
-        lastName: "Dupont",
-        role: "LICENSEE",
-        clubId: null,
-        clubName: "Club Paris Danse",
-        category: null,
-        ageGroup: null,
-        passportLevelLatin: null,
-        passportLevelStandard: null,
-      });
+      // Echoes the stored category, as the real create does.
+      const createMock = jest
+        .fn()
+        .mockImplementation(({ data }: { data: { category: unknown } }) =>
+          Promise.resolve({
+            id: "user-1",
+            email: "new@example.com",
+            firstName: "",
+            lastName: "Dupont",
+            role: "LICENSEE",
+            clubId: null,
+            clubName: "Club Paris Danse",
+            category: data.category,
+            ageGroup: null,
+            passportLevelLatin: null,
+            passportLevelStandard: null,
+          }),
+        );
       prisma.$transaction.mockImplementation(
         async (fn: (tx: unknown) => Promise<unknown>) =>
           fn({
@@ -623,6 +638,12 @@ describe("AuthService.register", () => {
       "copies the federation discipline %p as %p",
       async (category, expected) => {
         expect(await registeredCategory(category)).toBe(expected);
+        // Dual write (#1023) in the same transaction as the account.
+        expect(syncUserDisciplines).toHaveBeenCalledTimes(1);
+        expect(syncUserDisciplines).toHaveBeenCalledWith(
+          expect.objectContaining({ user: expect.any(Object) }),
+          "user-1",
+        );
       },
     );
 
@@ -634,6 +655,8 @@ describe("AuthService.register", () => {
       "leaves User.category null (unknown) for %s",
       async (_label, category) => {
         expect(await registeredCategory(category)).toBeNull();
+        // No declared discipline: nothing to mirror (#1023).
+        expect(syncUserDisciplines).not.toHaveBeenCalled();
       },
     );
   });
