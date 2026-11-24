@@ -21,6 +21,8 @@ import {
   shouldPersistQuery,
 } from "../../../../services/queryClient";
 import { useAuthStore } from "../../../../stores/auth.store";
+import { usePlayerStore } from "../../../../stores/player.store";
+import { deadlineStorageKey } from "../../../../utils/scheduleDeadlineNotification";
 import { useClubStore, watchClubLogo } from "../../../../stores/club.store";
 import { useNotificationPreferencesStore } from "../../../../stores/notificationPreferences.store";
 import { AuthService } from "../AuthService";
@@ -400,5 +402,61 @@ describe("login starts from an empty cache (#892)", () => {
 
     expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
     expect(await persistedCopy()).toBeNull();
+  });
+});
+
+describe("likes, queue and deadline reminders do not cross accounts (#911)", () => {
+  const track = {
+    id: "t1",
+    url: "https://cdn/t1.mp3",
+    title: "T1",
+    artist: "A",
+    baseBpm: 120,
+  };
+
+  /** The previous account liked a track, queued it and has a reminder. */
+  async function useLibraryAs(): Promise<void> {
+    usePlayerStore.setState({
+      likedTrackIds: ["liked-1"],
+      queueTracks: [track],
+      _originalQueue: [track],
+      currentTrack: track,
+    });
+    await AsyncStorage.setItem(deadlineStorageKey("comp-1"), "notif-1");
+  }
+
+  async function expectNothingLeft() {
+    const state = usePlayerStore.getState();
+    expect(state.likedTrackIds).toEqual([]);
+    expect(state.queueTracks).toEqual([]);
+    expect(state.currentTrack).toBeNull();
+    expect(usePlayerStore.getState().isLiked("liked-1")).toBe(false);
+    expect(await AsyncStorage.getItem(deadlineStorageKey("comp-1"))).toBeNull();
+    expect(
+      jest.requireMock("expo-notifications").cancelScheduledNotificationAsync,
+    ).toHaveBeenCalledWith("notif-1");
+  }
+
+  beforeEach(() => {
+    usePlayerStore.getState()._resetForTests();
+  });
+
+  it("logout", async () => {
+    await useLibraryAs();
+    await AuthService.logout();
+    await expectNothingLeft();
+  });
+
+  it("start of a support access", async () => {
+    await useLibraryAs();
+    await startSupportAccess();
+    await expectNothingLeft();
+  });
+
+  it("end of a support access", async () => {
+    await startSupportAccess();
+    await useLibraryAs();
+    await stopSupportAccess();
+    await expectNothingLeft();
   });
 });
