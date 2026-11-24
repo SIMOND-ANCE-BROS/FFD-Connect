@@ -29,3 +29,4 @@ Ce dossier contient les ADRs (Architecture Decision Records) du projet FFD-Conne
 | [0023](0023-connecteurs-de-paiement-par-club.md)                 | Connecteurs de paiement choisis par chaque club            | proposed   | 2026-10-15 |
 | [0024](0024-qr-entree-tournant-hors-ligne.md)                    | QR d'entree tournant, verifiable hors ligne                | proposed   | 2026-10-16 |
 | [0025](0025-migrations-prisma-au-deploiement-image-slim.md)      | Migrations Prisma au deploiement, image runtime sans CLI   | accepted   | 2026-10-16 |
+| [0026](0026-referentiel-disciplines-capacites-par-domaine.md)    | Referentiel de disciplines et capacites par domaine        | proposed   | 2026-11-24 |
