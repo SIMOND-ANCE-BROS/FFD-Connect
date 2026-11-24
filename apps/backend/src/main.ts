@@ -183,6 +183,10 @@ async function bootstrap() {
     )
     .addTag("auth", "Authentification et gestion des utilisateurs")
     .addTag("competitions", "Gestion des compétitions")
+    .addTag(
+      "disciplines",
+      "Référentiel des domaines de danse et des disciplines",
+    )
     .addTag("licenses", "Gestion des licences")
     .addTag("tracks", "Gestion des musiques")
     .addTag("users", "Gestion des utilisateurs")

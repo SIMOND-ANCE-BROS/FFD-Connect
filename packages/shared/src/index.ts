@@ -5,6 +5,8 @@
  */
 
 export type { ID, ApiErrorResponse } from './types';
+export { DANCE_CAPABILITIES, isDanceCapability } from './discipline';
+export type { DanceCapability } from './discipline';
 export type {
   ApiCompetition,
   ApiEvent,

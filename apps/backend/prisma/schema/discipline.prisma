@@ -1,0 +1,51 @@
+/// Référentiel des domaines de danse et de leurs disciplines (ADR-0026, #1022).
+///
+/// Un domaine correspond à une FAMILLE de danses de la fédération (ex.
+/// « Latines & standards »), une discipline à un style de cette famille (ex.
+/// « Danses latines »). Les `code` sont la clé stable utilisée par le code et
+/// les API ; les libellés ne servent qu'à l'affichage.
+///
+/// Les lignes de référence de la danse sportive sont insérées par la
+/// migration elle-même (insertions idempotentes), pour que staging et prod les aient sans
+/// lancer de seed. Servi publiquement par `GET /disciplines`.
+///
+/// Les capacités sont du texte validé côté TypeScript (`DANCE_CAPABILITIES`
+/// de `@ffd-connect/shared`) et non une enum PostgreSQL, dont l'ajout de
+/// valeurs se migre mal (même choix que `consent.prisma` et `license.prisma`).
+model DanceDomain {
+  id           String       @id @default(uuid())
+  /// Code stable, ex. LATINES_STANDARDS.
+  code         String       @unique
+  /// Libellé français affiché.
+  label        String
+  /// Ordre d'affichage (croissant).
+  position     Int
+  /// Fonctionnalités utilisées par le domaine (COUPLE, PASSPORT…). Une valeur
+  /// inconnue du code est ignorée à la lecture.
+  capabilities String[]     @default([])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  disciplines  Discipline[]
+}
+
+model Discipline {
+  id        String      @id @default(uuid())
+  /// Code stable, ex. LATIN, STANDARD, TEN_DANCE.
+  code      String      @unique
+  /// Libellé français affiché, ex. « Danses latines ».
+  label     String
+  domainId  String
+  domain    DanceDomain @relation(fields: [domainId], references: [id], onDelete: Restrict)
+  /// Ordre d'affichage dans le domaine (croissant).
+  position  Int
+  /// Une discipline inactive n'est plus proposée, mais reste référencée.
+  active    Boolean     @default(true)
+  /// Saisies libres et imports reconnus, sous forme NORMALISÉE : minuscules,
+  /// sans accents ni aucun caractère non alphanumérique (« 10 danses » →
+  /// `10danses`).
+  aliases   String[]    @default([])
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([domainId])
+}
