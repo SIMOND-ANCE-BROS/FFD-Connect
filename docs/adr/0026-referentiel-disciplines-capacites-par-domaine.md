@@ -1,7 +1,7 @@
 # ADR-0026: Référentiel de disciplines et capacités par domaine de danse
 
 **Date**: 2026-11-24
-**Status**: proposed
+**Status**: accepted
 **Deciders**: Gabin SIMOND (epic #1019, issue #1021)
 
 ## Context
