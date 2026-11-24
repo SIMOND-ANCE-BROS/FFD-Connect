@@ -2,14 +2,20 @@ name: Dependabot pnpm lockfile
 
 # Dependabot updates package.json but doesn't refresh pnpm-lock.yaml in monorepos.
 # This workflow runs `pnpm install` and commits the updated lockfile back to the PR.
+#
+# The push is made with a GitHub App installation token, not GITHUB_TOKEN: pushes made
+# with GITHUB_TOKEN (actor github-actions[bot]) start workflow runs that sit in
+# `action_required` until someone clicks "Approve and run workflows" (#1014). Pushes made
+# with an App token trigger the CI normally. Setup: docs/exploitation/ci-cd-minimal.md.
+# This workflow is started by Dependabot, so the App credentials are read from the
+# *Dependabot* secrets (Settings > Secrets and variables > Dependabot), not Actions secrets.
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   update-lockfile:
@@ -22,10 +28,28 @@ jobs:
       HEAD_REF: ${{ github.head_ref }}
 
     steps:
+      - name: Check GitHub App credentials
+        env:
+          APP_ID: ${{ secrets.LOCKFILE_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.LOCKFILE_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$APP_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
+            echo "::error title=GitHub App missing::Dependabot secrets LOCKFILE_APP_ID and LOCKFILE_APP_PRIVATE_KEY are not set (they must be Dependabot secrets, not Actions secrets). See docs/exploitation/ci-cd-minimal.md, section 'Commit du lockfile Dependabot'."
+            exit 1
+          fi
+
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          app-id: ${{ secrets.LOCKFILE_APP_ID }}
+          private-key: ${{ secrets.LOCKFILE_APP_PRIVATE_KEY }}
+          permission-contents: write
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           ref: ${{ env.HEAD_REF }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Install pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
