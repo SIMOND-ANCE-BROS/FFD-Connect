@@ -89,6 +89,7 @@ describe("AuthService", () => {
         id: "u1",
         email: "test@example.com",
         firstName: "Test",
+        credentialsCheckedAt: expect.any(Date),
       });
     });
 
@@ -521,6 +522,7 @@ describe("AuthService", () => {
       );
       expect(mockAuthTokenService.createRefreshToken).toHaveBeenCalledWith(
         "u1",
+        undefined,
       );
     });
   });

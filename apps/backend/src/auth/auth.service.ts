@@ -147,7 +147,10 @@ export class AuthService {
   async validateUser(
     email: string,
     pass: string,
-  ): Promise<Omit<User, "password"> | null> {
+  ): Promise<(Omit<User, "password"> & { credentialsCheckedAt: Date }) | null> {
+    // Taken before the row (and so the password hash) is read: a reset that
+    // commits after this instant makes the credentials stale (#886).
+    const credentialsCheckedAt = new Date();
     const fullSelect = {
       ...accountStatusSelect,
       id: true,
@@ -248,7 +251,9 @@ export class AuthService {
       // response field by field, so it does not reach the client.
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password, ...result } = user;
-      return result as Omit<User, "password">;
+      return { ...result, credentialsCheckedAt } as Omit<User, "password"> & {
+        credentialsCheckedAt: Date;
+      };
     }
     return null;
   }
@@ -450,6 +455,8 @@ export class AuthService {
       license?: { number: string | null } | null;
       extraRoles?: UserRole[];
       club?: { disabledAt: Date | null } | null;
+      /** From validateUser; see AuthTokenService.createRefreshToken (#886). */
+      credentialsCheckedAt?: Date;
     },
   ): Promise<LoginResponse> {
     const payload = {
@@ -471,6 +478,7 @@ export class AuthService {
 
     const refreshToken = await this.authTokenService.createRefreshToken(
       user.id,
+      user.credentialsCheckedAt,
     );
 
     return {

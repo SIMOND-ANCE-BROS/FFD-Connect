@@ -5,10 +5,11 @@ import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { hashToken } from "../utils/token-hash.util";
 import {
-  accountStatusSelect,
   idOnlySelect,
   refreshTokenFamilySelect,
   refreshTokenRotationSelect,
+  rotationStatusSelect,
+  tokensValidAfterSelect,
 } from "../utils/prisma-selects";
 import { ACCOUNT_DISABLED_MESSAGE, accountBlockReason } from "./account-status";
 import { rolesOf } from "./roles";
@@ -57,6 +58,14 @@ async function lockUserSessions(
   );
 }
 
+/** Whether something dated `at` predates a password reset's stamp (#886). */
+function isStaleCredentials(
+  tokensValidAfter: Date | null | undefined,
+  at: Date | undefined,
+): boolean {
+  return Boolean(tokensValidAfter && at && at < tokensValidAfter);
+}
+
 @Injectable()
 export class AuthTokenService {
   private readonly logger = new Logger(AuthTokenService.name);
@@ -68,7 +77,14 @@ export class AuthTokenService {
     private jwtService: JwtService,
   ) {}
 
-  async createRefreshToken(userId: string) {
+  /**
+   * @param credentialsCheckedAt when the credentials behind this login were
+   *   verified (taken before the user row was read). A password reset that
+   *   committed after that instant makes them stale: the login is refused
+   *   under the user row lock, so a token can no longer slip in behind the
+   *   reset's revocation (#886). Omitted = verified now.
+   */
+  async createRefreshToken(userId: string, credentialsCheckedAt?: Date) {
     const plainToken = crypto.randomBytes(64).toString("hex");
     const tokenHash = hashToken(plainToken);
     const expiresAt = new Date();
@@ -78,14 +94,29 @@ export class AuthTokenService {
 
     // A login starts a new family (#687), rooted at the token itself.
     const id = crypto.randomUUID();
-    const record = await this.prisma.refreshToken.create({
-      data: {
-        id,
-        token: tokenHash,
-        userId,
-        expiresAt,
-        familyId: id,
-      },
+    const record = await this.prisma.$transaction(async (tx) => {
+      // Same lock as rotation and revocation: either the reset has committed
+      // (its stamp is read below) or it waits for this token and revokes it.
+      await lockUserSessions(tx, userId);
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: tokensValidAfterSelect,
+      });
+      if (isStaleCredentials(user?.tokensValidAfter, credentialsCheckedAt)) {
+        throw new UnauthorizedException("Invalid credentials");
+      }
+      return tx.refreshToken.create({
+        data: {
+          id,
+          token: tokenHash,
+          userId,
+          expiresAt,
+          familyId: id,
+          // The token dates from the credential check, so the refresh-time
+          // comparison with tokensValidAfter sees it as it was.
+          ...(credentialsCheckedAt ? { createdAt: credentialsCheckedAt } : {}),
+        },
+      });
     });
 
     // Return plain token for the caller to send to client (DB only stores hash)
@@ -157,13 +188,17 @@ export class AuthTokenService {
       // inserted here — it takes the same user row lock first.
       const status = await tx.user.findUnique({
         where: { id: user.id },
-        select: accountStatusSelect,
+        select: rotationStatusSelect,
       });
       if (!status) {
         return "deleted";
       }
       if (accountBlockReason(status)) {
         return "blocked";
+      }
+      // A token created before a password reset never rotates (#886).
+      if (isStaleCredentials(status.tokensValidAfter, tokenRecord.createdAt)) {
+        return "lost";
       }
       const consumed = await tx.refreshToken.updateMany({
         where: { id: tokenRecord.id, revoked: false, expiresAt: { gt: now } },
@@ -299,12 +334,35 @@ export class AuthTokenService {
     return true;
   }
 
-  async revokeAllUserTokens(userId: string): Promise<number> {
+  /**
+   * @param options.stampTokensValidAfter also stamps `User.tokensValidAfter`
+   *   in the same locked transaction (password reset, #886), so the
+   *   revocation and the "nothing issued before this" rule commit together.
+   * @param options.beforeRevoke extra writes run in that same transaction,
+   *   right after the lock: a password reset changes the password and spends
+   *   its reset token there, so a failure leaves nothing half done.
+   */
+  async revokeAllUserTokens(
+    userId: string,
+    options: {
+      stampTokensValidAfter?: boolean;
+      beforeRevoke?: (tx: Prisma.TransactionClient) => Promise<void>;
+    } = {},
+  ): Promise<number> {
     // Under the user lock: a rotation in flight has either committed (its new
     // token is visible here and gets revoked) or runs afterwards and finds
     // its own token already revoked.
     const result = await this.prisma.$transaction(async (tx) => {
       await lockUserSessions(tx, userId);
+      await options.beforeRevoke?.(tx);
+      const now = new Date();
+      if (options.stampTokensValidAfter) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { tokensValidAfter: now },
+          select: idOnlySelect,
+        });
+      }
       return tx.refreshToken.updateMany({
         where: {
           userId,
@@ -312,7 +370,7 @@ export class AuthTokenService {
         },
         data: {
           revoked: true,
-          revokedAt: new Date(),
+          revokedAt: now,
         },
       });
     });
