@@ -415,7 +415,7 @@ describe("likes, queue and deadline reminders do not cross accounts (#911)", () 
   };
 
   /** The previous account liked a track, queued it and has a reminder. */
-  async function useLibraryAs(): Promise<void> {
+  async function seedPreviousAccountLibrary(): Promise<void> {
     usePlayerStore.setState({
       likedTrackIds: ["liked-1"],
       queueTracks: [track],
@@ -442,20 +442,20 @@ describe("likes, queue and deadline reminders do not cross accounts (#911)", () 
   });
 
   it("logout", async () => {
-    await useLibraryAs();
+    await seedPreviousAccountLibrary();
     await AuthService.logout();
     await expectNothingLeft();
   });
 
   it("start of a support access", async () => {
-    await useLibraryAs();
+    await seedPreviousAccountLibrary();
     await startSupportAccess();
     await expectNothingLeft();
   });
 
   it("end of a support access", async () => {
     await startSupportAccess();
-    await useLibraryAs();
+    await seedPreviousAccountLibrary();
     await stopSupportAccess();
     await expectNothingLeft();
   });
