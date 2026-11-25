@@ -489,7 +489,17 @@ describe("AuthPasswordService", () => {
       (bcrypt.hash as jest.Mock).mockResolvedValue("hashed");
       mockPrismaService.user.update.mockResolvedValue({});
       mockPrismaService.passwordResetToken.update.mockResolvedValue({});
-      mockAuthTokenService.revokeAllUserTokens.mockResolvedValue(0);
+      // Runs the in-transaction writes against the same mock, as the real
+      // transaction would.
+      mockAuthTokenService.revokeAllUserTokens.mockImplementation(
+        async (
+          _userId: string,
+          options: { beforeRevoke?: (tx: unknown) => Promise<void> },
+        ) => {
+          await options.beforeRevoke?.(mockPrismaService);
+          return 0;
+        },
+      );
 
       const result = await service.resetPassword(plainToken, "ValidPass1!");
 
@@ -501,9 +511,20 @@ describe("AuthPasswordService", () => {
           where: { token: hashToken(plainToken) },
         }),
       );
-      expect(mockPrismaService.user.update).toHaveBeenCalled();
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "u1" },
+          data: { password: "hashed" },
+        }),
+      );
+      expect(mockPrismaService.passwordResetToken.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { used: true, usedAt: expect.any(Date) as unknown },
+        }),
+      );
       expect(mockAuthTokenService.revokeAllUserTokens).toHaveBeenCalledWith(
         "u1",
+        expect.objectContaining({ stampTokensValidAfter: true }),
       );
     });
 

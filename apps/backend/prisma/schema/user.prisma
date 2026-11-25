@@ -26,6 +26,9 @@ model User {
   updatedAt            DateTime       @updatedAt
   lastLoginAt          DateTime?      // Dernière connexion réussie (back-office : « renvoyer l'invitation » tant que null)
   disabledAt           DateTime?      // Désactivé par un admin (null = actif) : connexion, refresh et requêtes refusés
+  // Posé à la réinitialisation du mot de passe (#886) : toute connexion dont les identifiants ont été vérifiés avant
+  // cette date, et tout refresh token créé avant, est refusé. Null = jamais réinitialisé.
+  tokensValidAfter     DateTime?
   // Avertissement « compte inactif » envoyé (#991) : suppression à 3 ans sans connexion, prévenue 30 jours avant.
   // Ne compte que s'il est postérieur à la dernière connexion (une connexion annule l'avertissement).
   inactivityWarningSentAt DateTime?
