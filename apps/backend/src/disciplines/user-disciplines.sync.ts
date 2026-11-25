@@ -15,7 +15,11 @@
  * agree.
  */
 import type { PassportLevel, Prisma } from "@prisma/client";
-import { normalizeDiscipline } from "../common/competition-level";
+import {
+  hasDisciplineLevel,
+  normalizeDiscipline,
+  toCompetitionLevel,
+} from "../common/competition-level";
 import {
   disciplineCodeSelect,
   idOnlySelect,
@@ -43,6 +47,8 @@ export interface LegacyDisciplineProfile {
   passportLevelStandard?: PassportLevel | null;
   competitionLevelLatin?: string | null;
   competitionLevelStandard?: string | null;
+  /** @deprecated single legacy level (#239), read only as a fallback. */
+  competitionLevel?: string | null;
 }
 
 /** A `UserDiscipline` row, by discipline code. */
@@ -60,6 +66,31 @@ function nonBlank(value: string | null | undefined): string | null {
 }
 
 /**
+ * Per-discipline competition levels the legacy columns stand for. A valid
+ * per-discipline level wins. When the profile has NONE, the deprecated single
+ * `competitionLevel` is what reads fall back to today (`legacyFallback` in
+ * competition-level.util.ts): it is copied with the rule of
+ * `planCompetitionLevelBackfill` (scripts/backfill-user-competition-level.utils.ts)
+ * — declared Latin → Latin only, Standard → Standard only, anything else →
+ * both — so that no level is lost when reads switch (#1024).
+ */
+function effectiveCompetitionLevels(
+  profile: LegacyDisciplineProfile,
+  declared: ReturnType<typeof normalizeDiscipline>,
+): { latin: string | null; standard: string | null } {
+  const latin = nonBlank(profile.competitionLevelLatin);
+  const standard = nonBlank(profile.competitionLevelStandard);
+  const legacy = hasDisciplineLevel(profile)
+    ? null
+    : toCompetitionLevel(profile.competitionLevel);
+  if (!legacy) return { latin, standard };
+  return {
+    latin: declared === "Standard" ? latin : legacy,
+    standard: declared === "Latin" ? standard : legacy,
+  };
+}
+
+/**
  * The `UserDiscipline` rows the legacy columns stand for:
  * - the declared discipline (`category`, any spelling known to
  *   `normalizeDiscipline`): Latin → LATIN, Standard → STANDARD, Ten Dance →
@@ -67,7 +98,8 @@ function nonBlank(value: string | null | undefined): string | null {
  * - a Passeport or competition level in Latin / Standard also adds that
  *   discipline (not primary), so no level is lost when reads switch;
  * - levels are copied to their discipline; TEN_DANCE carries none (10-dance
- *   events have no level requirement).
+ *   events have no level requirement); without any per-discipline level, the
+ *   deprecated single level stands in (see {@link effectiveCompetitionLevels}).
  * An unknown `category` (free text, beta placeholder) declares nothing.
  */
 export function deriveUserDisciplines(
@@ -76,8 +108,9 @@ export function deriveUserDisciplines(
   const declared = normalizeDiscipline(profile.category);
   const tenDance = declared === "Ten Dance";
   const rows: DerivedUserDiscipline[] = [];
+  const levels = effectiveCompetitionLevels(profile, declared);
 
-  const latinLevel = nonBlank(profile.competitionLevelLatin);
+  const latinLevel = levels.latin;
   const latinPassport = profile.passportLevelLatin ?? null;
   if (declared === "Latin" || tenDance || latinLevel || latinPassport) {
     rows.push({
@@ -88,7 +121,7 @@ export function deriveUserDisciplines(
     });
   }
 
-  const standardLevel = nonBlank(profile.competitionLevelStandard);
+  const standardLevel = levels.standard;
   const standardPassport = profile.passportLevelStandard ?? null;
   if (
     declared === "Standard" ||

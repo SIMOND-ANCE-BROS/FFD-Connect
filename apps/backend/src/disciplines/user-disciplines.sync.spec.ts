@@ -107,6 +107,92 @@ describe("deriveUserDisciplines (#1023)", () => {
     ).toEqual([["LATIN", false]]);
   });
 
+  describe("deprecated single competitionLevel (#239 read fallback)", () => {
+    const levelsOf = (profile: Parameters<typeof deriveUserDisciplines>[0]) =>
+      deriveUserDisciplines(profile).map((r) => [r.code, r.competitionLevel]);
+
+    it.each([
+      ["Latin", [["LATIN", "Avancé"]]],
+      ["Standard", [["STANDARD", "Avancé"]]],
+      [
+        "Ten Dance",
+        [
+          ["LATIN", "Avancé"],
+          ["STANDARD", "Avancé"],
+          ["TEN_DANCE", null],
+        ],
+      ],
+      [
+        null,
+        [
+          ["LATIN", "Avancé"],
+          ["STANDARD", "Avancé"],
+        ],
+      ],
+    ])(
+      "copies it like planCompetitionLevelBackfill for category %p",
+      (category, expected) => {
+        expect(levelsOf({ category, competitionLevel: " Avancé " })).toEqual(
+          expected,
+        );
+      },
+    );
+
+    it("keeps the declared discipline primary and the other one secondary", () => {
+      expect(
+        deriveUserDisciplines({
+          category: "Latin",
+          competitionLevel: "Débutant",
+          passportLevelStandard: "VERT",
+        }),
+      ).toEqual([
+        {
+          code: "LATIN",
+          passportLevel: null,
+          competitionLevel: "Débutant",
+          primary: true,
+        },
+        // Standard comes from its Passeport only: no legacy level copied.
+        {
+          code: "STANDARD",
+          passportLevel: "VERT",
+          competitionLevel: null,
+          primary: false,
+        },
+      ]);
+    });
+
+    it("is ignored once a valid per-discipline level exists", () => {
+      expect(
+        levelsOf({
+          category: "Ten Dance",
+          competitionLevel: "International",
+          competitionLevelLatin: "Débutant",
+        }),
+      ).toEqual([
+        ["LATIN", "Débutant"],
+        ["STANDARD", null],
+        ["TEN_DANCE", null],
+      ]);
+    });
+
+    it("stands in for an invalid per-discipline value, like the read fallback", () => {
+      expect(
+        levelsOf({
+          category: "Latin",
+          competitionLevel: "Avancé",
+          competitionLevelLatin: "Expert",
+        }),
+      ).toEqual([["LATIN", "Avancé"]]);
+    });
+
+    it("is ignored when it is not one of the four levels", () => {
+      expect(levelsOf({ category: null, competitionLevel: "Expert" })).toEqual(
+        [],
+      );
+    });
+  });
+
   it("ignores a blank competition level", () => {
     expect(
       deriveUserDisciplines({
@@ -126,8 +212,7 @@ describe("touchesDisciplineFields (#1023)", () => {
     expect(touchesDisciplineFields({ lastName: "Durand" })).toBe(false);
     expect(touchesDisciplineFields({ category: undefined })).toBe(false);
     expect(touchesDisciplineFields(null)).toBe(false);
-    // The deprecated single level is mirrored per discipline upstream.
-    expect(touchesDisciplineFields({ competitionLevel: "Avancé" })).toBe(false);
+    expect(touchesDisciplineFields({ ageGroup: "Adultes" })).toBe(false);
   });
 });
 

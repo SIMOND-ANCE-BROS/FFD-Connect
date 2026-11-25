@@ -1848,6 +1848,8 @@ export const userDisciplineSourceSelect = {
   passportLevelStandard: true,
   competitionLevelLatin: true,
   competitionLevelStandard: true,
+  // Deprecated single level (#239): still read as a fallback, so mirrored.
+  competitionLevel: true,
 } as const;
 
 /** Discipline id and stable code, to resolve codes to ids (#1023). */

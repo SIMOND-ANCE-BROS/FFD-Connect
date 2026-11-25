@@ -17,21 +17,26 @@ Les lignes de reference de « Latines & standards » sont inserees par la migrat
 
 ### Double ecriture (etape 2, #1023)
 
-Les anciennes colonnes restent la source de verite et la seule lue : `User.category`, `passportLevelLatin` / `passportLevelStandard`, `competitionLevelLatin` / `competitionLevelStandard`. Tout code qui en ecrit une appelle `syncUserDisciplines(tx, userId)` (`src/disciplines/user-disciplines.sync.ts`) dans la meme transaction, apres l'ecriture : les lignes du domaine « Latines & standards » sont recalculees depuis les colonnes stockees, celles des autres domaines ne sont pas touchees. Ecrivains actuels : inscription (`AuthService.register`), creation et modification au back-office (`AdminUserAccountsService.create`, `AdminUsersService.update`). Un nouvel ecrivain de ces colonnes doit faire de meme.
+Les anciennes colonnes restent la source de verite et la seule lue : `User.category`, `passportLevelLatin` / `passportLevelStandard`, `competitionLevelLatin` / `competitionLevelStandard`, et l'ancien niveau unique `competitionLevel` (encore lu en repli, #239). Tout code qui en ecrit une appelle `syncUserDisciplines(tx, userId)` (`src/disciplines/user-disciplines.sync.ts`) dans la meme transaction, apres l'ecriture : les lignes du domaine « Latines & standards » sont recalculees depuis les colonnes stockees, celles des autres domaines ne sont pas touchees. Ecrivains actuels : inscription (`AuthService.register`), creation et modification au back-office (`AdminUserAccountsService.create`, `AdminUsersService.update`), script de reprise du niveau unique (`scripts/backfill-user-competition-level.utils.ts`, une transaction par compte). Un nouvel ecrivain de ces colonnes doit faire de meme.
+
+Deux scripts ecrivent `User.category` sans double ecriture, ce qui est accepte pour cette etape : `scripts/sync-licensees-from-compete.ts` (import de donnees de developpement) et `repairBetaLicenseCategories` (`scripts/seed-beta-testers.utils.ts`, reparation ponctuelle des comptes beta). Leurs ecarts sont rattrapes par le recalcul complet prevu avant la bascule de la lecture (#1024), et la requete de controle de `docs/exploitation/disciplines-danseurs.md` les fait apparaitre.
+
+Sens inverse : rien n'ecrit encore `UserDiscipline` directement, donc le sens `UserDiscipline` vers les anciennes colonnes n'existe pas. Il arrive avec #1024, quand les ecrans ecriront les disciplines ; tant que les anciennes colonnes existent (jusqu'a #1029), toute ecriture de `UserDiscipline` devra les mettre a jour dans la meme transaction.
 
 Regles (`deriveUserDisciplines`) :
 
-| Ancienne valeur                                      | Lignes `UserDiscipline`                                                    |
-| ---------------------------------------------------- | -------------------------------------------------------------------------- |
-| `category` « Latin » (et variantes, ex. « latines ») | `LATIN`, principale                                                        |
-| `category` « Standard » (et variantes)               | `STANDARD`, principale                                                     |
-| `category` « Ten Dance » (« 10 danses »…)            | `LATIN` + `STANDARD` + `TEN_DANCE` (principale, sans niveau)               |
-| Niveau Passeport ou compétition Latine / Standard    | Recopie sur `LATIN` / `STANDARD`, ligne ajoutee (non principale) si besoin |
-| `category` inconnue ou vide, niveau vide             | Rien                                                                       |
+| Ancienne valeur                                                                                           | Lignes `UserDiscipline`                                                                                                                        |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `category` « Latin » (et variantes, ex. « latines »)                                                      | `LATIN`, principale                                                                                                                            |
+| `category` « Standard » (et variantes)                                                                    | `STANDARD`, principale                                                                                                                         |
+| `category` « Ten Dance » (« 10 danses »…)                                                                 | `LATIN` + `STANDARD` + `TEN_DANCE` (principale, sans niveau)                                                                                   |
+| Niveau Passeport ou compétition Latine / Standard                                                         | Recopie sur `LATIN` / `STANDARD`, ligne ajoutee (non principale) si besoin                                                                     |
+| `category` inconnue ou vide, niveau vide                                                                  | Rien                                                                                                                                           |
+| Aucun niveau de competition valide par discipline, mais un ancien niveau unique `competitionLevel` valide | Recopie comme `planCompetitionLevelBackfill` : Latin → `LATIN`, Standard → `STANDARD`, sinon les deux (c'est le repli de lecture actuel, #239) |
 
 La normalisation de `category` est celle de `normalizeDiscipline` (`src/common/competition-level/competition-level.util.ts`).
 
-La migration `20261124130000_user_discipline` a repris l'existant avec les memes regles, en SQL idempotent (une ligne deja presente n'est pas modifiee). `test/user-discipline-backfill.integration-spec.ts` rejoue ce SQL et le compare a `deriveUserDisciplines`.
+La migration `20261124130000_user_discipline` a repris l'existant avec les memes regles, en SQL idempotent (une ligne deja presente n'est pas modifiee). `test/user-discipline-backfill.integration-spec.ts` rejoue ce SQL et le compare a `deriveUserDisciplines`. Controle a lancer sur staging apres le deploiement (comptes avant/apres, ecarts) : `docs/exploitation/disciplines-danseurs.md`.
 
 Limite connue : apres un retour arriere sur une revision anterieure a #1023, cette revision ecrit les anciennes colonnes sans `UserDiscipline`. Avant de basculer la lecture (#1024), recalculer les lignes de tous les comptes.
 

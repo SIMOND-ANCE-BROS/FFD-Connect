@@ -23,7 +23,7 @@ const MIGRATION = join(
 /** The backfill statement of the migration (from its CTE to the end). */
 function backfillStatement(): string {
   const sql = readFileSync(MIGRATION, "utf8");
-  const start = sql.indexOf("WITH src AS");
+  const start = sql.indexOf("WITH raw AS");
   if (start < 0) throw new Error("Backfill statement not found");
   return sql.slice(start);
 }
@@ -39,6 +39,7 @@ describe("UserDiscipline backfill (#1023, integration, real DB)", () => {
     passportLevelStandard?: PassportLevel | null;
     competitionLevelLatin?: string | null;
     competitionLevelStandard?: string | null;
+    competitionLevel?: string | null;
   }[] = [
     { category: "Latin" },
     { category: "Standard", competitionLevelStandard: "Avancé" },
@@ -58,6 +59,23 @@ describe("UserDiscipline backfill (#1023, integration, real DB)", () => {
     { category: "", competitionLevelLatin: "   " },
     { category: null, passportLevelStandard: "JAUNE" },
     { category: null },
+    // Deprecated single level only (#239 read fallback).
+    { category: "Latin", competitionLevel: "Avancé" },
+    { category: "Standards", competitionLevel: "Débutant" },
+    { category: "10 danses", competitionLevel: " International " },
+    { category: null, competitionLevel: "Intermédiaire" },
+    { category: "Latin", competitionLevel: "Expert" },
+    // A valid per-discipline level wins; an invalid one does not.
+    {
+      category: "Ten Dance",
+      competitionLevel: "Avancé",
+      competitionLevelStandard: "Débutant",
+    },
+    {
+      category: "Latin",
+      competitionLevel: "Avancé",
+      competitionLevelLatin: "x",
+    },
   ];
 
   const rowsOf = async (userId: string) =>
@@ -120,6 +138,21 @@ describe("UserDiscipline backfill (#1023, integration, real DB)", () => {
       "TEN_DANCE",
     ]);
     expect(await rowsOf(users[8].id)).toEqual([]);
+    // The legacy level reaches UserDiscipline (#239 fallback).
+    expect(await rowsOf(users[12].id)).toEqual([
+      {
+        code: "LATIN",
+        passportLevel: null,
+        competitionLevel: "Avancé",
+        primary: true,
+      },
+    ]);
+    expect(
+      (await rowsOf(users[15].id)).map((r) => [r.code, r.competitionLevel]),
+    ).toEqual([
+      ["LATIN", "Intermédiaire"],
+      ["STANDARD", "Intermédiaire"],
+    ]);
 
     // An existing row is never overwritten, and a re-run adds nothing.
     await prisma.userDiscipline.updateMany({

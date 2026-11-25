@@ -3,6 +3,7 @@ import {
   normalizeDiscipline,
   toCompetitionLevel,
 } from "../src/common/competition-level";
+import { syncUserDisciplines } from "../src/disciplines/user-disciplines.sync";
 import { userCompetitionLevelBackfillSelect } from "../src/utils/prisma-selects";
 
 /** Candidate users read per page (keyset pagination on id). */
@@ -62,7 +63,8 @@ export function planCompetitionLevelBackfill(user: {
  *
  * Idempotent: only rows with both per-discipline levels NULL are read, and
  * the write re-checks it (compare-and-set). The legacy column is left as is
- * (rollback). `dryRun` counts without writing.
+ * (rollback). Each write recomputes the user's `UserDiscipline` rows in the
+ * same transaction (#1023). `dryRun` counts without writing.
  */
 export async function backfillUserCompetitionLevels(
   prisma: PrismaClient,
@@ -103,13 +105,18 @@ export async function backfillUserCompetitionLevels(
         continue;
       }
       if (!dryRun) {
-        const { count } = await prisma.user.updateMany({
-          where: {
-            id: user.id,
-            competitionLevelLatin: null,
-            competitionLevelStandard: null,
-          },
-          data: plan,
+        // Dual write of UserDiscipline in the same transaction (#1023).
+        const count = await prisma.$transaction(async (tx) => {
+          const res = await tx.user.updateMany({
+            where: {
+              id: user.id,
+              competitionLevelLatin: null,
+              competitionLevelStandard: null,
+            },
+            data: plan,
+          });
+          if (res.count > 0) await syncUserDisciplines(tx, user.id);
+          return res.count;
         });
         if (count === 0) {
           report.skippedConcurrent++;
