@@ -129,7 +129,7 @@ describe("AuthTokenService", () => {
       expect(families[0]).not.toBe(families[1]);
     });
 
-    describe("credentials older than a password reset (#886)", () => {
+    describe("password replaced since the credentials were verified (#886)", () => {
       beforeEach(() => {
         mockPrismaService.refreshToken.deleteMany.mockResolvedValue({});
         mockPrismaService.refreshToken.create.mockImplementation(
@@ -137,39 +137,54 @@ describe("AuthTokenService", () => {
         );
       });
 
-      it("refuses the login and stores nothing, under the user lock", async () => {
+      it("refuses the login and stores nothing when the hash changed, under the user lock", async () => {
         mockPrismaService.user.findUnique.mockResolvedValue({
-          tokensValidAfter: new Date("2026-11-24T10:00:00Z"),
+          password: "hash-after-reset",
         });
 
         await expect(
-          service.createRefreshToken("u1", new Date("2026-11-24T09:59:59Z")),
+          service.createRefreshToken("u1", [hashToken("hash-before-reset")]),
         ).rejects.toBeInstanceOf(UnauthorizedException);
 
         expect(mockPrismaService.$queryRaw).toHaveBeenCalledTimes(1);
         expect(mockPrismaService.refreshToken.create).not.toHaveBeenCalled();
       });
 
-      it("accepts credentials checked after the reset, dating the token from the check", async () => {
-        const checkedAt = new Date("2026-11-24T10:00:01Z");
+      it("accepts the login when the hash is still the verified one", async () => {
         mockPrismaService.user.findUnique.mockResolvedValue({
-          tokensValidAfter: new Date("2026-11-24T10:00:00Z"),
+          password: "same-hash",
         });
 
-        await service.createRefreshToken("u1", checkedAt);
+        await service.createRefreshToken("u1", [hashToken("same-hash")]);
 
-        const { data } = mockPrismaService.refreshToken.create.mock
-          .calls[0][0] as { data: { createdAt: Date } };
-        expect(data.createdAt).toBe(checkedAt);
+        expect(mockPrismaService.refreshToken.create).toHaveBeenCalledTimes(1);
       });
 
-      it("accepts any login of an account never reset", async () => {
+      it("accepts the upgraded hash of a silent bcrypt rehash", async () => {
         mockPrismaService.user.findUnique.mockResolvedValue({
-          tokensValidAfter: null,
+          password: "upgraded-hash",
         });
 
-        await service.createRefreshToken("u1", new Date(0));
+        await service.createRefreshToken("u1", [
+          hashToken("old-hash"),
+          hashToken("upgraded-hash"),
+        ]);
 
+        expect(mockPrismaService.refreshToken.create).toHaveBeenCalledTimes(1);
+      });
+
+      it("refuses when the account vanished", async () => {
+        mockPrismaService.user.findUnique.mockResolvedValue(null);
+
+        await expect(
+          service.createRefreshToken("u1", [hashToken("h")]),
+        ).rejects.toBeInstanceOf(UnauthorizedException);
+      });
+
+      it("compares nothing without fingerprints (registration)", async () => {
+        await service.createRefreshToken("u1");
+
+        expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
         expect(mockPrismaService.refreshToken.create).toHaveBeenCalledTimes(1);
       });
     });

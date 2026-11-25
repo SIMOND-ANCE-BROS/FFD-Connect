@@ -85,19 +85,30 @@ describe("Login vs password reset race (integration, real DB, #886)", () => {
     return { release, holder };
   };
 
-  it("refuses a login whose credentials were checked before the reset, whichever gets the lock first", async () => {
+  it("refuses a login verified against the old password, whichever gets the lock first, without any clock", async () => {
     for (const loginFirst of [true, false]) {
       const userId = await newUser();
-      const checkedAt = new Date();
+      // What validateUser read and verified before the reset.
+      const verified = [hashToken("old-hash")];
       const { release, holder } = await holdUserLock(userId);
 
       const login = () =>
-        tokens.createRefreshToken(userId, checkedAt).then(
+        tokens.createRefreshToken(userId, verified).then(
           (t) => ({ ok: true as const, t }),
           (err: unknown) => ({ ok: false as const, err }),
         );
+      // The reset replaces the hash and revokes; the stamp is left out on
+      // purpose: the hash comparison alone must close the race.
       const reset = () =>
-        tokens.revokeAllUserTokens(userId, { stampTokensValidAfter: true });
+        tokens.revokeAllUserTokens(userId, {
+          beforeRevoke: async (tx) => {
+            await tx.user.update({
+              where: { id: userId },
+              data: { password: "new-hash" },
+              select: { id: true },
+            });
+          },
+        });
 
       let loginResult: ReturnType<typeof login>;
       let resetResult: Promise<number>;
@@ -147,7 +158,7 @@ describe("Login vs password reset race (integration, real DB, #886)", () => {
     expect(row?.revoked).toBe(false);
   });
 
-  it("resetPassword stamps tokensValidAfter and a later login still works", async () => {
+  it("resetPassword: a token that escaped the revocation is still refused by the stamp, and logins keep working", async () => {
     const userId = await newUser();
     const { token } = await tokens.createRefreshToken(userId);
     const plainReset = randomUUID();
@@ -163,18 +174,32 @@ describe("Login vs password reset race (integration, real DB, #886)", () => {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { tokensValidAfter: true },
+      select: { tokensValidAfter: true, password: true },
     });
     expect(user?.tokensValidAfter).toBeInstanceOf(Date);
+    expect(user?.password).not.toBe("old-hash");
+
+    // Put the token back to live, as if the revocation had missed it: only
+    // the real stamp written by resetPassword can refuse it now.
+    await prisma.refreshToken.updateMany({
+      where: { userId },
+      data: { revoked: false, revokedAt: null },
+    });
     await expect(tokens.refreshAccessToken(token)).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
-    // Credentials checked before the reset: refused; after it: accepted.
+    const row = await prisma.refreshToken.findUnique({
+      where: { token: hashToken(token) },
+      select: { revoked: true },
+    });
+    expect(row?.revoked).toBe(false);
+
+    // A login verified against the new hash goes through; the old one not.
     await expect(
-      tokens.createRefreshToken(userId, new Date(Date.now() - 60_000)),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
-    await expect(
-      tokens.createRefreshToken(userId, new Date()),
+      tokens.createRefreshToken(userId, [hashToken(user?.password ?? "")]),
     ).resolves.toBeDefined();
+    await expect(
+      tokens.createRefreshToken(userId, [hashToken("old-hash")]),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

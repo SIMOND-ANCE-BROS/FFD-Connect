@@ -45,6 +45,7 @@ import {
   storedEmailData,
 } from "./email-identity";
 import { LICENSE_NUMBER_MAX_LENGTH } from "./dto/register.dto";
+import { hashToken } from "../utils/token-hash.util";
 import { PasswordValidator } from "./password-validator";
 import { IMPERSONATION_TOKEN_EXPIRY_MINUTES } from "./impersonation-session";
 import { hasRole, rolesOf } from "./roles";
@@ -147,10 +148,9 @@ export class AuthService {
   async validateUser(
     email: string,
     pass: string,
-  ): Promise<(Omit<User, "password"> & { credentialsCheckedAt: Date }) | null> {
-    // Taken before the row (and so the password hash) is read: a reset that
-    // commits after this instant makes the credentials stale (#886).
-    const credentialsCheckedAt = new Date();
+  ): Promise<
+    (Omit<User, "password"> & { verifiedPasswordHashes: string[] }) | null
+  > {
     const fullSelect = {
       ...accountStatusSelect,
       id: true,
@@ -228,31 +228,46 @@ export class AuthService {
       if (accountBlockReason(user)) {
         throw new ForbiddenException(ACCOUNT_DISABLED_MESSAGE);
       }
+      // Fingerprints of the hash(es) this password was verified against: the
+      // refresh token insert (login) re-reads the hash under the user lock
+      // and refuses if a reset replaced it meanwhile (#886). No clock involved.
+      const verifiedPasswordHashes = [hashToken(user.password)];
       // Rehash silencieux si le hash existant a été généré avec < 12 rounds
       const currentRounds = bcrypt.getRounds(user.password);
       if (currentRounds < BCRYPT_ROUNDS) {
-        bcrypt
-          .hash(pass, BCRYPT_ROUNDS)
-          .then((newHash) =>
-            this.prisma.user.update({
-              where: { id: user.id as string },
+        const oldHash = user.password;
+        try {
+          const newHash = await bcrypt.hash(pass, BCRYPT_ROUNDS);
+          // The upgraded hash is the same password: login accepts it too.
+          verifiedPasswordHashes.push(hashToken(newHash));
+          // Only while the stored hash is still the one verified: a password
+          // reset that committed meanwhile must never be overwritten by the
+          // rehash of the old password.
+          this.prisma.user
+            .updateMany({
+              where: { id: user.id as string, password: oldHash },
               data: { password: newHash },
-            }),
-          )
-          .catch((err: unknown) => {
-            this.logger.warn(
-              { err, userId: user.id },
-              "Silent bcrypt rehash failed — login not affected",
-            );
-          });
+            })
+            .catch((err: unknown) => {
+              this.logger.warn(
+                { err, userId: user.id },
+                "Silent bcrypt rehash failed — login not affected",
+              );
+            });
+        } catch (err) {
+          this.logger.warn(
+            { err, userId: user.id },
+            "Silent bcrypt rehash failed — login not affected",
+          );
+        }
       }
       // `club` (status only) stays on the result: login() needs it so rolesOf
       // drops an extra CLUB role of a disabled club. login() builds its
       // response field by field, so it does not reach the client.
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password, ...result } = user;
-      return { ...result, credentialsCheckedAt } as Omit<User, "password"> & {
-        credentialsCheckedAt: Date;
+      return { ...result, verifiedPasswordHashes } as Omit<User, "password"> & {
+        verifiedPasswordHashes: string[];
       };
     }
     return null;
@@ -456,7 +471,7 @@ export class AuthService {
       extraRoles?: UserRole[];
       club?: { disabledAt: Date | null } | null;
       /** From validateUser; see AuthTokenService.createRefreshToken (#886). */
-      credentialsCheckedAt?: Date;
+      verifiedPasswordHashes?: string[];
     },
   ): Promise<LoginResponse> {
     const payload = {
@@ -470,16 +485,18 @@ export class AuthService {
       expiresIn: `${this.ACCESS_TOKEN_EXPIRY_MINUTES}m`,
     });
 
+    // First: a login refused as stale (password reset meanwhile, #886) must
+    // not count as a login (inactivity warning #991, invitation resend).
+    const refreshToken = await this.authTokenService.createRefreshToken(
+      user.id,
+      user.verifiedPasswordHashes,
+    );
+
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
       select: { id: true },
     });
-
-    const refreshToken = await this.authTokenService.createRefreshToken(
-      user.id,
-      user.credentialsCheckedAt,
-    );
 
     return {
       access_token,

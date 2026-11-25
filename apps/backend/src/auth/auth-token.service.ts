@@ -9,7 +9,7 @@ import {
   refreshTokenFamilySelect,
   refreshTokenRotationSelect,
   rotationStatusSelect,
-  tokensValidAfterSelect,
+  passwordOnlySelect,
 } from "../utils/prisma-selects";
 import { ACCOUNT_DISABLED_MESSAGE, accountBlockReason } from "./account-status";
 import { rolesOf } from "./roles";
@@ -58,8 +58,8 @@ async function lockUserSessions(
   );
 }
 
-/** Whether something dated `at` predates a password reset's stamp (#886). */
-function isStaleCredentials(
+/** Whether a token created at `at` predates a password reset's stamp (#886). */
+function predatesStamp(
   tokensValidAfter: Date | null | undefined,
   at: Date | undefined,
 ): boolean {
@@ -78,13 +78,14 @@ export class AuthTokenService {
   ) {}
 
   /**
-   * @param credentialsCheckedAt when the credentials behind this login were
-   *   verified (taken before the user row was read). A password reset that
-   *   committed after that instant makes them stale: the login is refused
-   *   under the user row lock, so a token can no longer slip in behind the
-   *   reset's revocation (#886). Omitted = verified now.
+   * @param verifiedPasswordHashes SHA-256 fingerprints of the password hash(es)
+   *   the credentials were verified against (login only). Re-read under the
+   *   user row lock: if a password reset replaced the hash since, the login is
+   *   refused (401), so no token can slip in behind the reset's revocation
+   *   (#886). It depends on no clock. Omitted (registration: a new account)
+   *   = nothing to compare.
    */
-  async createRefreshToken(userId: string, credentialsCheckedAt?: Date) {
+  async createRefreshToken(userId: string, verifiedPasswordHashes?: string[]) {
     const plainToken = crypto.randomBytes(64).toString("hex");
     const tokenHash = hashToken(plainToken);
     const expiresAt = new Date();
@@ -96,26 +97,22 @@ export class AuthTokenService {
     const id = crypto.randomUUID();
     const record = await this.prisma.$transaction(async (tx) => {
       // Same lock as rotation and revocation: either the reset has committed
-      // (its stamp is read below) or it waits for this token and revokes it.
+      // (the new hash is read below) or it waits for this token and revokes it.
       await lockUserSessions(tx, userId);
-      const user = await tx.user.findUnique({
-        where: { id: userId },
-        select: tokensValidAfterSelect,
-      });
-      if (isStaleCredentials(user?.tokensValidAfter, credentialsCheckedAt)) {
-        throw new UnauthorizedException("Invalid credentials");
+      if (verifiedPasswordHashes) {
+        const user = await tx.user.findUnique({
+          where: { id: userId },
+          select: passwordOnlySelect,
+        });
+        if (
+          !user ||
+          !verifiedPasswordHashes.includes(hashToken(user.password))
+        ) {
+          throw new UnauthorizedException("Invalid credentials");
+        }
       }
       return tx.refreshToken.create({
-        data: {
-          id,
-          token: tokenHash,
-          userId,
-          expiresAt,
-          familyId: id,
-          // The token dates from the credential check, so the refresh-time
-          // comparison with tokensValidAfter sees it as it was.
-          ...(credentialsCheckedAt ? { createdAt: credentialsCheckedAt } : {}),
-        },
+        data: { id, token: tokenHash, userId, expiresAt, familyId: id },
       });
     });
 
@@ -197,7 +194,7 @@ export class AuthTokenService {
         return "blocked";
       }
       // A token created before a password reset never rotates (#886).
-      if (isStaleCredentials(status.tokensValidAfter, tokenRecord.createdAt)) {
+      if (predatesStamp(status.tokensValidAfter, tokenRecord.createdAt)) {
         return "lost";
       }
       const consumed = await tx.refreshToken.updateMany({

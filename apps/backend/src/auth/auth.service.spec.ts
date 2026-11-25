@@ -6,6 +6,7 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
@@ -89,7 +90,7 @@ describe("AuthService", () => {
         id: "u1",
         email: "test@example.com",
         firstName: "Test",
-        credentialsCheckedAt: expect.any(Date),
+        verifiedPasswordHashes: [expect.any(String)],
       });
     });
 
@@ -525,6 +526,24 @@ describe("AuthService", () => {
         undefined,
       );
     });
+
+    it("records lastLoginAt only after the refresh token was created (#886)", async () => {
+      mockAuthTokenService.createRefreshToken.mockRejectedValue(
+        new UnauthorizedException("Invalid credentials"),
+      );
+      mockPrismaService.user.update.mockClear();
+
+      await expect(
+        service.login({
+          id: "u1",
+          email: "a@b.c",
+          role: "LICENSEE",
+          verifiedPasswordHashes: ["x"],
+        } as never),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
   });
 
   describe("validateUser — rehash bcrypt transparent", () => {
@@ -551,19 +570,25 @@ describe("AuthService", () => {
       };
 
       mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
-      mockPrismaService.user.update = jest.fn().mockResolvedValue(mockUser);
+      mockPrismaService.user.updateMany = jest
+        .fn()
+        .mockResolvedValue({ count: 1 });
 
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       (bcrypt.getRounds as jest.Mock).mockReturnValue(6);
       (bcrypt.hash as jest.Mock).mockResolvedValue("new-hash-12-rounds");
 
-      await service.validateUser("test@example.com", "password");
+      const result = await service.validateUser("test@example.com", "password");
 
       expect(bcrypt.hash).toHaveBeenCalledWith("password", 12);
-      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
-        where: { id: "user-1" },
+      // Conditional on the stored hash still being the verified one (#886):
+      // a reset that committed meanwhile is never overwritten.
+      expect(mockPrismaService.user.updateMany).toHaveBeenCalledWith({
+        where: { id: "user-1", password: "hashed-with-6-rounds" },
         data: { password: "new-hash-12-rounds" },
       });
+      // Both the old and the upgraded hash are accepted at login.
+      expect(result?.verifiedPasswordHashes).toHaveLength(2);
     });
 
     it("should not throw when rehash DB update fails", async () => {
@@ -589,7 +614,7 @@ describe("AuthService", () => {
       };
 
       mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
-      mockPrismaService.user.update = jest
+      mockPrismaService.user.updateMany = jest
         .fn()
         .mockRejectedValue(new Error("DB timeout"));
 
@@ -624,7 +649,7 @@ describe("AuthService", () => {
       };
 
       mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
-      mockPrismaService.user.update = jest.fn();
+      mockPrismaService.user.updateMany = jest.fn();
 
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       (bcrypt.getRounds as jest.Mock).mockReturnValue(12);
@@ -632,7 +657,7 @@ describe("AuthService", () => {
       await service.validateUser("test@example.com", "password");
 
       expect(bcrypt.hash).not.toHaveBeenCalled();
-      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+      expect(mockPrismaService.user.updateMany).not.toHaveBeenCalled();
     });
   });
 
