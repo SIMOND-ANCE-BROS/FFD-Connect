@@ -4,7 +4,7 @@
  */
 import { deleteAsync, writeAsStringAsync } from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import {
   usersControllerDeleteMyAccount,
   usersControllerExportMyData,
@@ -13,6 +13,7 @@ import { runSessionEndCleanups } from "../../../../services/sessionCleanup";
 import { AuthService } from "../../../auth/services/AuthService";
 import {
   deleteExportFile,
+  ANDROID_EXPORT_DELETE_DELAY_MS,
   deleteMyAccount,
   exportAndShareMyData,
 } from "../PrivacyService";
@@ -61,6 +62,7 @@ function setPlatform(os: typeof Platform.OS): void {
 
 afterEach(() => {
   setPlatform(originalOS);
+  jest.useRealTimers();
 });
 
 beforeEach(() => {
@@ -109,8 +111,115 @@ describe("exportAndShareMyData", () => {
     await exportAndShareMyData();
 
     expect(shareMock).toHaveBeenCalled();
-    // Purged at the next launch or session end instead.
+    // Purged later (foreground return, launch or session end), not now.
     expect(deleteFileMock).not.toHaveBeenCalled();
+  });
+
+  describe("Android: suppression différée au retour au premier plan (#926)", () => {
+    let listener: (state: string) => void;
+    const remove = jest.fn();
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.setSystemTime(0);
+      remove.mockClear();
+      jest.spyOn(AppState, "addEventListener").mockImplementation(((
+        _type: string,
+        cb: (state: string) => void,
+      ) => {
+        listener = cb;
+        return { remove };
+      }) as never);
+      setPlatform("android");
+      exportMock.mockResolvedValue({ data: { ok: true } });
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it("supprime le fichier au retour au premier plan après le délai", async () => {
+      await exportAndShareMyData();
+      jest.setSystemTime(ANDROID_EXPORT_DELETE_DELAY_MS);
+
+      listener("active");
+      await Promise.resolve();
+
+      expect(deleteFileMock).toHaveBeenCalledWith(EXPORT_URI, {
+        idempotent: true,
+      });
+      expect(remove).toHaveBeenCalled();
+    });
+
+    it("ne supprime pas avant le délai et reste abonné", async () => {
+      await exportAndShareMyData();
+      jest.setSystemTime(ANDROID_EXPORT_DELETE_DELAY_MS - 1);
+
+      listener("active");
+      await Promise.resolve();
+
+      expect(deleteFileMock).not.toHaveBeenCalled();
+      expect(remove).not.toHaveBeenCalled();
+
+      jest.setSystemTime(ANDROID_EXPORT_DELETE_DELAY_MS + 1);
+      listener("active");
+      await Promise.resolve();
+      expect(deleteFileMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("un second export annule la purge différée du premier", async () => {
+      await exportAndShareMyData();
+      const firstRemove = remove.mock.calls.length;
+
+      await exportAndShareMyData();
+
+      expect(remove.mock.calls.length).toBeGreaterThan(firstRemove);
+      jest.setSystemTime(ANDROID_EXPORT_DELETE_DELAY_MS - 1);
+      listener("active");
+      await Promise.resolve();
+      expect(deleteFileMock).not.toHaveBeenCalled();
+    });
+
+    it("ignore les passages en arrière-plan", async () => {
+      await exportAndShareMyData();
+      jest.setSystemTime(ANDROID_EXPORT_DELETE_DELAY_MS * 2);
+
+      listener("background");
+      await Promise.resolve();
+
+      expect(deleteFileMock).not.toHaveBeenCalled();
+    });
+
+    it("n'échoue pas si le fichier est déjà absent", async () => {
+      deleteFileMock.mockRejectedValue(new Error("ENOENT"));
+      await exportAndShareMyData();
+      jest.setSystemTime(ANDROID_EXPORT_DELETE_DELAY_MS);
+
+      listener("active");
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(remove).toHaveBeenCalled();
+    });
+
+    it("se désabonne si la fin de session purge d'abord (filet de sécurité)", async () => {
+      await exportAndShareMyData();
+
+      await runSessionEndCleanups();
+
+      expect(deleteFileMock).toHaveBeenCalledWith(EXPORT_URI, {
+        idempotent: true,
+      });
+      expect(remove).toHaveBeenCalled();
+    });
+
+    it("n'enregistre aucun écouteur sur iOS", async () => {
+      setPlatform("ios");
+
+      await exportAndShareMyData();
+
+      expect(AppState.addEventListener).not.toHaveBeenCalled();
+    });
   });
 
   // expo-sharing resolves when the user dismisses the sheet (covered by the
