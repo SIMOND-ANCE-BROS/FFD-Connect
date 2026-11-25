@@ -3,7 +3,7 @@
  * Utilise `select` au lieu de `include` pour limiter les champs récupérés
  */
 
-import { TrackCorrectionStatus } from "@prisma/client";
+import { Prisma, TrackCorrectionStatus } from "@prisma/client";
 
 /** Niveaux de compétition par discipline (source de vérité, #239). */
 export const competitionLevelsPerDisciplineSelect = {
@@ -1817,3 +1817,36 @@ export const competitionTopTurnierIndexMatchSelect = {
     take: 1,
   },
 } as const;
+
+/**
+ * Upper bound of the active disciplines read per dance domain (#1022). The
+ * catalog holds a handful per domain (ADR-0026 lists at most six styles per
+ * federation family); the bound only keeps the nested read finite.
+ */
+export const DISCIPLINE_CATALOG_MAX_PER_DOMAIN = 100;
+
+/** A discipline as served by the public catalog (#1022). */
+export const disciplineCatalogSelect = {
+  code: true,
+  label: true,
+  aliases: true,
+} as const;
+
+/**
+ * A dance domain of the public catalog (#1022, ADR-0026): its capabilities
+ * and its ACTIVE disciplines in display order (code as tie-breaker, so the
+ * order is stable).
+ */
+export const danceDomainCatalogSelect = {
+  code: true,
+  label: true,
+  capabilities: true,
+  disciplines: {
+    where: { active: true },
+    orderBy: [{ position: "asc" }, { code: "asc" }],
+    select: disciplineCatalogSelect,
+    take: DISCIPLINE_CATALOG_MAX_PER_DOMAIN,
+  },
+  // `satisfies` rather than `as const`: Prisma rejects a readonly `orderBy`
+  // array, and the literals still narrow the result type.
+} satisfies Prisma.DanceDomainSelect;

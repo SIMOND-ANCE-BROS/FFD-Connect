@@ -2,6 +2,7 @@ import { Alert } from "react-native";
 import { create } from "zustand";
 import { IS_PROD } from "../config";
 import TrackPlayer, * as TrackPlayerUtils from "../utils/TrackPlayerWrapper";
+import { onSessionEnd } from "../services/sessionCleanup";
 import { createLogger } from "../utils/logger";
 import { hasExtendedTrackData } from "../utils/typeGuards";
 import { setupPlayer } from "../features/player/services/TrackPlayerService";
@@ -457,6 +458,25 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     });
   },
 }));
+
+// Identity change (#911): likes, queue and current track belong to the account
+// that built them (likes also drive the offline favourite downloads). They go
+// at a logout and at both ends of a support access. State first, so nothing
+// of the previous account shows even if the native reset fails.
+onSessionEnd(async () => {
+  usePlayerStore.setState({
+    currentTrack: null,
+    isPlaying: false,
+    queueTracks: [],
+    _originalQueue: [],
+    likedTrackIds: [],
+    isShuffle: false,
+    repeatMode: PlayerRepeatMode.Off,
+    lockedMpmByStyle: {},
+    tempo: null,
+  });
+  await TrackPlayer.reset();
+});
 
 // Re-export hasExtendedTrackData for use in PlayerStoreSync
 export { hasExtendedTrackData };

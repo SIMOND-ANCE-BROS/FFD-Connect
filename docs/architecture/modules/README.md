@@ -19,7 +19,8 @@ Cette documentation decrit les modules metier de FFD Connect en mettant l'accent
 6. `media-tracks-tts.md` - Bibliotheque musicale, processing tracks, annonces TTS.
 7. `notifications-reports-health.md` - Notifications, signalement, health/observabilite.
 8. `payment.md` - Paiement en ligne des places de competition (HelloAsso).
-9. `cross-cutting-rules.md` - Regles transverses, securite, erreurs, retry, navigation.
+9. `disciplines.md` - Referentiel des domaines de danse, disciplines et capacites (ADR-0026).
+10. `cross-cutting-rules.md` - Regles transverses, securite, erreurs, retry, navigation.
 
 ## Cartographie backend (controllers)
 
@@ -37,6 +38,7 @@ Toutes les routes sont prefixees par `/api/v1` sauf `health` (exclu du prefixe p
 - `reports`: `/reports`
 - `payment`: `/payment/checkout`, `/payment/webhook`
 - `wdsf`: `/wdsf/*`
+- `disciplines`: `/disciplines`
 - `health`: `/health/*` (hors prefixe `/api/v1`)
 
 ### Services internes (sans controller REST)

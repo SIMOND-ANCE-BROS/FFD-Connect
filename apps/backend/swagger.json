@@ -22659,6 +22659,30 @@
         "tags": ["admin"]
       }
     },
+    "/disciplines": {
+      "get": {
+        "description": "Domaines (familles de danses de la fédération) dans l'ordre d'affichage, chacun avec ses capacités et ses disciplines actives. Public, sans authentification ; à garder en cache (Cache-Control : 1 h).",
+        "operationId": "DisciplinesController_getCatalog",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisciplineCatalogDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes (limite globale de débit)"
+          }
+        },
+        "summary": "Référentiel des domaines de danse et de leurs disciplines",
+        "tags": ["disciplines"]
+      }
+    },
     "/reports": {
       "post": {
         "description": "Permet de signaler un problème, bug ou suggestion avec une image optionnelle.",
@@ -34681,6 +34705,86 @@
           "eventsWithResults",
           "resultsStatus"
         ]
+      },
+      "DanceCapability": {
+        "type": "string",
+        "enum": [
+          "COUPLE",
+          "TEAM",
+          "PASSPORT",
+          "COMPETITION_LEVELS",
+          "TEMPO_PLAYER",
+          "COMPETITION_SKATING"
+        ],
+        "description": "Fonctionnalités utilisées par le domaine. Une capacité inconnue de cette version du serveur n'est pas servie."
+      },
+      "DisciplineCatalogItemDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "LATIN",
+            "description": "Code stable de la discipline, clé utilisée par le code et les API"
+          },
+          "label": {
+            "type": "string",
+            "example": "Danses latines",
+            "description": "Libellé français, pour l'affichage seulement"
+          },
+          "aliases": {
+            "example": ["latin", "latins", "latine", "latines"],
+            "description": "Saisies libres et imports reconnus pour cette discipline, normalisés : minuscules, sans accents ni caractère non alphanumérique (« 10 danses » → « 10danses »)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["code", "label", "aliases"]
+      },
+      "DanceDomainCatalogItemDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "LATINES_STANDARDS",
+            "description": "Code stable du domaine (famille de danses)"
+          },
+          "label": {
+            "type": "string",
+            "example": "Latines & standards",
+            "description": "Libellé français, pour l'affichage seulement"
+          },
+          "capabilities": {
+            "type": "array",
+            "example": ["COUPLE", "PASSPORT"],
+            "description": "Fonctionnalités utilisées par le domaine. Une capacité inconnue de cette version du serveur n'est pas servie.",
+            "items": {
+              "$ref": "#/components/schemas/DanceCapability"
+            }
+          },
+          "disciplines": {
+            "description": "Disciplines actives du domaine, dans l'ordre d'affichage",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DisciplineCatalogItemDto"
+            }
+          }
+        },
+        "required": ["code", "label", "capabilities", "disciplines"]
+      },
+      "DisciplineCatalogDto": {
+        "type": "object",
+        "properties": {
+          "domains": {
+            "description": "Domaines de danse dans l'ordre d'affichage, même ceux sans discipline active",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DanceDomainCatalogItemDto"
+            }
+          }
+        },
+        "required": ["domains"]
       },
       "NotificationPreferenceDto": {
         "type": "object",

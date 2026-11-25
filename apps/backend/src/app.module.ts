@@ -25,6 +25,7 @@ import { MetricsModule } from "./common/metrics/metrics.module";
 import { IpBlacklistMiddleware } from "./common/middleware/ip-blacklist.middleware";
 import { ClubsModule } from "./clubs/clubs.module";
 import { CompetitionsModule } from "./competitions/competitions.module";
+import { DisciplinesModule } from "./disciplines/disciplines.module";
 import { validate } from "./config/env.validation";
 import ffdConfig from "./config/ffd.config";
 import { HealthModule } from "./health/health.module";
@@ -82,6 +83,8 @@ import { WdsfModule } from "./wdsf/wdsf.module";
     CareerModule,
     ClubsModule,
     CompetitionsModule,
+    // Public catalog of dance domains and disciplines (#1022, ADR-0026).
+    DisciplinesModule,
     ReportsModule,
     UsersModule,
     // Deletion 3 years after the last login (#991), in-process daily job.

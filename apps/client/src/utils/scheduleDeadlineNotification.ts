@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
+import { onSessionEnd } from "../services/sessionCleanup";
 
 const DEADLINE_KEY_PREFIX = "deadline_notif_";
 
@@ -179,3 +180,9 @@ export async function clearAllDeadlineReminders(): Promise<void> {
     // Best-effort
   }
 }
+
+// Identity change (#911): reminders and their keys are device-wide, so they
+// would ring (and name competitions) in the next account's session. Cleared
+// at a logout and at both ends of a support access; the competition screen
+// plans them again for the account that visits it.
+onSessionEnd(clearAllDeadlineReminders);

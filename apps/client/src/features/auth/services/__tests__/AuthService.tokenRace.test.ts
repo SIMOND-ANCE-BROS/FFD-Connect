@@ -44,6 +44,7 @@ jest.mock("../../../settings/services/pushRegistration", () => ({
 }));
 jest.mock("../../../../services/sessionCleanup", () => ({
   runSessionEndCleanups: jest.fn(),
+  onSessionEnd: () => () => undefined,
 }));
 jest.mock("../../../../services/offlineQueueStorage", () => ({
   clearOfflineQueue: jest.fn(),

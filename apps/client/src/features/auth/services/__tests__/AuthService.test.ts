@@ -41,6 +41,7 @@ jest.mock("../../../settings/services/pushRegistration", () => ({
 const mockRunSessionEndCleanups = jest.fn();
 jest.mock("../../../../services/sessionCleanup", () => ({
   runSessionEndCleanups: () => mockRunSessionEndCleanups() as unknown,
+  onSessionEnd: () => () => undefined,
 }));
 
 const mockClearOfflineQueue = jest.fn();
