@@ -626,6 +626,29 @@ describe("AuthService", () => {
       expect(result).not.toBeNull();
     });
 
+    it("should not throw when computing the new hash fails, and keeps the verified hash only", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: "user-1",
+        email: "test@example.com",
+        password: "hashed-with-6-rounds",
+        firstName: "Test",
+        lastName: "User",
+        role: "LICENSEE",
+        license: null,
+      });
+      mockPrismaService.user.updateMany = jest.fn();
+
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      (bcrypt.getRounds as jest.Mock).mockReturnValue(6);
+      (bcrypt.hash as jest.Mock).mockRejectedValue(new Error("bcrypt failed"));
+
+      const result = await service.validateUser("test@example.com", "password");
+
+      expect(result).not.toBeNull();
+      expect(result?.verifiedPasswordHashes).toHaveLength(1);
+      expect(mockPrismaService.user.updateMany).not.toHaveBeenCalled();
+    });
+
     it("should NOT rehash password when existing hash already has 12 rounds", async () => {
       const mockUser = {
         id: "user-1",
