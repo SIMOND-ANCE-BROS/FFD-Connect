@@ -17,6 +17,14 @@ import { AccountDeletionService } from "../users/account-deletion.service";
 import { AdminAuditService } from "./admin-audit.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
+import { syncUserDisciplines } from "../disciplines/user-disciplines.sync";
+
+// Dual write of the disciplines (#1023): rows covered on a real database
+// (test/user-discipline-dual-write.integration-spec.ts); here only the call.
+jest.mock("../disciplines/user-disciplines.sync", () => ({
+  ...jest.requireActual<object>("../disciplines/user-disciplines.sync"),
+  syncUserDisciplines: jest.fn().mockResolvedValue(undefined),
+}));
 
 const current = {
   id: "u1",
@@ -44,6 +52,7 @@ describe("AdminUsersService.update", () => {
   let tokens: { revokeAllUserTokens: jest.Mock };
 
   beforeEach(async () => {
+    jest.mocked(syncUserDisciplines).mockClear();
     prisma = createMockPrismaService();
     prisma.$transaction.mockImplementation(((fn: (tx: unknown) => unknown) =>
       fn(prisma)) as never);
@@ -102,6 +111,30 @@ describe("AdminUsersService.update", () => {
     expect(audit.record.mock.calls[0][1].after).not.toHaveProperty(
       "competitionLevel",
     );
+    // Dual write (#1023), in the transaction, after the user write.
+    expect(syncUserDisciplines).toHaveBeenCalledWith(prisma, "u1");
+    expect(
+      jest.mocked(syncUserDisciplines).mock.invocationCallOrder[0],
+    ).toBeGreaterThan(prisma.user.update.mock.invocationCallOrder[0]);
+  });
+
+  it.each([
+    ["the declared discipline", { category: "Standard" }],
+    ["a Passeport level", { passportLevelStandard: "VERT" as const }],
+  ])("mirrors %s into UserDiscipline (#1023)", async (_label, dto) => {
+    await service.update("admin-1", "u1", dto);
+
+    expect(syncUserDisciplines).toHaveBeenCalledWith(prisma, "u1");
+  });
+
+  it("leaves UserDiscipline alone when no discipline field changes (#1023)", async () => {
+    // Same category as stored: no diff on it, and lastName is not mirrored.
+    await service.update("admin-1", "u1", {
+      category: "Latine",
+      lastName: "Durand",
+    });
+
+    expect(syncUserDisciplines).not.toHaveBeenCalled();
   });
 
   it("mirrors a legacy single level (older back-office) to both disciplines", async () => {

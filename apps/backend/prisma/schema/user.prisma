@@ -80,6 +80,7 @@ model User {
   trackCorrectionsReviewed TrackCorrection[] @relation("TrackCorrectionsReviewed")
   adminAuditActions    AdminAuditLog[] @relation("AdminAuditActor")
   parentalConsents     ParentalConsent[]
+  disciplines          UserDiscipline[]
 
   @@index([email])
   @@index([role])

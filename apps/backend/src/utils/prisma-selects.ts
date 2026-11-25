@@ -1850,3 +1850,23 @@ export const danceDomainCatalogSelect = {
   // `satisfies` rather than `as const`: Prisma rejects a readonly `orderBy`
   // array, and the literals still narrow the result type.
 } satisfies Prisma.DanceDomainSelect;
+
+/**
+ * Legacy discipline columns of a user (#1023): the source of the
+ * `UserDiscipline` rows during the dual-write step (ADR-0026 §5, step 2).
+ */
+export const userDisciplineSourceSelect = {
+  category: true,
+  passportLevelLatin: true,
+  passportLevelStandard: true,
+  competitionLevelLatin: true,
+  competitionLevelStandard: true,
+  // Deprecated single level (#239): still read as a fallback, so mirrored.
+  competitionLevel: true,
+} as const;
+
+/** Discipline id and stable code, to resolve codes to ids (#1023). */
+export const disciplineCodeSelect = {
+  id: true,
+  code: true,
+} as const;

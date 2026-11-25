@@ -5,6 +5,14 @@ import {
   backfillUserCompetitionLevels,
   planCompetitionLevelBackfill,
 } from "./backfill-user-competition-level.utils";
+import { syncUserDisciplines } from "../src/disciplines/user-disciplines.sync";
+
+// Dual write of UserDiscipline (#1023): rows covered on a real database
+// (test/user-competition-level-backfill.integration-spec.ts).
+jest.mock("../src/disciplines/user-disciplines.sync", () => ({
+  ...jest.requireActual<object>("../src/disciplines/user-disciplines.sync"),
+  syncUserDisciplines: jest.fn().mockResolvedValue(undefined),
+}));
 
 const user = (
   id: string,
@@ -49,7 +57,10 @@ describe("backfillUserCompetitionLevels (#239)", () => {
   let prisma: MockProxy<PrismaClient>;
 
   beforeEach(() => {
+    jest.mocked(syncUserDisciplines).mockClear();
     prisma = mockDeep<PrismaClient>();
+    prisma.$transaction.mockImplementation(((fn: (tx: unknown) => unknown) =>
+      fn(prisma)) as never);
     prisma.user.updateMany.mockResolvedValue({ count: 1 });
   });
 
@@ -110,6 +121,13 @@ describe("backfillUserCompetitionLevels (#239)", () => {
         competitionLevelStandard: "Intermédiaire",
       },
     });
+    // Each written user is mirrored into UserDiscipline, in its transaction.
+    expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+    expect(jest.mocked(syncUserDisciplines).mock.calls).toEqual([
+      [prisma, "a"],
+      [prisma, "c"],
+      [prisma, "d"],
+    ]);
   });
 
   it("counts a row changed meanwhile instead of overwriting it", async () => {
@@ -122,6 +140,7 @@ describe("backfillUserCompetitionLevels (#239)", () => {
 
     expect(report.updated).toBe(0);
     expect(report.skippedConcurrent).toBe(1);
+    expect(syncUserDisciplines).not.toHaveBeenCalled();
   });
 
   it("dry run counts without writing", async () => {
@@ -133,6 +152,7 @@ describe("backfillUserCompetitionLevels (#239)", () => {
 
     expect(report).toMatchObject({ scanned: 1, updated: 1, latinOnly: 1 });
     expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    expect(syncUserDisciplines).not.toHaveBeenCalled();
   });
 
   it("does nothing on an empty base", async () => {

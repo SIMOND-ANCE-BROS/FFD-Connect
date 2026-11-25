@@ -14,6 +14,10 @@ import {
   legacyCompetitionLevelMirror,
   mirrorLegacyCompetitionLevel,
 } from "../common/competition-level";
+import {
+  syncUserDisciplines,
+  touchesDisciplineFields,
+} from "../disciplines/user-disciplines.sync";
 import { PrismaService } from "../prisma/prisma.service";
 import { AccountDeletionService } from "../users/account-deletion.service";
 import {
@@ -130,6 +134,10 @@ export class AdminUsersService {
         },
         select: { id: true },
       });
+      // Dual write of the disciplines (#1023, ADR-0026 step 2), not audited.
+      if (touchesDisciplineFields(diff.after)) {
+        await syncUserDisciplines(tx, userId);
+      }
       roleChanged = "role" in diff.after;
       await this.audit.record(tx, {
         actorId,

@@ -116,6 +116,22 @@ describe("User competition level backfill (#239, integration, real DB)", () => {
       competitionLevelStandard: null,
     });
 
+    // Dual write (#1023): the written levels reach UserDiscipline.
+    const rows = await prisma.userDiscipline.findMany({
+      where: { userId: tenDance.id },
+      select: {
+        competitionLevel: true,
+        discipline: { select: { code: true } },
+      },
+      orderBy: { discipline: { position: "asc" } },
+      take: 10,
+    });
+    expect(rows.map((r) => [r.discipline.code, r.competitionLevel])).toEqual([
+      ["LATIN", "International"],
+      ["STANDARD", "International"],
+      ["TEN_DANCE", null],
+    ]);
+
     // Second run: only the invalid value is still a candidate.
     const again = await backfillUserCompetitionLevels(prisma, false);
     expect(again.updated).toBe(0);
