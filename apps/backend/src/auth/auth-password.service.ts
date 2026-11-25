@@ -164,20 +164,23 @@ export class AuthPasswordService {
 
     const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
 
-    await this.prisma.user.update({
-      where: { id: resetToken.userId },
-      data: { password: hashedPassword },
-    });
-
-    await this.prisma.passwordResetToken.update({
-      where: { id: resetToken.id },
-      data: {
-        used: true,
-        usedAt: new Date(),
+    // One transaction under the user lock (#886): the new password, the spent
+    // reset token, the stamp and the revocation commit together or not at all.
+    await this.authTokenService.revokeAllUserTokens(resetToken.userId, {
+      stampTokensValidAfter: true,
+      beforeRevoke: async (tx) => {
+        await tx.user.update({
+          where: { id: resetToken.userId },
+          data: { password: hashedPassword },
+          select: idOnlySelect,
+        });
+        await tx.passwordResetToken.update({
+          where: { id: resetToken.id },
+          data: { used: true, usedAt: new Date() },
+          select: idOnlySelect,
+        });
       },
     });
-
-    await this.authTokenService.revokeAllUserTokens(resetToken.userId);
 
     return { success: true };
   }

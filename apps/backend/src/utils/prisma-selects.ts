@@ -1360,6 +1360,18 @@ export const accountStatusSelect = {
   club: { select: { disabledAt: true } },
 } as const;
 
+/** Password hash re-read under the user lock at login (#886). Never returned. */
+export const passwordOnlySelect = { password: true } as const;
+
+/** Password-reset stamp (#886). */
+export const tokensValidAfterSelect = { tokensValidAfter: true } as const;
+
+/** Status plus reset stamp, re-read under the user lock at rotation (#884, #886). */
+export const rotationStatusSelect = {
+  ...accountStatusSelect,
+  ...tokensValidAfterSelect,
+} as const;
+
 /**
  * Refresh-token rotation (#884): the token's own state and, for the response
  * and the status check, its user. The status is read again under the user
@@ -1372,6 +1384,7 @@ export const refreshTokenRotationSelect = {
   revoked: true,
   revokedAt: true,
   expiresAt: true,
+  createdAt: true,
   user: {
     select: {
       ...accountStatusSelect,

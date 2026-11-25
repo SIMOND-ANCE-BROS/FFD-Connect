@@ -26,9 +26,13 @@ describe("AuthController (e2e)", () => {
   let jwtService: JwtService;
 
   beforeAll(async () => {
-    const mockPrisma = {
+    const mockPrisma: Record<string, unknown> = {
       // E-mail lookup (#465): each address designates one account.
       $queryRaw: jest.fn(oneAccountPerAddress("test-uuid")),
+      // Interactive transaction (user lock at login, #886): same mock.
+      $transaction: jest.fn((cb: (tx: unknown) => Promise<unknown>) =>
+        cb(mockPrisma),
+      ),
       user: {
         findUnique: jest.fn(),
         update: jest.fn().mockResolvedValue({ id: "user-1" }),
