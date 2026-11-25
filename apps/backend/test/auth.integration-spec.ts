@@ -898,4 +898,31 @@ describe("AuthController (integration with real DB)", () => {
         .expect(401);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // DELETE /users/me — wrong confirmation password (#937)
+  // ---------------------------------------------------------------------------
+  describe("DELETE /users/me with a wrong password", () => {
+    it("returns 403 WRONG_PASSWORD and keeps the account", async () => {
+      const { token, user } = await makeUser();
+
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .delete("/api/v1/users/me")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ password: "WrongOld999!" })
+        .expect(403)
+        .expect((res) => {
+          expect(res.body).toMatchObject({
+            code: "WRONG_PASSWORD",
+            message: "Mot de passe incorrect",
+          });
+        });
+
+      const stillThere = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { id: true },
+      });
+      expect(stillThere).not.toBeNull();
+    });
+  });
 });

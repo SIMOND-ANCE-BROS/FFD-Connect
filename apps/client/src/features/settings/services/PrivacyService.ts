@@ -125,8 +125,9 @@ export async function exportAndShareMyData(): Promise<void> {
 /**
  * Droit à l'oubli (art. 17) : suppression définitive du compte.
  * Le backend exige le mot de passe courant — un token volé ne suffit pas.
- * Lève "WRONG_PASSWORD" (401), "SESSION_ENDED" (401 qui a mis fin à la
- * session : compte déjà supprimé) ou "DELETE_FAILED" sans rien effacer. Une fois
+ * Lève "WRONG_PASSWORD" (403 `code: WRONG_PASSWORD`, #937), "SESSION_ENDED"
+ * (401 qui a mis fin à la session : compte déjà supprimé) ou "DELETE_FAILED"
+ * (tout autre échec, 401 compris) sans rien effacer. Une fois
  * la suppression confirmée, efface toutes les données locales du compte
  * (#933) ; l'appelant n'a plus qu'à rafraîchir l'état d'auth (pas de logout).
  */
