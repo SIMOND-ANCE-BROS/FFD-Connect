@@ -3,12 +3,12 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  UnauthorizedException,
 } from "@nestjs/common";
 import * as Sentry from "@sentry/nestjs";
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
+import { wrongPasswordRefusal } from "./wrong-password";
 import {
   idOnlySelect,
   passwordResetTargetSelect,
@@ -205,7 +205,7 @@ export class AuthPasswordService {
     );
 
     if (!isCurrentPasswordValid) {
-      throw new UnauthorizedException("Mot de passe actuel incorrect");
+      throw wrongPasswordRefusal("Mot de passe actuel incorrect");
     }
 
     const isSamePassword = await bcrypt.compare(newPassword, user.password);

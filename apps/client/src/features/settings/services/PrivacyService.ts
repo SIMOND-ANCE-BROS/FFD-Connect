@@ -12,6 +12,7 @@ import {
   usersControllerExportMyData,
 } from "../../../api/generated/sdk.gen";
 import { getTokens } from "../../../api/tokenStore";
+import { isWrongPasswordRefusal } from "../../../api/wrongPassword";
 import { onSessionEnd } from "../../../services/sessionCleanup";
 import { AuthService } from "../../auth/services/AuthService";
 import { createLogger } from "../../../utils/logger";
@@ -134,13 +135,19 @@ export async function deleteMyAccount(password: string): Promise<void> {
     body: { password },
   });
   if (error) {
-    if (response?.status !== 401) throw new Error("DELETE_FAILED");
-    // A wrong password keeps the session. A 401 that ended it means the
-    // account is already gone (a retry after a lost deletion response): the
-    // refresh was refused with ACCOUNT_DELETED and wiped this device (#935).
-    throw new Error(
-      (await sessionEnded()) ? "SESSION_ENDED" : "WRONG_PASSWORD",
-    );
+    // A wrong password is a 403 with its own code, not a 401: the session
+    // stays valid and was not refreshed for nothing (#937).
+    if (isWrongPasswordRefusal(response?.status, error)) {
+      throw new Error("WRONG_PASSWORD");
+    }
+    // A 401 that ended the session means the account is already gone (a
+    // retry after a lost deletion response): the refresh was refused with
+    // ACCOUNT_DELETED and wiped this device (#935). Any other failure is
+    // unconfirmed, not a wrong password.
+    if (response?.status === 401 && (await sessionEnded())) {
+      throw new Error("SESSION_ENDED");
+    }
+    throw new Error("DELETE_FAILED");
   }
   // Not a logout (#933): e-mail, profile, tokens, licence snapshot, CGU
   // acceptance copy and device-side leftovers of the deleted account go,

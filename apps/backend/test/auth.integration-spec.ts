@@ -847,7 +847,9 @@ describe("AuthController (integration with real DB)", () => {
         });
     });
 
-    it("returns 401 when current password is wrong", async () => {
+    // #937: 403 + code, not 401 — the app reads a 401 as an expired access
+    // token and would refresh the session for nothing.
+    it("returns 403 WRONG_PASSWORD when current password is wrong", async () => {
       const { token } = await makeUser();
 
       return request(app.getHttpServer() as Parameters<typeof request>[0])
@@ -857,7 +859,13 @@ describe("AuthController (integration with real DB)", () => {
           currentPassword: "WrongOld999!",
           newPassword: "NewPassword456!",
         })
-        .expect(401);
+        .expect(403)
+        .expect((res) => {
+          expect(res.body).toMatchObject({
+            code: "WRONG_PASSWORD",
+            message: "Mot de passe actuel incorrect",
+          });
+        });
     });
 
     it("returns 400 when new password is the same as the current password", async () => {

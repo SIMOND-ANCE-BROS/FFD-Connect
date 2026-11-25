@@ -748,6 +748,36 @@ describe("AuthService", () => {
     );
   });
 
+  // #937: the backend answers a wrong current password with 403 + code.
+  it("maps a 403 WRONG_PASSWORD on changePassword to the French message", async () => {
+    (api.post as jest.Mock).mockRejectedValueOnce({
+      isAxiosError: true,
+      response: {
+        status: 403,
+        data: {
+          code: "WRONG_PASSWORD",
+          message: "Mot de passe actuel incorrect",
+        },
+      },
+    });
+    await expect(AuthService.changePassword("o", "n")).rejects.toThrow(
+      "Mot de passe actuel incorrect.",
+    );
+  });
+
+  it("does not read another 403 on changePassword as a wrong password", async () => {
+    (api.post as jest.Mock).mockRejectedValueOnce({
+      isAxiosError: true,
+      response: {
+        status: 403,
+        data: { message: "Action interdite en impersonation" },
+      },
+    });
+    await expect(AuthService.changePassword("o", "n")).rejects.toThrow(
+      "Action interdite en impersonation",
+    );
+  });
+
   it("handles changePassword with missing response data message", async () => {
     (api.post as jest.Mock).mockRejectedValueOnce({
       isAxiosError: true,

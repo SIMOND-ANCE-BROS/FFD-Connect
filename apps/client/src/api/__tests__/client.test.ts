@@ -80,3 +80,18 @@ describe("generated client 401 replay (#893)", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe("generated client wrong password (#937)", () => {
+  it("does not refresh on a 403 WRONG_PASSWORD from DELETE /users/me", async () => {
+    const sent = await mockRequestFns[0](
+      new Request("https://api.example/users/me", { method: "DELETE" }),
+    );
+    const forbidden = { status: 403, ok: false } as Response;
+
+    const response = await mockResponseFns[0](forbidden, sent);
+
+    expect(response).toBe(forbidden);
+    expect(mockRefreshSession).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

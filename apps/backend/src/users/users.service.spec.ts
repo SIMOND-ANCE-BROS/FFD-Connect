@@ -1,9 +1,9 @@
 import { ConfigService } from "@nestjs/config";
 import {
   BadRequestException,
+  ForbiddenException,
   Logger,
   NotFoundException,
-  UnauthorizedException,
 } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import {
@@ -1860,12 +1860,16 @@ describe("UsersService", () => {
       expect(warn).not.toHaveBeenCalled();
     });
 
-    it("rejette en Unauthorized si le mot de passe est incorrect, sans rien supprimer", async () => {
+    // #937: 403 + code, not 401 — the app would take a 401 for an expired
+    // access token and rotate the refresh token for nothing.
+    it("rejette en 403 WRONG_PASSWORD si le mot de passe est incorrect, sans rien supprimer", async () => {
       compare.mockResolvedValue(false);
 
-      await expect(
-        service.deleteMyAccount("u1", "wrong-password"),
-      ).rejects.toThrow(UnauthorizedException);
+      const refusal = service.deleteMyAccount("u1", "wrong-password");
+      await expect(refusal).rejects.toThrow(ForbiddenException);
+      await expect(refusal).rejects.toMatchObject({
+        response: { code: "WRONG_PASSWORD", message: "Mot de passe incorrect" },
+      });
 
       expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(prisma.user.delete).not.toHaveBeenCalled();

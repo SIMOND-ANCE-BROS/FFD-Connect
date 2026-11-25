@@ -19,6 +19,7 @@ import {
   type Tokens,
 } from "../../../api/tokenStore";
 import { isTokenStoreUnavailable } from "../../../api/tokenStoreErrors";
+import { isWrongPasswordRefusal } from "../../../api/wrongPassword";
 import {
   devicePreferencesOf,
   loggedOutConfigOf,
@@ -1220,7 +1221,8 @@ export const AuthService = {
         const status = error.response?.status;
         const errorData = error.response?.data as ApiErrorData | undefined;
 
-        if (status === 401) {
+        if (isWrongPasswordRefusal(status, errorData)) {
+          // 403 + code, not 401: no session refresh for a typo (#937).
           message = "Mot de passe actuel incorrect.";
         } else if (errorData?.errors && Array.isArray(errorData.errors)) {
           // Afficher les erreurs de validation du mot de passe

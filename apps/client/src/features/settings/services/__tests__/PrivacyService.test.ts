@@ -319,7 +319,7 @@ describe("deleteMyAccount", () => {
     expect(AuthService.endDeletedAccountSession).toHaveBeenCalledTimes(1);
   });
 
-  it.each([401, 500])(
+  it.each([401, 403, 500])(
     "n'efface rien quand la suppression échoue (%s)",
     async (status) => {
       deleteMock.mockResolvedValue({
@@ -362,22 +362,40 @@ describe("deleteMyAccount", () => {
     expect(AuthService.endDeletedAccountSession).not.toHaveBeenCalled();
   });
 
-  it("garde « mot de passe incorrect » si le magasin de jetons est illisible", async () => {
+  // #937: a 401 is a session problem now (the wrong password is a 403):
+  // the session was refreshed but the deletion did not go through.
+  it("ne prend plus un 401 pour un mot de passe incorrect", async () => {
+    deleteMock.mockResolvedValue({
+      error: { statusCode: 401 },
+      response: { status: 401 },
+    });
+
+    await expect(deleteMyAccount("s3cret")).rejects.toThrow("DELETE_FAILED");
+  });
+
+  it("garde un échec non confirmé si le magasin de jetons est illisible", async () => {
     mockGetTokens.mockRejectedValue(new Error("locked"));
     deleteMock.mockResolvedValue({
       error: { statusCode: 401 },
       response: { status: 401 },
     });
 
-    await expect(deleteMyAccount("s3cret")).rejects.toThrow("WRONG_PASSWORD");
+    await expect(deleteMyAccount("s3cret")).rejects.toThrow("DELETE_FAILED");
   });
 
-  it("distingue le mauvais mot de passe (401) des autres erreurs", async () => {
+  it("distingue le mauvais mot de passe (403 WRONG_PASSWORD) des autres erreurs", async () => {
     deleteMock.mockResolvedValue({
-      error: { statusCode: 401 },
-      response: { status: 401 },
+      error: { statusCode: 403, code: "WRONG_PASSWORD" },
+      response: { status: 403 },
     });
     await expect(deleteMyAccount("bad")).rejects.toThrow("WRONG_PASSWORD");
+
+    // Another 403 (impersonation, store review account): not a wrong password.
+    deleteMock.mockResolvedValue({
+      error: { statusCode: 403, message: "Interdit" },
+      response: { status: 403 },
+    });
+    await expect(deleteMyAccount("s3cret")).rejects.toThrow("DELETE_FAILED");
 
     deleteMock.mockResolvedValue({
       error: { statusCode: 500 },

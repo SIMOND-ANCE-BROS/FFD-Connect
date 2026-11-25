@@ -413,8 +413,9 @@ export class AuthController {
     },
   })
   @ApiResponse({
-    status: 401,
-    description: "Mot de passe actuel incorrect",
+    status: 403,
+    description:
+      "Mot de passe actuel incorrect (`code: WRONG_PASSWORD`), impersonation ou compte de revue store",
   })
   @ApiResponse({
     status: 400,
