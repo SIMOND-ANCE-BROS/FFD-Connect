@@ -36,7 +36,7 @@ Regles (`deriveUserDisciplines`) :
 
 La normalisation de `category` est celle de `normalizeDiscipline` (`src/common/competition-level/competition-level.util.ts`).
 
-La migration `20261124130000_user_discipline` a repris l'existant avec les memes regles, en SQL idempotent (une ligne deja presente n'est pas modifiee). `test/user-discipline-backfill.integration-spec.ts` rejoue ce SQL et le compare a `deriveUserDisciplines`. Controle a lancer sur staging apres le deploiement (comptes avant/apres, ecarts) : `docs/exploitation/disciplines-danseurs.md`.
+La migration `20261125130000_user_discipline` a repris l'existant avec les memes regles, en SQL idempotent (une ligne deja presente n'est pas modifiee). `test/user-discipline-backfill.integration-spec.ts` rejoue ce SQL et le compare a `deriveUserDisciplines`. Controle a lancer sur staging apres le deploiement (comptes avant/apres, ecarts) : `docs/exploitation/disciplines-danseurs.md`.
 
 Limite connue : apres un retour arriere sur une revision anterieure a #1023, cette revision ecrit les anciennes colonnes sans `UserDiscipline`. Avant de basculer la lecture (#1024), recalculer les lignes de tous les comptes.
 

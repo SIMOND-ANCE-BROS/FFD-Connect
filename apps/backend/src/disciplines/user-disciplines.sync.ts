@@ -10,7 +10,7 @@
  * in #1029.
  *
  * {@link deriveUserDisciplines} holds the mapping rules. The backfill of
- * migration `20261124130000_user_discipline` applies the very same rules in
+ * migration `20261125130000_user_discipline` applies the very same rules in
  * SQL; `test/user-discipline-backfill.integration-spec.ts` checks that both
  * agree.
  */

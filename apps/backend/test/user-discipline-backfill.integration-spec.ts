@@ -1,5 +1,5 @@
 /**
- * Backfill of `UserDiscipline` by migration `20261124130000_user_discipline`
+ * Backfill of `UserDiscipline` by migration `20261125130000_user_discipline`
  * (#1023, ADR-0026 step 2), on a real database. The migration already ran in
  * the global setup, before these users existed, so the test replays its
  * backfill statement — read from the migration file itself — and checks:
@@ -17,7 +17,7 @@ import { deriveUserDisciplines } from "../src/disciplines/user-disciplines.sync"
 
 const MIGRATION = join(
   __dirname,
-  "../prisma/schema/migrations/20261124130000_user_discipline/migration.sql",
+  "../prisma/schema/migrations/20261125130000_user_discipline/migration.sql",
 );
 
 /** The backfill statement of the migration (from its CTE to the end). */
