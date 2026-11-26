@@ -22,8 +22,8 @@ import { useTheme } from "../context/ThemeContext";
 import { useMotionEnabled } from "../hooks/useReducedMotion";
 import { RootStackParamList, TabParamList } from "./types";
 
-// The Reanimated-based CurvedTabBar is replaced by a lightweight floating
-// Liquid Glass tab bar (FloatingGlassTabBar below). It keeps a sliding
+// The tab bar is a lightweight floating Liquid Glass tab bar
+// (FloatingGlassTabBar below), which replaced the former Reanimated-based one. It keeps a sliding
 // selection indicator (the highlight behind the active tab) and vertically
 // centered icons/labels, without the gesture/worklets machinery that broke
 // under Reanimated 4.

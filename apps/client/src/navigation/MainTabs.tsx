@@ -209,7 +209,7 @@ export const MainTabs = ({ route }: MainTabsProps) => {
               // Short visible label so it fits a 5-tab bar at a readable size;
               // screen readers keep the full name.
               tabBarAccessibilityLabel: "Espace club",
-              // @ts-expect-error: tabBarTestID is a custom property used by CurvedTabBar
+              // @ts-expect-error: tabBarTestID is a custom property read by FloatingGlassTabBar
               tabBarTestID: "tab-club",
             }}
           />
@@ -222,7 +222,7 @@ export const MainTabs = ({ route }: MainTabsProps) => {
             options={{
               tabBarIcon: getTabIcon(Award, currentTheme),
               tabBarLabel: "Carrière",
-              // @ts-expect-error: tabBarTestID is a custom property used by CurvedTabBar
+              // @ts-expect-error: tabBarTestID is a custom property read by FloatingGlassTabBar
               tabBarTestID: "tab-career",
             }}
           />
@@ -239,7 +239,7 @@ export const MainTabs = ({ route }: MainTabsProps) => {
             options={{
               tabBarIcon: getTabIcon(IdCard, currentTheme),
               tabBarLabel: "Licence",
-              // @ts-expect-error: tabBarTestID is a custom property used by CurvedTabBar
+              // @ts-expect-error: tabBarTestID is a custom property read by FloatingGlassTabBar
               tabBarTestID: "tab-license",
             }}
           />
@@ -257,7 +257,7 @@ export const MainTabs = ({ route }: MainTabsProps) => {
               // Short visible label so it fits a 5-tab bar at a readable size;
               // screen readers keep the full name.
               tabBarAccessibilityLabel: "Bibliothèque",
-              // @ts-expect-error: tabBarTestID is a custom property used by CurvedTabBar
+              // @ts-expect-error: tabBarTestID is a custom property read by FloatingGlassTabBar
               tabBarTestID: "tab-library",
             }}
           />
@@ -272,7 +272,7 @@ export const MainTabs = ({ route }: MainTabsProps) => {
             // Short visible label so it fits a 5-tab bar at a readable size;
             // screen readers keep the full name.
             tabBarAccessibilityLabel: "Compétitions",
-            // @ts-expect-error: tabBarTestID is a custom property used by CurvedTabBar
+            // @ts-expect-error: tabBarTestID is a custom property read by FloatingGlassTabBar
             tabBarTestID: "tab-competitions",
           }}
         />
@@ -292,7 +292,7 @@ export const MainTabs = ({ route }: MainTabsProps) => {
             options={{
               tabBarIcon: getTabIcon(Scan, currentTheme),
               tabBarLabel: "Scanner",
-              // @ts-expect-error: tabBarTestID is a custom property used by CurvedTabBar
+              // @ts-expect-error: tabBarTestID is a custom property read by FloatingGlassTabBar
               tabBarTestID: "tab-scanner",
             }}
           />
@@ -304,7 +304,7 @@ export const MainTabs = ({ route }: MainTabsProps) => {
           options={{
             tabBarIcon: getTabIcon(Settings, currentTheme),
             tabBarLabel: "Réglages",
-            // @ts-expect-error: tabBarTestID is a custom property used by CurvedTabBar
+            // @ts-expect-error: tabBarTestID is a custom property read by FloatingGlassTabBar
             tabBarTestID: "tab-settings",
           }}
         />
