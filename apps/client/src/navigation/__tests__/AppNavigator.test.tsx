@@ -306,10 +306,6 @@ jest.mock("../../features/club/screens/ClubSoloTeamsScreen", () => ({
   },
 }));
 
-jest.mock("../../components/CurvedTabBar", () => ({
-  CurvedTabBar: () => null,
-}));
-
 // Mock React Navigation - Complete Replacement
 jest.mock("@react-navigation/native", () => {
   const ReactMock = require("react");

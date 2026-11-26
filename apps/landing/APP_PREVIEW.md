@@ -12,8 +12,8 @@ The native application code is unchanged by this landing redesign.
 
 - `apps/client/src/theme/index.ts`: DM Sans, light slate background, royal blue,
   cyan, borders and semantic colours.
-- `components/GlassHeader.tsx`, `FluidSegmentedTab.tsx`, `CurvedTabBar.tsx` and
-  `navigation/MainTabs.tsx`: screen headings, gradient segmented controls,
+- `components/GlassHeader.tsx`, `FluidSegmentedTab.tsx`,
+  `navigation/tab-transition.tsx` and `navigation/MainTabs.tsx`: screen headings, gradient segmented controls,
   floating icon navigation and role-specific club navigation.
 - `features/competitions/screens/CompetitionsScreen.tsx` and its stylesheet:
   search, scope, period controls, white cards, status/registration labels,
