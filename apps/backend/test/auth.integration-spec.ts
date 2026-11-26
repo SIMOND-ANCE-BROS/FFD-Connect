@@ -421,6 +421,74 @@ describe("AuthController (integration with real DB)", () => {
         expect(live).toHaveLength(1);
       });
 
+      // #885: revoked tokens are kept until their own expiry, so a stolen copy
+      // replayed weeks after the rotation still revokes the family.
+      describe("late reuse after the hourly cleanup (#885)", () => {
+        const DAY_MS = 24 * 60 * 60 * 1000;
+        // The real purge rules, without the module's cron or its other jobs.
+        const purge = () =>
+          new SessionCleanupService(
+            prisma,
+            {} as never,
+            {} as never,
+            {} as never,
+          ).manualCleanup();
+        /** Pretend the token was issued and rotated `days` days ago. */
+        const backdate = (tokenId: string, days: number) => {
+          const at = new Date(Date.now() - days * DAY_MS);
+          return prisma.refreshToken.update({
+            where: { id: tokenId },
+            data: {
+              createdAt: at,
+              revokedAt: at,
+              expiresAt: new Date(at.getTime() + 30 * DAY_MS),
+            },
+          });
+        };
+        const tokenIdOf = async (userId: string) => {
+          const [token] = await prisma.refreshToken.findMany({
+            where: { userId, revoked: true },
+            select: { id: true },
+            take: 1,
+          });
+          return token.id;
+        };
+
+        it.each([8, 29])(
+          "a rotated token replayed %i days later still revokes its family",
+          async (days) => {
+            const { user, email, password } = await makeUser();
+            const stolen = await login(email, password);
+            const rotated = (await refresh(stolen).expect(201)).body as {
+              refresh_token: string;
+            };
+            await backdate(await tokenIdOf(user.id), days);
+
+            await purge();
+
+            await refresh(stolen).expect(401);
+            await refresh(rotated.refresh_token).expect(401);
+            expect(await liveTokens(user.id)).toHaveLength(0);
+          },
+        );
+
+        it("a revoked token is purged once expired", async () => {
+          const { user, email, password } = await makeUser();
+          const stolen = await login(email, password);
+          await refresh(stolen).expect(201);
+          await backdate(await tokenIdOf(user.id), 31);
+
+          await purge();
+
+          const left = await prisma.refreshToken.findMany({
+            where: { userId: user.id },
+            select: { revoked: true },
+            take: 10,
+          });
+          expect(left).toEqual([{ revoked: false }]);
+        });
+      });
+
       it("a late racer inside the grace window is refused without revoking the family", async () => {
         const { email, password } = await makeUser();
         const token = await login(email, password);

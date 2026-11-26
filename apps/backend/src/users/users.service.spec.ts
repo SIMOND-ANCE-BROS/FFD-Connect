@@ -1631,7 +1631,7 @@ describe("UsersService", () => {
         revokedAt: true,
       });
       expect(sessions.select.token).toBeUndefined();
-      expect(sessions.take).toBe(100);
+      expect(sessions.take).toBe(500);
     });
 
     it("n'exporte pas le journal d'audit admin (traçabilité, données de tiers)", async () => {

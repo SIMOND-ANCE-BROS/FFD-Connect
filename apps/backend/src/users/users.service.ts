@@ -593,11 +593,13 @@ export class UsersService {
           take: 500,
         },
         // Sessions de connexion (#251) : métadonnées seulement, jamais le
-        // hash du token (secret d'authentification).
+        // hash du token (secret d'authentification). Plafond aligné sur
+        // les autres listes : les jetons révoqués sont gardés jusqu'à leur
+        // expiration (#885), soit jusqu'à ~300 lignes pour un compte actif.
         refreshTokens: {
           select: refreshTokenExportSelect,
           orderBy: { createdAt: "desc" },
-          take: 100,
+          take: 500,
         },
         // Consentement parental (#61) : statut, dates, version des CGU et
         // adresse MASQUÉE du parent. Ni le hash du jeton (secret), ni
