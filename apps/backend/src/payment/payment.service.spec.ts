@@ -778,6 +778,169 @@ describe("PaymentService", () => {
           paymentNotificationService.notifyPaymentReceived,
         ).not.toHaveBeenCalled();
       });
+
+      describe("never notifies a payment that confirms no seat", () => {
+        const expectNotNotified = () =>
+          expect(
+            paymentNotificationService.notifyPaymentReceived,
+          ).not.toHaveBeenCalled();
+
+        it("refund owed: paid after the hold's deadline", async () => {
+          prisma.seatBooking.findUnique.mockResolvedValue({
+            ...bookingForCheck,
+            expiresAt: new Date(Date.now() - 1000),
+          } as any);
+
+          await service.handleOrderWebhook(paidOrder());
+
+          // The refund path ran (club alerted), not the confirmation.
+          expect(refundOwedAlert.alertClub).toHaveBeenCalledWith(
+            "booking-1",
+            98765,
+          );
+          expect(prisma.seatBooking.updateMany).not.toHaveBeenCalledWith(
+            confirmCall,
+          );
+          expectNotNotified();
+        });
+
+        it("refund owed: second payment of an already confirmed seat", async () => {
+          prisma.seatBooking.findUnique.mockResolvedValue({
+            ...bookingForCheck,
+            status: "CONFIRMED",
+            paymentId: "5000",
+            supersededPaymentIds: ["4242"],
+          } as any);
+
+          await service.handleOrderWebhook(paidOrder());
+
+          expect(refundOwedAlert.alertClub).toHaveBeenCalledWith(
+            "booking-1",
+            98765,
+          );
+          expectNotNotified();
+        });
+
+        it("forged (unpaid) order on an earlier intent of a confirmed seat", async () => {
+          prisma.seatBooking.findUnique.mockResolvedValue({
+            ...bookingForCheck,
+            status: "CONFIRMED",
+            paymentId: "5000",
+            supersededPaymentIds: ["4242"],
+          } as any);
+
+          await service.handleOrderWebhook(
+            paidOrder({ payments: [{ amount: 1500, state: "Refunded" }] }),
+          );
+
+          // Logged only (never sent to Sentry): not a rejection nor a refund.
+          expect(prisma.seatBooking.updateMany).not.toHaveBeenCalled();
+          expect(Sentry.captureMessage).not.toHaveBeenCalled();
+          expect(refundOwedAlert.alertClub).not.toHaveBeenCalled();
+          expectNotNotified();
+        });
+
+        it("order on the current intent of a released (CANCELLED) seat", async () => {
+          prisma.seatBooking.findUnique.mockResolvedValue({
+            ...bookingForCheck,
+            status: "CANCELLED",
+          } as any);
+
+          await service.handleOrderWebhook(paidOrder());
+
+          expect(prisma.seatBooking.updateMany).not.toHaveBeenCalled();
+          expectNotNotified();
+        });
+
+        it("redelivery of a payment whose refund is already owed", async () => {
+          prisma.seatBooking.findUnique.mockResolvedValue({
+            ...bookingForCheck,
+            status: "EXPIRED",
+            expiresAt: new Date(Date.now() - 60_000),
+            refundOwedPaymentIds: ["4242"],
+          } as any);
+          prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+
+          await service.handleOrderWebhook(paidOrder());
+
+          expect(refundOwedAlert.alertClub).not.toHaveBeenCalled();
+          expectNotNotified();
+        });
+
+        it("lost race: the hold expired between the read and the write", async () => {
+          prisma.seatBooking.findUnique
+            .mockResolvedValueOnce(bookingForCheck as any)
+            .mockResolvedValueOnce({
+              ...bookingForCheck,
+              expiresAt: new Date(Date.now() - 1000),
+            } as any);
+          prisma.seatBooking.updateMany
+            .mockResolvedValueOnce({ count: 0 }) // confirmation lost
+            .mockResolvedValue({ count: 1 }); // EXPIRED + refund marker
+
+          await service.handleOrderWebhook(paidOrder());
+
+          expect(refundOwedAlert.alertClub).toHaveBeenCalledWith(
+            "booking-1",
+            98765,
+          );
+          expectNotNotified();
+        });
+
+        it("lost race: the booking was resumed meanwhile (503, redelivered)", async () => {
+          prisma.seatBooking.findUnique
+            .mockResolvedValueOnce(bookingForCheck as any)
+            .mockResolvedValueOnce({
+              ...bookingForCheck,
+              paymentId: "5000",
+              supersededPaymentIds: ["4242"],
+            } as any);
+          prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+
+          await expect(service.handleOrderWebhook(paidOrder())).rejects.toThrow(
+            ServiceUnavailableException,
+          );
+          expectNotNotified();
+        });
+
+        it("lost race: the booking was cancelled meanwhile (not_pending)", async () => {
+          prisma.seatBooking.findUnique
+            .mockResolvedValueOnce(bookingForCheck as any)
+            .mockResolvedValueOnce({
+              ...bookingForCheck,
+              status: "CANCELLED",
+            } as any);
+          prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+
+          await service.handleOrderWebhook(paidOrder());
+
+          expect(Sentry.captureMessage).toHaveBeenCalledWith(
+            "HelloAsso order rejected",
+            expect.objectContaining({
+              tags: expect.objectContaining({ reason: "not_pending" }),
+            }),
+          );
+          expect(refundOwedAlert.alertClub).not.toHaveBeenCalled();
+          expectNotNotified();
+        });
+
+        it("lost race: the booking disappeared meanwhile (not_pending)", async () => {
+          prisma.seatBooking.findUnique
+            .mockResolvedValueOnce(bookingForCheck as any)
+            .mockResolvedValueOnce(null);
+          prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+
+          await service.handleOrderWebhook(paidOrder());
+
+          expect(Sentry.captureMessage).toHaveBeenCalledWith(
+            "HelloAsso order rejected",
+            expect.objectContaining({
+              tags: expect.objectContaining({ reason: "not_pending" }),
+            }),
+          );
+          expectNotNotified();
+        });
+      });
     });
 
     it("rejects an unpaid order (refused payment)", async () => {
