@@ -38,7 +38,7 @@ export class SessionCleanupService implements OnModuleInit {
     try {
       const result = await this.purgeStaleTokens();
       this.logger.log(
-        `Session cleanup completed: ${result.expired} expired, ${result.revoked} revoked, ${result.inactive} inactive refresh tokens, ${result.passwordResetTokens} password reset tokens deleted`,
+        `Session cleanup completed: ${result.expired} expired, ${result.inactive} inactive refresh tokens, ${result.passwordResetTokens} password reset tokens deleted`,
       );
     } catch (error) {
       this.logger.error("Error during session cleanup", error);
@@ -103,23 +103,14 @@ export class SessionCleanupService implements OnModuleInit {
   }
 
   async cleanupUserSessions(userId: string): Promise<void> {
+    // Revoked tokens stay until their expiry: see purgeStaleTokens (#885).
     await this.prisma.refreshToken.deleteMany({
-      where: {
-        userId,
-        OR: [
-          { expiresAt: { lt: new Date() } },
-          {
-            revoked: true,
-            revokedAt: { lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-          },
-        ],
-      },
+      where: { userId, expiresAt: { lt: new Date() } },
     });
   }
 
   async manualCleanup(): Promise<{
     expired: number;
-    revoked: number;
     inactive: number;
     passwordResetTokens: number;
   }> {
@@ -128,7 +119,6 @@ export class SessionCleanupService implements OnModuleInit {
 
   private async purgeStaleTokens(): Promise<{
     expired: number;
-    revoked: number;
     inactive: number;
     passwordResetTokens: number;
   }> {
@@ -137,35 +127,34 @@ export class SessionCleanupService implements OnModuleInit {
       Date.now() - this.INACTIVE_SESSION_TIMEOUT_DAYS * 24 * 60 * 60 * 1000,
     );
 
-    const [expired, revoked, inactive, passwordResetTokens] = await Promise.all(
-      [
-        this.prisma.refreshToken.deleteMany({
-          where: { expiresAt: { lt: new Date() } },
-        }),
-        this.prisma.refreshToken.deleteMany({
-          where: { revoked: true, revokedAt: { lt: sevenDaysAgo } },
-        }),
-        this.prisma.refreshToken.deleteMany({
-          where: {
-            revoked: false,
-            expiresAt: { gt: new Date() },
-            createdAt: { lt: inactiveDate },
-          },
-        }),
-        this.prisma.passwordResetToken.deleteMany({
-          where: {
-            OR: [
-              { expiresAt: { lt: new Date() } },
-              { used: true, createdAt: { lt: sevenDaysAgo } },
-            ],
-          },
-        }),
-      ],
-    );
+    // A revoked refresh token is only deleted once expired, never earlier
+    // (#885): reuse detection (#687, ADR-0006) can only recognise a token
+    // that is still in the table. Deleting it a few days after the rotation
+    // would turn a stolen copy replayed later into a plain 401 that leaves
+    // the thief's family alive. An expired token is refused anyway.
+    const [expired, inactive, passwordResetTokens] = await Promise.all([
+      this.prisma.refreshToken.deleteMany({
+        where: { expiresAt: { lt: new Date() } },
+      }),
+      this.prisma.refreshToken.deleteMany({
+        where: {
+          revoked: false,
+          expiresAt: { gt: new Date() },
+          createdAt: { lt: inactiveDate },
+        },
+      }),
+      this.prisma.passwordResetToken.deleteMany({
+        where: {
+          OR: [
+            { expiresAt: { lt: new Date() } },
+            { used: true, createdAt: { lt: sevenDaysAgo } },
+          ],
+        },
+      }),
+    ]);
 
     return {
       expired: expired.count,
-      revoked: revoked.count,
       inactive: inactive.count,
       passwordResetTokens: passwordResetTokens.count,
     };

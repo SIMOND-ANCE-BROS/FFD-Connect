@@ -65,17 +65,43 @@ describe("SessionCleanupService", () => {
   });
 
   describe("cleanupExpiredSessions", () => {
-    it("should delete expired, revoked, inactive refresh tokens and password reset tokens", async () => {
+    it("should delete expired, inactive refresh tokens and password reset tokens", async () => {
       mockPrisma.refreshToken.deleteMany
         .mockResolvedValueOnce({ count: 5 })
-        .mockResolvedValueOnce({ count: 2 })
         .mockResolvedValueOnce({ count: 3 });
       mockPrisma.passwordResetToken.deleteMany.mockResolvedValue({ count: 1 });
 
       await service.cleanupExpiredSessions();
 
-      expect(mockPrisma.refreshToken.deleteMany).toHaveBeenCalledTimes(3);
+      expect(mockPrisma.refreshToken.deleteMany).toHaveBeenCalledTimes(2);
       expect(mockPrisma.passwordResetToken.deleteMany).toHaveBeenCalledTimes(1);
+    });
+
+    // #885: a revoked refresh token is kept until its own expiry, so that a
+    // stolen copy presented weeks after the rotation is still recognised as a
+    // reuse and revokes its family (ADR-0006).
+    it("never deletes a revoked refresh token before its expiry", async () => {
+      const now = new Date("2026-11-26T12:00:00Z");
+      jest.useFakeTimers({ now, doNotFake: ["nextTick", "setImmediate"] });
+      try {
+        await service.cleanupExpiredSessions();
+        await service.cleanupUserSessions("user-id-123");
+      } finally {
+        jest.useRealTimers();
+      }
+
+      const wheres = mockPrisma.refreshToken.deleteMany.mock.calls.map(
+        ([arg]: [{ where: Record<string, unknown> }]) => arg.where,
+      );
+      expect(wheres).toHaveLength(3);
+      for (const where of wheres) {
+        // Either only expired tokens, or only live (non-revoked) ones.
+        const onlyExpired =
+          JSON.stringify(where.expiresAt) === JSON.stringify({ lt: now });
+        expect(onlyExpired || where.revoked === false).toBe(true);
+        expect(where).not.toHaveProperty("OR");
+        expect(where).not.toHaveProperty("revokedAt");
+      }
     });
 
     it("should handle errors during cleanup", async () => {
@@ -293,7 +319,7 @@ describe("SessionCleanupService", () => {
   });
 
   describe("cleanupUserSessions", () => {
-    it("should delete user refresh tokens", async () => {
+    it("deletes only the user's expired refresh tokens", async () => {
       mockPrisma.refreshToken.deleteMany.mockResolvedValue({ count: 2 });
 
       await service.cleanupUserSessions("user-id-123");
@@ -301,7 +327,7 @@ describe("SessionCleanupService", () => {
       expect(mockPrisma.refreshToken.deleteMany).toHaveBeenCalledWith({
         where: {
           userId: "user-id-123",
-          OR: expect.any(Array),
+          expiresAt: { lt: expect.any(Date) as unknown },
         },
       });
     });
@@ -311,7 +337,6 @@ describe("SessionCleanupService", () => {
     it("should return counts of deleted tokens including password reset tokens", async () => {
       mockPrisma.refreshToken.deleteMany
         .mockResolvedValueOnce({ count: 10 })
-        .mockResolvedValueOnce({ count: 5 })
         .mockResolvedValueOnce({ count: 1 });
       mockPrisma.passwordResetToken.deleteMany.mockResolvedValue({ count: 4 });
 
@@ -319,11 +344,10 @@ describe("SessionCleanupService", () => {
 
       expect(result).toEqual({
         expired: 10,
-        revoked: 5,
         inactive: 1,
         passwordResetTokens: 4,
       });
-      expect(mockPrisma.refreshToken.deleteMany).toHaveBeenCalledTimes(3);
+      expect(mockPrisma.refreshToken.deleteMany).toHaveBeenCalledTimes(2);
       expect(mockPrisma.passwordResetToken.deleteMany).toHaveBeenCalledTimes(1);
     });
   });
