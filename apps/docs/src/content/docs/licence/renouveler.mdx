@@ -1,6 +1,6 @@
 ---
 title: Renouveler ma licence
-description: Comment renouveler ta licence FFD directement depuis l'application FFD-Connect.
+description: Comment demander le renouvellement de ta licence FFD depuis l'application FFD-Connect, en déposant ton certificat médical et ton certificat de licence.
 ---
 
 import ProfileBadge from "../../../components/ProfileBadge.astro";
@@ -12,7 +12,9 @@ import InteractiveGuide from "../../../components/InteractiveGuide";
 
 Ta licence FFD est valable pour la **saison sportive en cours** (du 1er septembre au 31 août). Renouvelle-la chaque année pour continuer à participer aux compétitions officielles.
 
-> **💡 Astuce** : L'application t'envoie une notification automatique 30 jours avant l'expiration de ta licence.
+Le renouvellement se fait en ligne : tu déposes deux documents, ton **certificat médical** et ton **certificat de licence**, puis un administrateur de la fédération les vérifie et valide ta demande.
+
+> **💡 Astuce** : À partir de **30 jours** avant la fin de ta licence, un bandeau s'affiche dans l'onglet **Licence** (orange, puis rouge à 7 jours, puis « Votre licence a expiré »). Appuie dessus pour lancer le renouvellement.
 
 ## Guide interactif
 
@@ -20,8 +22,9 @@ Ta licence FFD est valable pour la **saison sportive en cours** (du 1er septembr
   client:load
   steps={[
     {
-      title: "Accède à ton profil",
-      content: "Ouvre l'onglet **Profil** puis appuie sur **Ma Licence**.",
+      title: "Ouvre l'onglet Licence",
+      content:
+        "Dans l'application, ouvre l'onglet **Licence**. Quand ta licence expire dans 30 jours ou moins (ou a déjà expiré), un bandeau « Appuyez pour renouveler » s'affiche en haut de l'écran : appuie dessus.",
       images: {
         mobile: "/screenshots/placeholder.png",
         web: "/screenshots/placeholder.png",
@@ -30,9 +33,9 @@ Ta licence FFD est valable pour la **saison sportive en cours** (du 1er septembr
       roles: ["Membre"],
     },
     {
-      title: "Appuie sur « Renouveler »",
+      title: "Commence une demande",
       content:
-        "Si ta licence arrive à expiration, le bouton **Renouveler** s'affiche en bas de l'écran.",
+        "L'écran **Renouvellement de licence** s'ouvre. Appuie sur **Commencer une demande**. Si tu avais déjà commencé une demande sans l'envoyer, tu la retrouves là où tu l'avais laissée.",
       images: {
         mobile: "/screenshots/placeholder.png",
         web: "/screenshots/placeholder.png",
@@ -41,9 +44,9 @@ Ta licence FFD est valable pour la **saison sportive en cours** (du 1er septembr
       roles: ["Membre"],
     },
     {
-      title: "Choix de l'offre",
+      title: "Dépose tes deux documents",
       content:
-        "Sélectionne le type de renouvellement souhaité (Annuel ou Temporaire).",
+        "Pour le **Certificat médical** puis le **Certificat de licence**, appuie sur **Ajouter le document** et choisis une photo du document. Chaque document déposé affiche la mention **Déposé** et quelques informations lues automatiquement, à titre indicatif seulement. Tu peux utiliser **Remplacer** pour changer de photo.",
       images: {
         mobile: "/screenshots/placeholder.png",
         web: "/screenshots/placeholder.png",
@@ -52,9 +55,9 @@ Ta licence FFD est valable pour la **saison sportive en cours** (du 1er septembr
       roles: ["Membre"],
     },
     {
-      title: "Validation et Paiement",
+      title: "Soumets ta demande",
       content:
-        "Effectue le règlement via notre interface de paiement Stripe sécurisée.",
+        "Une fois les deux documents déposés, appuie sur **Soumettre la demande**. L'écran affiche **Demande soumise** et, dans l'onglet Licence, le bandeau devient « Demande de renouvellement en cours de vérification ».",
       images: {
         mobile: "/screenshots/placeholder.png",
         web: "/screenshots/placeholder.png",
@@ -63,15 +66,26 @@ Ta licence FFD est valable pour la **saison sportive en cours** (du 1er septembr
       roles: ["Membre"],
     },
     {
-      title: "Ta licence est renouvelée ✅",
+      title: "Un administrateur vérifie tes documents",
       content:
-        "Une fois le paiement confirmé, ta licence est automatiquement prolongée pour la période choisie.",
+        "Un administrateur de la fédération examine tes documents. Tu reçois une notification dès qu'il a pris sa décision. Ta demande ne peut plus être modifiée pendant cette vérification.",
       images: {
         mobile: "/screenshots/placeholder.png",
         web: "/screenshots/placeholder.png",
       },
       platforms: ["mobile", "web"],
       roles: ["Membre", "Staff"],
+    },
+    {
+      title: "Ta licence est renouvelée ✅",
+      content:
+        "Si ta demande est acceptée, l'écran affiche **Licence renouvelée** et la notification t'indique la nouvelle date de fin : le **31 août** de la saison concernée. Si elle est refusée, l'écran affiche **Demande refusée** avec le motif (et un éventuel commentaire de la fédération) : appuie sur **Nouvelle demande** pour recommencer avec des documents conformes.",
+      images: {
+        mobile: "/screenshots/placeholder.png",
+        web: "/screenshots/placeholder.png",
+      },
+      platforms: ["mobile", "web"],
+      roles: ["Membre"],
     },
   ]}
 />
@@ -81,8 +95,11 @@ Ta licence FFD est valable pour la **saison sportive en cours** (du 1er septembr
 **Puis-je renouveler ma licence avant qu'elle expire ?**
 Oui, à partir du **1er juillet** : un renouvellement fait entre le 1er juillet et le 31 août vaut pour la **saison suivante** (ta licence est alors valable jusqu'au 31 août de l'année d'après). En dehors de cette période, un renouvellement vaut pour la saison en cours (jusqu'au 31 août qui la termine) : si ta licence couvre déjà cette saison, l'application refuse le renouvellement et t'indique sa date de fin.
 
+**Je suis mineur, que dois-je faire de plus ?**
+Ton certificat médical ne peut être déposé qu'une fois le **consentement d'un parent** confirmé. Si ce consentement manque, un bandeau s'affiche en haut de l'écran de renouvellement : appuie dessus pour faire la démarche.
+
 **Que se passe-t-il si j'oublie de renouveler ?**
-Ta licence expire et tu ne peux plus t'inscrire aux compétitions officielles. Tu peux toujours renouveler après expiration.
+Ta licence expire et tu ne peux plus t'inscrire aux compétitions officielles. Tu peux toujours renouveler après expiration : le bandeau « Votre licence a expiré » de l'onglet Licence ouvre le renouvellement.
 
 **Mon renouvellement n'est pas pris en compte ?**
 Contacte le support de la FFD ou envoie un email à [support@ffd-connect.fr](mailto:support@ffd-connect.fr).
