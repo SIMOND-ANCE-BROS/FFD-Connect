@@ -16,12 +16,14 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { UserRole } from "@prisma/client";
+import { Throttle } from "@nestjs/throttler";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { NoImpersonationGuard } from "../auth/no-impersonation.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { ClubMembersPageDto } from "./dto/club-members-page.dto";
 import { DeleteAccountDto } from "./dto/delete-account.dto";
@@ -298,7 +300,10 @@ export class UsersController {
   }
 
   @Delete("me")
-  @UseGuards(JwtAuthGuard, NoImpersonationGuard)
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, ThrottlerUserGuard)
+  // Guessing the current password with a stolen access token: 5 tries/min
+  // per account, whatever the IP — as change-password (#633, #1041).
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Suppression définitive du compte (droit à l'oubli)",

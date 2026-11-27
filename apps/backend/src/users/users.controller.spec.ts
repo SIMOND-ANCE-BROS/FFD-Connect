@@ -2,6 +2,8 @@ import { NotFoundException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { NoImpersonationGuard } from "../auth/no-impersonation.guard";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { ClubMembersPageDto } from "./dto/club-members-page.dto";
 import { UsersController } from "./users.controller";
@@ -31,6 +33,8 @@ describe("UsersController", () => {
       providers: [{ provide: UsersService, useValue: mockUsersService }],
     })
       .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(ThrottlerUserGuard)
       .useValue({ canActivate: () => true })
       .compile();
 
@@ -195,6 +199,21 @@ describe("UsersController", () => {
 
       expect(service.deleteMyAccount).toHaveBeenCalledWith("user-id", "s3cret");
       expect(result).toEqual({ message: "Compte supprimé" });
+    });
+
+    // #1041: the password check must not be brute-forceable with a stolen
+    // access token — same per-account limit as change-password (#633).
+    it("is refused from inside a session and throttled per account (5/min)", () => {
+      const handler = UsersController.prototype.deleteMyAccount;
+      const guards = Reflect.getMetadata("__guards__", handler) as unknown[];
+      // JwtAuthGuard first: it fills req.user, the throttler's key.
+      expect(guards).toEqual([
+        JwtAuthGuard,
+        NoImpersonationGuard,
+        ThrottlerUserGuard,
+      ]);
+      expect(Reflect.getMetadata("THROTTLER:LIMITdefault", handler)).toBe(5);
+      expect(Reflect.getMetadata("THROTTLER:TTLdefault", handler)).toBe(60000);
     });
 
     it("propagates the service error (ex. mauvais mot de passe)", async () => {
