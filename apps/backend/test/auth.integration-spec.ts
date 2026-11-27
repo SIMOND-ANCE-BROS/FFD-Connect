@@ -915,7 +915,9 @@ describe("AuthController (integration with real DB)", () => {
         });
     });
 
-    it("returns 401 when current password is wrong", async () => {
+    // #937: 403 + code, not 401 — the app reads a 401 as an expired access
+    // token and would refresh the session for nothing.
+    it("returns 403 WRONG_PASSWORD when current password is wrong", async () => {
       const { token } = await makeUser();
 
       return request(app.getHttpServer() as Parameters<typeof request>[0])
@@ -925,7 +927,13 @@ describe("AuthController (integration with real DB)", () => {
           currentPassword: "WrongOld999!",
           newPassword: "NewPassword456!",
         })
-        .expect(401);
+        .expect(403)
+        .expect((res) => {
+          expect(res.body).toMatchObject({
+            code: "WRONG_PASSWORD",
+            message: "Mot de passe actuel incorrect",
+          });
+        });
     });
 
     it("returns 400 when new password is the same as the current password", async () => {
@@ -956,6 +964,33 @@ describe("AuthController (integration with real DB)", () => {
           newPassword: "NewPassword456!",
         })
         .expect(401);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // DELETE /users/me — wrong confirmation password (#937)
+  // ---------------------------------------------------------------------------
+  describe("DELETE /users/me with a wrong password", () => {
+    it("returns 403 WRONG_PASSWORD and keeps the account", async () => {
+      const { token, user } = await makeUser();
+
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .delete("/api/v1/users/me")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ password: "WrongOld999!" })
+        .expect(403)
+        .expect((res) => {
+          expect(res.body).toMatchObject({
+            code: "WRONG_PASSWORD",
+            message: "Mot de passe incorrect",
+          });
+        });
+
+      const stillThere = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { id: true },
+      });
+      expect(stillThere).not.toBeNull();
     });
   });
 });

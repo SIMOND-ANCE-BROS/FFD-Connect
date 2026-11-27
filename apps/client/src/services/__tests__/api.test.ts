@@ -184,6 +184,32 @@ describe("api", () => {
     api.defaults.adapter = originalAdapter;
   });
 
+  // #937: a wrong confirmation password (change-password, DELETE /users/me)
+  // is a 403 WRONG_PASSWORD — the session is valid, nothing to refresh.
+  it("on 403 WRONG_PASSWORD rejects without refreshing the session", async () => {
+    const err403 = Object.assign(new Error("Forbidden"), {
+      response: {
+        status: 403,
+        data: {
+          code: "WRONG_PASSWORD",
+          message: "Mot de passe actuel incorrect",
+        },
+      },
+      config: { url: "/auth/change-password", method: "post" },
+    }) as unknown as AxiosError;
+
+    const mockAdapter = jest.fn().mockRejectedValue(err403);
+    const originalAdapter = api.defaults.adapter;
+    api.defaults.adapter = mockAdapter;
+
+    await expect(api.post("/auth/change-password", {})).rejects.toEqual(err403);
+
+    expect(mockRefreshSession).not.toHaveBeenCalled();
+    expect(mockAdapter).toHaveBeenCalledTimes(1);
+
+    api.defaults.adapter = originalAdapter;
+  });
+
   it("on 4xx error rejects without retry", async () => {
     const err404 = Object.assign(new Error("Not Found"), {
       response: { status: 404 },

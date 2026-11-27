@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
 } from "@nestjs/common";
 import {
   LicenseRenewalDocumentType,
@@ -12,6 +11,7 @@ import {
 } from "@prisma/client";
 import { effectiveImpersonationEnd } from "../auth/impersonation-session";
 import { hasRole, rolesOf, withActiveRole } from "../auth/roles";
+import { wrongPasswordRefusal } from "../auth/wrong-password";
 import { userRolesClubSelect } from "../utils/prisma-selects";
 import { clubMembersScopeOf } from "../competitions/competition-organizer";
 import * as bcrypt from "bcrypt";
@@ -743,7 +743,7 @@ export class UsersService {
     }
     const passwordValid = await bcrypt.compare(password, user.password);
     if (!passwordValid) {
-      throw new UnauthorizedException("Mot de passe incorrect");
+      throw wrongPasswordRefusal("Mot de passe incorrect");
     }
     await this.accountDeletion.deleteAccount(userId);
   }

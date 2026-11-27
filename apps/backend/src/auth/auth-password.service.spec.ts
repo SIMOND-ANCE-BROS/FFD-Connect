@@ -1,3 +1,4 @@
+import { ForbiddenException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import {
   emailLookupFor,
@@ -565,9 +566,13 @@ describe("AuthPasswordService", () => {
         password: "hashed",
       });
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
-      await expect(
-        service.changePassword("u1", "WrongPass1!", "NewValid1!"),
-      ).rejects.toThrow("Mot de passe actuel incorrect");
+      const refusal = service.changePassword("u1", "WrongPass1!", "NewValid1!");
+      await expect(refusal).rejects.toThrow("Mot de passe actuel incorrect");
+      // #937: 403 + code, not 401 (no pointless token refresh in the app).
+      await expect(refusal).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(refusal).rejects.toMatchObject({
+        response: { code: "WRONG_PASSWORD" },
+      });
     });
 
     it("should change password when valid", async () => {

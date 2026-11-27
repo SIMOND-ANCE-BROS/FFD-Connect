@@ -1309,10 +1309,7 @@
             }
           },
           "401": {
-            "description": "Mot de passe actuel incorrect"
-          },
-          "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
+            "description": "Non authentifié - Token manquant ou invalide",
             "content": {
               "application/json": {
                 "schema": {
@@ -1320,20 +1317,23 @@
                   "properties": {
                     "statusCode": {
                       "type": "number",
-                      "example": 403
+                      "example": 401
                     },
                     "message": {
                       "type": "string",
-                      "example": "Forbidden resource"
+                      "example": "Unauthorized"
                     },
                     "error": {
                       "type": "string",
-                      "example": "Forbidden"
+                      "example": "Unauthorized"
                     }
                   }
                 }
               }
             }
+          },
+          "403": {
+            "description": "Mot de passe actuel incorrect (`code: WRONG_PASSWORD`), impersonation ou compte de revue store"
           },
           "404": {
             "description": "Ressource non trouvée",
@@ -7496,31 +7496,10 @@
             }
           },
           "401": {
-            "description": "Mot de passe incorrect"
+            "description": "Session invalide ou expirée"
           },
           "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Mot de passe incorrect (`code: WRONG_PASSWORD`), impersonation ou compte de revue store"
           },
           "404": {
             "description": "Ressource non trouvée",

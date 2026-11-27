@@ -307,7 +307,12 @@ export class UsersController {
   })
   @ApiBody({ type: DeleteAccountDto })
   @ApiResponse({ status: 200, description: "Compte supprimé" })
-  @ApiResponse({ status: 401, description: "Mot de passe incorrect" })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Mot de passe incorrect (`code: WRONG_PASSWORD`), impersonation ou compte de revue store",
+  })
+  @ApiResponse({ status: 401, description: "Session invalide ou expirée" })
   async deleteMyAccount(
     @Request() req: RequestWithUser,
     @Body() payload: DeleteAccountDto,
