@@ -8,6 +8,7 @@ import { JwtAuthGuard } from "../../auth/jwt-auth.guard";
 import { OptionalJwtAuthGuard } from "../../auth/optional-jwt-auth.guard";
 import { LicensesController } from "../../licenses/licenses.controller";
 import { ReportsController } from "../../reports/reports.controller";
+import { UsersController } from "../../users/users.controller";
 import { ThrottlerUserGuard } from "../guards/throttler-user.guard";
 import { THROTTLE_BY_IP_KEY, ThrottleByIp } from "./throttle-by-ip.decorator";
 
@@ -156,6 +157,15 @@ describe("dedicated route limits", () => {
 
   it("POST /auth/change-password: 5/min per user", () => {
     const fn = AuthController.prototype.changePassword;
+    expect(limitOf(fn)).toEqual({ limit: 5, ttl: 60_000 });
+    expect(guardsOf(fn)).toContain(ThrottlerUserGuard);
+    expect(guardsOf(fn).indexOf(ThrottlerUserGuard)).toBeGreaterThan(
+      guardsOf(fn).indexOf(JwtAuthGuard),
+    );
+  });
+
+  it("DELETE /users/me (password-confirmed, #1041): 5/min per user", () => {
+    const fn = UsersController.prototype.deleteMyAccount;
     expect(limitOf(fn)).toEqual({ limit: 5, ttl: 60_000 });
     expect(guardsOf(fn)).toContain(ThrottlerUserGuard);
     expect(guardsOf(fn).indexOf(ThrottlerUserGuard)).toBeGreaterThan(

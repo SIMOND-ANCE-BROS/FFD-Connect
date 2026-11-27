@@ -126,8 +126,9 @@ export async function exportAndShareMyData(): Promise<void> {
  * Droit à l'oubli (art. 17) : suppression définitive du compte.
  * Le backend exige le mot de passe courant — un token volé ne suffit pas.
  * Lève "WRONG_PASSWORD" (403 `code: WRONG_PASSWORD`, #937), "SESSION_ENDED"
- * (401 qui a mis fin à la session : compte déjà supprimé) ou "DELETE_FAILED"
- * (tout autre échec, 401 compris) sans rien effacer. Une fois
+ * (401 qui a mis fin à la session : compte déjà supprimé), "RATE_LIMITED"
+ * (429 : trop d'essais, #1041) ou "DELETE_FAILED" (tout autre échec, 401
+ * compris) sans rien effacer. Une fois
  * la suppression confirmée, efface toutes les données locales du compte
  * (#933) ; l'appelant n'a plus qu'à rafraîchir l'état d'auth (pas de logout).
  */
@@ -148,6 +149,9 @@ export async function deleteMyAccount(password: string): Promise<void> {
     if (response?.status === 401 && (await sessionEnded())) {
       throw new Error("SESSION_ENDED");
     }
+    // Too many tries (5/min per account, #1041): refused before anything
+    // was checked or deleted.
+    if (response?.status === 429) throw new Error("RATE_LIMITED");
     throw new Error("DELETE_FAILED");
   }
   // Not a logout (#933): e-mail, profile, tokens, licence snapshot, CGU

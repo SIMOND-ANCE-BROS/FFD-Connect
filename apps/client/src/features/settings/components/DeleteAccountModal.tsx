@@ -68,10 +68,12 @@ export const DeleteAccountModal = ({
         "Erreur",
         reason === "WRONG_PASSWORD"
           ? "Mot de passe incorrect."
-          : // Unconfirmed, not failed: the server may have deleted the
-            // account and the response been lost. The next request then
-            // signs out and wipes the account's data on its own (#935).
-            "La suppression n'a pas pu être confirmée. Si elle a abouti, la session se fermera d'elle-même ; sinon, réessayez plus tard.",
+          : reason === "RATE_LIMITED"
+            ? "Trop de tentatives. Patientez une minute avant de réessayer."
+            : // Unconfirmed, not failed: the server may have deleted the
+              // account and the response been lost. The next request then
+              // signs out and wipes the account's data on its own (#935).
+              "La suppression n'a pas pu être confirmée. Si elle a abouti, la session se fermera d'elle-même ; sinon, réessayez plus tard.",
       );
     } finally {
       setLoading(false);

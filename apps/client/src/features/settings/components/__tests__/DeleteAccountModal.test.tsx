@@ -77,6 +77,13 @@ describe("DeleteAccountModal", () => {
       );
     });
 
+    // #1041: refused before any processing — nothing to "confirm".
+    it("asks to wait when too many tries were made", async () => {
+      await expect(submit(new Error("RATE_LIMITED"))).resolves.toBe(
+        "Trop de tentatives. Patientez une minute avant de réessayer.",
+      );
+    });
+
     it("does not claim a deletion it could not confirm has failed", async () => {
       // The response may be lost after the server deleted the account: the
       // app then signs out by itself at its next request.
