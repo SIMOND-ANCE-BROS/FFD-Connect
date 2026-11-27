@@ -413,7 +413,7 @@ describe("AdminClubsService", () => {
       });
     });
 
-    it("locks the club's CLUB accounts before disabling the club (#884)", async () => {
+    it("locks the club row, then its CLUB accounts, before disabling the club (#884, #900)", async () => {
       prisma.club.findUnique.mockResolvedValue({
         id: "c1",
         disabledAt: null,
@@ -421,16 +421,27 @@ describe("AdminClubsService", () => {
 
       await service.setStatus("admin-1", "c1", false);
 
-      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
-      const [sql] = prisma.$queryRaw.mock.calls[0] as unknown as [Prisma.Sql];
-      expect(sql.sql).toBe(
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+      const [[clubLock], [userLock]] = prisma.$queryRaw.mock
+        .calls as unknown as [[Prisma.Sql], [Prisma.Sql]];
+      // Same order as a rename (club, then users): no deadlock (#900).
+      expect(clubLock.sql).toBe(
+        `SELECT id FROM "Club" WHERE id = ? FOR NO KEY UPDATE`,
+      );
+      expect(clubLock.values).toEqual(["c1"]);
+      expect(userLock.sql).toBe(
         `SELECT id FROM "User" WHERE "clubId" = ? AND role = 'CLUB' ORDER BY id FOR UPDATE`,
       );
-      expect(sql.values).toEqual(["c1"]);
-      expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      expect(userLock.values).toEqual(["c1"]);
+      const [clubLockOrder, userLockOrder] =
+        prisma.$queryRaw.mock.invocationCallOrder;
+      expect(clubLockOrder).toBeLessThan(
+        prisma.club.findUnique.mock.invocationCallOrder[0],
+      );
+      expect(userLockOrder).toBeLessThan(
         prisma.club.update.mock.invocationCallOrder[0],
       );
-      expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      expect(userLockOrder).toBeLessThan(
         prisma.refreshToken.updateMany.mock.invocationCallOrder[0],
       );
     });
@@ -446,7 +457,8 @@ describe("AdminClubsService", () => {
       });
       expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
       expect(prisma.deviceToken.deleteMany).not.toHaveBeenCalled();
-      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+      // The club row only: the accounts are left alone.
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
       expect(audit.record).toHaveBeenCalledWith(
         prisma,
         expect.objectContaining({ action: "CLUB_ENABLE" }),

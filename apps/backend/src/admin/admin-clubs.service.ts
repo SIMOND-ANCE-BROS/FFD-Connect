@@ -254,6 +254,14 @@ export class AdminClubsService {
     active: boolean,
   ): Promise<AdminClubDetailDto> {
     await this.prisma.$transaction(async (tx) => {
+      // The club row first, then its users: the order a rename takes them
+      // (`club.update` then `user.updateMany`), so the two cannot deadlock
+      // (#900). Taken before the read, so two concurrent toggles see each
+      // other's result. NO KEY UPDATE still conflicts with the rename's
+      // update, but not with the KEY SHARE of a row pointing at the club.
+      await tx.$queryRaw(
+        Prisma.sql`SELECT id FROM "Club" WHERE id = ${clubId} FOR NO KEY UPDATE`,
+      );
       const current = await tx.club.findUnique({
         where: { id: clubId },
         select: adminClubStatusSelect,

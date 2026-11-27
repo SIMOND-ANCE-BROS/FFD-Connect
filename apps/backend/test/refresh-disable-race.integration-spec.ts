@@ -58,17 +58,30 @@ describe("Refresh vs deactivation race (integration, real DB, #884)", () => {
     await module.close();
   });
 
-  /** Sessions of this database waiting on a row lock. */
-  const lockWaiters = async (): Promise<number> => {
+  /**
+   * Sessions waiting, directly or behind another waiter, on the locks held
+   * by the backend `holderPid` — this test's sessions only, not every lock
+   * wait of the database.
+   */
+  const lockWaiters = async (holderPid: number): Promise<number> => {
     const [row] = await prisma.$queryRaw<{ n: bigint }[]>(
-      Prisma.sql`SELECT count(*) AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+      Prisma.sql`WITH RECURSIVE blocked(pid) AS (
+        SELECT a.pid FROM pg_stat_activity a
+        WHERE ${holderPid}::int = ANY(pg_blocking_pids(a.pid))
+        UNION
+        SELECT a.pid FROM pg_stat_activity a JOIN blocked b
+          ON b.pid = ANY(pg_blocking_pids(a.pid))
+      ) SELECT count(*) AS n FROM blocked`,
     );
     return Number(row.n);
   };
 
-  const waitForLockWaiters = async (n: number): Promise<void> => {
+  const waitForLockWaiters = async (
+    holderPid: number,
+    n: number,
+  ): Promise<void> => {
     const deadline = Date.now() + 10_000;
-    while ((await lockWaiters()) < n) {
+    while ((await lockWaiters(holderPid)) < n) {
       if (Date.now() > deadline) {
         throw new Error(`expected ${n} session(s) waiting on a lock`);
       }
@@ -76,50 +89,76 @@ describe("Refresh vs deactivation race (integration, real DB, #884)", () => {
     }
   };
 
-  /** Holds the user row lock until `release()` is called. */
-  const holdUserLock = async (userId: string) => {
+  /** Holds the row lock taken by `lockSql` until `release()` is called. */
+  const holdLock = async (lockSql: Prisma.Sql) => {
     let release!: () => void;
     const released = new Promise<void>((r) => (release = r));
-    let locked!: () => void;
-    const isLocked = new Promise<void>((r) => (locked = r));
+    let locked!: (pid: number) => void;
+    const isLocked = new Promise<number>((r) => (locked = r));
     const holder = prisma.$transaction(
       async (tx) => {
-        await tx.$queryRaw(
-          Prisma.sql`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`,
+        await tx.$queryRaw(lockSql);
+        const [{ pid }] = await tx.$queryRaw<{ pid: number }[]>(
+          Prisma.sql`SELECT pg_backend_pid() AS pid`,
         );
-        locked();
+        locked(pid);
         await released;
       },
       { timeout: 20_000 },
     );
-    await isLocked;
-    return { release, holder };
+    const pid = await isLocked;
+    return { release, holder, pid };
   };
+
+  const holdUserLock = (userId: string) =>
+    holdLock(Prisma.sql`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`);
 
   const liveTokens = (userId: string) =>
     prisma.refreshToken.count({ where: { userId, revoked: false } });
 
   /**
-   * Runs the race and checks the invariant. Returns how the refresh ended:
-   * a 401 (it ran after the deactivation) or tokens that the deactivation
-   * then revoked (it ran before).
+   * Runs the race and checks the invariant. `first` is the one that queues
+   * first on the user row lock, so it is the one PostgreSQL grants first.
+   * Returns how the refresh ended: a 401 (it ran after the deactivation) or
+   * tokens that the deactivation then revoked (it ran before).
    */
   const race = async (
     userId: string,
     disable: () => Promise<unknown>,
+    first: "refresh" | "disable",
   ): Promise<"refused" | "revoked-after"> => {
     const { token } = await tokens.createRefreshToken(userId);
-    const { release, holder } = await holdUserLock(userId);
+    const { release, holder, pid } = await holdUserLock(userId);
 
-    const refresh = tokens.refreshAccessToken(token).then(
-      (res) => ({ ok: true as const, res }),
-      (err: unknown) => ({ ok: false as const, err }),
-    );
-    await waitForLockWaiters(1);
-    const disabling = disable();
-    await waitForLockWaiters(2);
-
-    release();
+    const startRefresh = () =>
+      tokens.refreshAccessToken(token).then(
+        (res) => ({ ok: true as const, res }),
+        (err: unknown) => ({ ok: false as const, err }),
+      );
+    const startDisable = () => {
+      const p = disable();
+      p.catch(() => undefined);
+      return p;
+    };
+    let refresh: ReturnType<typeof startRefresh>;
+    let disabling: Promise<unknown>;
+    try {
+      if (first === "refresh") {
+        refresh = startRefresh();
+        await waitForLockWaiters(pid, 1);
+        disabling = startDisable();
+      } else {
+        disabling = startDisable();
+        await waitForLockWaiters(pid, 1);
+        // Its fast-path read still sees an active account: the deactivation
+        // has not committed yet.
+        refresh = startRefresh();
+      }
+      await waitForLockWaiters(pid, 2);
+    } finally {
+      // Never leave the lock held: the next tests would queue behind it.
+      release();
+    }
     await holder;
     const [outcome] = await Promise.all([refresh, disabling]);
 
@@ -139,37 +178,32 @@ describe("Refresh vs deactivation race (integration, real DB, #884)", () => {
     return "refused";
   };
 
-  it("leaves no live token when the CLUB account's club is disabled during a refresh", async () => {
+  const createClubAccount = async (label: string) => {
     const club = await prisma.club.create({
-      data: { name: `Race club ${tag}` },
+      data: { name: `Race club ${label} ${tag}` },
       select: { id: true },
     });
     clubIds.push(club.id);
     const user = await prisma.user.create({
       data: {
-        email: `race-club-${tag}@test.local`,
+        email: `race-club-${label}-${tag}@test.local`,
         password: "x",
         firstName: "Race",
         lastName: "Club",
         role: UserRole.CLUB,
         clubId: club.id,
+        clubName: `Race club ${label} ${tag}`,
       },
       select: { id: true },
     });
     userIds.push(user.id);
+    return { clubId: club.id, userId: user.id };
+  };
 
-    const outcome = await race(user.id, () =>
-      module.get(AdminClubsService).setStatus(adminId, club.id, false),
-    );
-    // The deactivation queued behind the refresh on the user row lock, so
-    // the refresh either saw the club disabled or had its token revoked.
-    expect(["refused", "revoked-after"]).toContain(outcome);
-  });
-
-  it("leaves no live token when the account is disabled during a refresh", async () => {
+  const createLicensee = async (label: string) => {
     const user = await prisma.user.create({
       data: {
-        email: `race-user-${tag}@test.local`,
+        email: `race-user-${label}-${tag}@test.local`,
         password: "x",
         firstName: "Race",
         lastName: "User",
@@ -178,11 +212,95 @@ describe("Refresh vs deactivation race (integration, real DB, #884)", () => {
       select: { id: true },
     });
     userIds.push(user.id);
+    return user.id;
+  };
 
-    const outcome = await race(user.id, () =>
-      module.get(AdminUsersService).setStatus(adminId, user.id, false),
+  it("revokes the token of a refresh that ran before the club's deactivation", async () => {
+    const { clubId, userId } = await createClubAccount("first");
+    const outcome = await race(
+      userId,
+      () => module.get(AdminClubsService).setStatus(adminId, clubId, false),
+      "refresh",
     );
-    expect(["refused", "revoked-after"]).toContain(outcome);
+    expect(outcome).toBe("revoked-after");
+  });
+
+  it("refuses a refresh queued behind the club's deactivation", async () => {
+    const { clubId, userId } = await createClubAccount("queued");
+    const outcome = await race(
+      userId,
+      () => module.get(AdminClubsService).setStatus(adminId, clubId, false),
+      "disable",
+    );
+    expect(outcome).toBe("refused");
+  });
+
+  it("revokes the token of a refresh that ran before the account's deactivation", async () => {
+    const userId = await createLicensee("first");
+    const outcome = await race(
+      userId,
+      () => module.get(AdminUsersService).setStatus(adminId, userId, false),
+      "refresh",
+    );
+    expect(outcome).toBe("revoked-after");
+  });
+
+  it("refuses a refresh queued behind the account's deactivation", async () => {
+    const userId = await createLicensee("queued");
+    const outcome = await race(
+      userId,
+      () => module.get(AdminUsersService).setStatus(adminId, userId, false),
+      "disable",
+    );
+    expect(outcome).toBe("refused");
+  });
+
+  /**
+   * #900: the rename locks the club row then the club's users, so the
+   * deactivation must take its locks in the same order. Made deterministic:
+   * a third transaction holds the club row; the rename queues on it, then
+   * the deactivation; the holder lets go. With opposite orders the
+   * deactivation would hold the CLUB accounts while waiting for the club,
+   * and the rename the club while waiting for the accounts: PostgreSQL
+   * would abort one of them (deadlock detected).
+   */
+  it("renames and disables the same club concurrently without deadlock", async () => {
+    const { clubId, userId } = await createClubAccount("rename");
+    await tokens.createRefreshToken(userId);
+    const newName = `Race club renamed ${tag}`;
+    const clubs = module.get(AdminClubsService);
+
+    const { release, holder, pid } = await holdLock(
+      Prisma.sql`SELECT id FROM "Club" WHERE id = ${clubId} FOR UPDATE`,
+    );
+    const renaming = clubs.update(adminId, clubId, { name: newName });
+    renaming.catch(() => undefined);
+    let disabling: Promise<unknown>;
+    try {
+      await waitForLockWaiters(pid, 1);
+      disabling = clubs.setStatus(adminId, clubId, false);
+      disabling.catch(() => undefined);
+      await waitForLockWaiters(pid, 2);
+    } finally {
+      release();
+    }
+    await holder;
+    // Awaited as is: a deadlock fails the test with PostgreSQL's message.
+    await renaming;
+    await disabling;
+
+    const club = await prisma.club.findUniqueOrThrow({
+      where: { id: clubId },
+      select: { name: true, disabledAt: true },
+    });
+    expect(club.name).toBe(newName);
+    expect(club.disabledAt).not.toBeNull();
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { clubName: true },
+    });
+    expect(user.clubName).toBe(newName);
+    expect(await liveTokens(userId)).toBe(0);
   });
 
   it("refuses a refresh that waited for a committed club deactivation", async () => {
@@ -207,10 +325,10 @@ describe("Refresh vs deactivation race (integration, real DB, #884)", () => {
 
     // The refresh passes its fast-path read, then waits on the lock while
     // the deactivation commits: it must see the club disabled.
-    const { release, holder } = await holdUserLock(user.id);
+    const { release, holder, pid } = await holdUserLock(user.id);
     const refresh = tokens.refreshAccessToken(token);
     refresh.catch(() => undefined);
-    await waitForLockWaiters(1);
+    await waitForLockWaiters(pid, 1);
     // Disable the club directly (the service would queue on the same lock):
     // committed before the refresh gets the lock.
     await prisma.club.update({
