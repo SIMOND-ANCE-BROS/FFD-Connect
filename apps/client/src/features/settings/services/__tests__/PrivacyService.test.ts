@@ -403,4 +403,15 @@ describe("deleteMyAccount", () => {
     });
     await expect(deleteMyAccount("s3cret")).rejects.toThrow("DELETE_FAILED");
   });
+
+  // #1041: 5 tries a minute per account; the 429 comes before any check.
+  it("signale la limite d'essais (429) sans rien effacer", async () => {
+    deleteMock.mockResolvedValue({
+      error: { statusCode: 429 },
+      response: { status: 429 },
+    });
+
+    await expect(deleteMyAccount("s3cret")).rejects.toThrow("RATE_LIMITED");
+    expect(AuthService.endDeletedAccountSession).not.toHaveBeenCalled();
+  });
 });
